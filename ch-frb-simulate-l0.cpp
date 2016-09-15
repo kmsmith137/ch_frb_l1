@@ -90,12 +90,15 @@ int main(int argc, char **argv)
     std::normal_distribution<> dist;
 
     for (int ichunk = 0; ichunk < nchunks; ichunk++) {
+	// randomly simulate chunk
 	for (int i = 0; i < chunk_nelts; i++)
 	    intensity[i] = dist(rng);
 
 	int64_t fpga_count = int64_t(ichunk) * int64_t(nt_per_packet) * int64_t(fpga_counts_per_sample);
 	ostream->send_chunk(&intensity[0], &weights[0], chunk_stride, fpga_count, true);
     }
+
+    ostream->end_stream(true);  // joins network thread
 
     return 0;
 }
