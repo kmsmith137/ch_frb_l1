@@ -1,7 +1,9 @@
 // A placeholder for the full L1 process.  Currently data goes through the complete network front end,
 // but doesn't get RFI-cleaned or dedispersed.
 
-#include "ch_frb_io_internals.hpp"
+#include <errno.h>
+#include <pthread.h>
+#include <ch_frb_io.hpp>
 
 using namespace std;
 
