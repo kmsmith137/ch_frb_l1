@@ -2,6 +2,7 @@
 // but doesn't get RFI-cleaned or dedispersed.
 
 #include <errno.h>
+#include <string.h>
 #include <pthread.h>
 #include <ch_frb_io.hpp>
 
