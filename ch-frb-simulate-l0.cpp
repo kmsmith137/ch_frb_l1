@@ -41,7 +41,7 @@ int main(int argc, char **argv)
 
     static const vector<int> beam_ids = vrange(nbeams);
     static const vector<int> freq_ids = vrange(ch_frb_io::constants::nfreq_coarse);
-    static const double gb_to_simulate = 1.0;
+    static const double gb_to_simulate = 10.0;
     static const double wt_cutoff = 0.3;    // FIXME what value will make sense here?
     
     //
