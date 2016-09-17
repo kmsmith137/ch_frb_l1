@@ -1,0 +1,15 @@
+# Makefile.local for frb1.physics.mcgill.ca
+
+# Directory where executables will be installed
+BINDIR=$(HOME)/bin
+
+#
+# C++ command line
+# Don't forget -std=c++11 -pthread -fPIC
+#
+CPP=g++ -std=c++11 -pthread -fPIC -Wall -O3 -ffast-math -funroll-loops -I. -I$(HOME)/include
+
+# Any C++ flags which should only be specified when linking 
+# Don't forget to put -L. and -L$(LIBDIR) on the command line (in this order)
+# Don't forget to add . and $(LIBDIR) in your LD_LIBRARY_PATH environment variable (in this order)
+CPP_LFLAGS=-L. -L$(HOME)/lib
