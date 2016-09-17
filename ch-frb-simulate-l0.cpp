@@ -67,7 +67,7 @@ int main(int argc, char **argv)
     }
 
     //
-    // Make ostream and send data!  (just Gaussian noise for now)
+    // Make ostream and send data!
     //
 
     auto ostream = ch_frb_io::intensity_network_ostream::make(dstname, beam_ids, freq_ids, nupfreq, nt_per_packet, nfreq_coarse_per_packet,
@@ -84,15 +84,18 @@ int main(int argc, char **argv)
     vector<float> intensity(chunk_nelts, 0.0);
     vector<float> weights(chunk_nelts, 1.0);
     
-    // for simulating Gaussian noise
+#if 0
+    // I'd like to simulate Gaussian noise, but the Gaussian random number generation 
+    // actually turns out to be a bottleneck!
     std::random_device rd;
     std::mt19937 rng(rd());
     std::normal_distribution<> dist;
+#endif
 
     for (int ichunk = 0; ichunk < nchunks; ichunk++) {
-	// randomly simulate chunk
+	// To avoid the cost of simulating Gaussian noise, we use the following semi-arbitrary procedure.
 	for (int i = 0; i < chunk_nelts; i++)
-	    intensity[i] = dist(rng);
+	    intensity[i] = ichunk + i;
 
 	int64_t fpga_count = int64_t(ichunk) * int64_t(nt_per_packet) * int64_t(fpga_counts_per_sample);
 	ostream->send_chunk(&intensity[0], &weights[0], chunk_stride, fpga_count, true);
