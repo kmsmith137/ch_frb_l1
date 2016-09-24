@@ -2,6 +2,7 @@
 // but doesn't get RFI-cleaned or dedispersed.
 
 #include <cassert>
+#include <iostream>
 #include <errno.h>
 #include <string.h>
 #include <pthread.h>
@@ -56,11 +57,26 @@ static void spawn_consumer_thread(pthread_t &thread, const shared_ptr<ch_frb_io:
 }
 
 
+static void usage()
+{
+    cerr << "usage: ch-frb-l1 [-r]\n"
+	 << "   -r uses reference kernels instead of avx2 kernels\n";
+    exit(2);
+}
+
+
 int main(int argc, char **argv)
 {
     ch_frb_io::intensity_network_stream::initializer ini_params;
     ini_params.beam_ids = { 0, 1, 2, 3, 4, 5, 6, 7 };
     ini_params.mandate_fast_kernels = true;
+
+    for (int i = 1; i < argc; i++) {
+	if (strcmp(argv[i], "-r"))
+	    usage();
+	ini_params.mandate_fast_kernels = false;
+	ini_params.mandate_reference_kernels = true;
+    }
     
     auto stream = ch_frb_io::intensity_network_stream::make(ini_params);
 
