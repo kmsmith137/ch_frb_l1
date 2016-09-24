@@ -10,6 +10,12 @@
 using namespace std;
 
 
+struct consumer_thread_context {
+    shared_ptr<ch_frb_io::intensity_network_stream> stream;
+    int ithread = -1;
+};
+
+
 static void *consumer_thread_main(void *opaque_arg)
 {
     const int nupfreq = 16;
@@ -18,14 +24,14 @@ static void *consumer_thread_main(void *opaque_arg)
     std::vector<float> intensity(nalloc, 0.0);
     std::vector<float> weights(nalloc, 0.0);
 
-    shared_ptr<ch_frb_io::intensity_beam_assembler> *context = reinterpret_cast<shared_ptr<ch_frb_io::intensity_beam_assembler> *> (opaque_arg);
-    shared_ptr<ch_frb_io::intensity_beam_assembler> assembler = *context;
+    consumer_thread_context *context = reinterpret_cast<consumer_thread_context *> (opaque_arg);
+    shared_ptr<ch_frb_io::intensity_network_stream> stream = context->stream;
+    int ithread = context->ithread;
     delete context;
 
     for (;;) {
-	shared_ptr<ch_frb_io::assembled_chunk> chunk;
-	bool alive = assembler->get_assembled_chunk(chunk);
-	if (!alive)
+	auto chunk = stream->get_assembled_chunk(ithread);
+	if (!chunk)
 	    break;
 
 	assert(chunk->nupfreq == nupfreq);
@@ -36,9 +42,11 @@ static void *consumer_thread_main(void *opaque_arg)
 }
 
 
-static void spawn_consumer_thread(pthread_t &thread, const shared_ptr<ch_frb_io::intensity_beam_assembler> &assembler)
+static void spawn_consumer_thread(pthread_t &thread, const shared_ptr<ch_frb_io::intensity_network_stream> &stream, int ithread)
 {
-    shared_ptr<ch_frb_io::intensity_beam_assembler> *context = new shared_ptr<ch_frb_io::intensity_beam_assembler> (assembler);
+    consumer_thread_context *context = new consumer_thread_context;
+    context->stream = stream;
+    context->ithread = ithread;
 
     int err = pthread_create(&thread, NULL, consumer_thread_main, context);
     if (err)
@@ -50,19 +58,18 @@ static void spawn_consumer_thread(pthread_t &thread, const shared_ptr<ch_frb_io:
 
 int main(int argc, char **argv)
 {
-    const int nbeams = 8;
+    ch_frb_io::intensity_network_stream::initializer ini_params;
+    ini_params.beam_ids = { 0, 1, 2, 3, 4, 5, 6, 7 };
+    ini_params.mandate_fast_kernels = true;
+    
+    auto stream = ch_frb_io::intensity_network_stream::make(ini_params);
 
-    vector<shared_ptr<ch_frb_io::intensity_beam_assembler> > assemblers(8);
-    pthread_t consumer_threads[nbeams];
+    pthread_t consumer_threads[8];
+    for (int ibeam = 0; ibeam < 8; ibeam++)
+	spawn_consumer_thread(consumer_threads[ibeam], stream, ibeam);
 
-    for (int ibeam = 0; ibeam < nbeams; ibeam++) {
-	assemblers[ibeam] = make_shared<ch_frb_io::intensity_beam_assembler> (ibeam, false);   // drops_allowed = false
-	spawn_consumer_thread(consumer_threads[ibeam], assemblers[ibeam]);
-    }
-
-    shared_ptr<ch_frb_io::intensity_network_stream> stream = ch_frb_io::intensity_network_stream::make(assemblers, ch_frb_io::constants::default_udp_port);
     stream->start_stream();
-    stream->join_network_thread();
+    stream->join_threads();
 
     return 0;
 }
