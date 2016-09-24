@@ -1,19 +1,20 @@
 #include <random>
 #include <iostream>
+#include <cstring>
 #include <ch_frb_io.hpp>
 
 using namespace std;
+using ch_frb_io::lexical_cast;
 
-
-static const char *usage_str = 
-    "ch-frb-simulate-l0 HOST[:PORT] [target_gbps]\n"
-    "   if target_gbps is unspecified, then it will default to 1.0\n"
-    "   if target_gbps=0.0 then packets will be sent as fast as possible!\n";
-
+static const double default_gb_to_simulate = 10.0;
 
 static void usage(const char *extra=nullptr)
 {
-    cerr << usage_str;
+    cerr << "ch-frb-simulate-l0 [-t target_gbps] [-G gb_to_simulate] HOST[:PORT]\n"
+	 << "   if -G is unspecified, then gb_to_simulate will default to " << default_gb_to_simulate << "\n"
+	 << "   if -t is unspecified, then target_gbps will default to " << ch_frb_io::constants::default_gbps << "\n"
+	 << "   if -t 0.0 is specified, then data will be sent as quickly as possible\n"
+	 << "   if PORT is unspecified, it will default to " << ch_frb_io::constants::default_udp_port << "\n";
 
     if (extra)
 	cerr << extra << endl;
@@ -33,57 +34,62 @@ static vector<int> vrange(int n)
 
 int main(int argc, char **argv)
 {
-    static const int nbeams = 8;
-    static const int nfreq_coarse_per_packet = 4;
-    static const int fpga_counts_per_sample = 400;   // FIXME double-check this number
-    static const int nt_per_packet = 16;
-    static const int nupfreq = 16;
+    double gb_to_simulate = default_gb_to_simulate;
 
-    static const vector<int> beam_ids = vrange(nbeams);
-    static const vector<int> freq_ids = vrange(ch_frb_io::constants::nfreq_coarse);
-    static const double gb_to_simulate = 10.0;
-    static const double wt_cutoff = 0.3;    // FIXME what value will make sense here?
-    
-    //
+    ch_frb_io::intensity_network_ostream::initializer ini_params;
+    ini_params.beam_ids = vrange(8);
+    ini_params.coarse_freq_ids = vrange(ch_frb_io::constants::nfreq_coarse);
+    ini_params.nupfreq = 16;
+    ini_params.nfreq_coarse_per_packet = 4;
+    ini_params.nt_per_packet = 16;
+    ini_params.nt_per_chunk = 16;
+    ini_params.fpga_counts_per_sample = 400;   // FIXME double-check this number
+
     // Low-budget command line parsing
-    //
 
-    if ((argc < 2) || (argc > 3))
-	usage();
+    int iarg = 1;
 
-    string dstname = argv[1];
-    double target_gbps = 1.0;
-
-    if (argc >= 3) {
-	try {
-	    target_gbps = ch_frb_io::lexical_cast<double> (argv[2]);
+    while (iarg < argc) {
+	if (!strcmp(argv[iarg], "-t")) {
+	    if (iarg >= argc-1)
+		usage();
+	    if (!lexical_cast(argv[iarg+1], ini_params.target_gbps))
+		usage();
+	    iarg += 2;
 	}
-	catch (...) {
-	    usage();
+	else if (!strcmp(argv[iarg], "-G")) {
+	    if (iarg >= argc-1)
+		usage();
+	    if (!lexical_cast(argv[iarg+1], gb_to_simulate))
+		usage();
+	    if (gb_to_simulate <= 0.0)
+		usage();
+	    iarg += 2;
+	}	    
+	else {
+	    if (ini_params.dstname.size() > 0)
+		usage();
+	    ini_params.dstname = argv[iarg];
+	    iarg++;
 	}
-
-	if (target_gbps < 0.0)
-	    usage("Fatal: invalid value of 'target_gbps'");
     }
 
-    //
-    // Make ostream and send data!
-    //
+    if (ini_params.dstname.size() == 0)
+	usage();
 
-    auto ostream = ch_frb_io::intensity_network_ostream::make(dstname, beam_ids, freq_ids, nupfreq, nt_per_packet, nfreq_coarse_per_packet,
-							      nt_per_packet, fpga_counts_per_sample, wt_cutoff, target_gbps);
+    // Now send data
+
+    auto ostream = ch_frb_io::intensity_network_ostream::make(ini_params);
 
     int nchunks = int(gb_to_simulate * 1.0e9 / ostream->nbytes_per_chunk) + 1;
     int npackets = nchunks * ostream->npackets_per_chunk;
     int nbytes = nchunks * ostream->nbytes_per_chunk;
     cerr << "ch-frb-simulate-l0: sending " << (nbytes/1.0e9) << " GB data (" << npackets << " packets)\n";
 
-    int chunk_nelts = nbeams * ch_frb_io::constants::nfreq_coarse * nupfreq * nt_per_packet;
-    int chunk_stride = nt_per_packet;
+    vector<float> intensity(ostream->elts_per_chunk, 0.0);
+    vector<float> weights(ostream->elts_per_chunk, 1.0);
+    int stride = ostream->nt_per_packet;
 
-    vector<float> intensity(chunk_nelts, 0.0);
-    vector<float> weights(chunk_nelts, 1.0);
-    
 #if 0
     // I'd like to simulate Gaussian noise, but the Gaussian random number generation 
     // actually turns out to be a bottleneck!
@@ -94,11 +100,11 @@ int main(int argc, char **argv)
 
     for (int ichunk = 0; ichunk < nchunks; ichunk++) {
 	// To avoid the cost of simulating Gaussian noise, we use the following semi-arbitrary procedure.
-	for (int i = 0; i < chunk_nelts; i++)
+	for (unsigned int i = 0; i < intensity.size(); i++)
 	    intensity[i] = ichunk + i;
 
-	int64_t fpga_count = int64_t(ichunk) * int64_t(nt_per_packet) * int64_t(fpga_counts_per_sample);
-	ostream->send_chunk(&intensity[0], &weights[0], chunk_stride, fpga_count, true);
+	int64_t fpga_count = int64_t(ichunk) * int64_t(ostream->fpga_counts_per_chunk);
+	ostream->send_chunk(&intensity[0], &weights[0], stride, fpga_count);
     }
 
     ostream->end_stream(true);  // joins network thread
