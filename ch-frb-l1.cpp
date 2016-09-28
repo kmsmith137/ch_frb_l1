@@ -5,6 +5,7 @@
 #include <iostream>
 #include <errno.h>
 #include <string.h>
+#include <unistd.h>
 #include <pthread.h>
 #include <ch_frb_io.hpp>
 
