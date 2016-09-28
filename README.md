@@ -2,6 +2,7 @@ External dependencies:
 
   - A gcc which is recent enough that C++11 and AVX2 are supported.  I know that gcc 4.8.1 works, and that 4.4.7 is too old.
   - A very recent cython.  I know that cython 0.24 works, and cython 0.20 is too old.
+  - numpy/scipy/matplotlib
   - hdf5 version 1.8.11 or later
   - h5py version 2.4.0 or later
   - FFTW3 (http://fftw.org)

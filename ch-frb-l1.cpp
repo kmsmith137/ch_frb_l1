@@ -20,7 +20,7 @@ struct consumer_thread_context {
 static void *consumer_thread_main(void *opaque_arg)
 {
     const int nupfreq = 16;
-    const int nalloc = ch_frb_io::constants::nfreq_coarse * nupfreq * ch_frb_io::constants::nt_per_assembled_chunk;
+    const int nalloc = ch_frb_io::constants::nfreq_coarse_tot * nupfreq * ch_frb_io::constants::nt_per_assembled_chunk;
 
     std::vector<float> intensity(nalloc, 0.0);
     std::vector<float> weights(nalloc, 0.0);

@@ -38,7 +38,7 @@ int main(int argc, char **argv)
 
     ch_frb_io::intensity_network_ostream::initializer ini_params;
     ini_params.beam_ids = vrange(8);
-    ini_params.coarse_freq_ids = vrange(ch_frb_io::constants::nfreq_coarse);
+    ini_params.coarse_freq_ids = vrange(ch_frb_io::constants::nfreq_coarse_tot);
     ini_params.nupfreq = 16;
     ini_params.nfreq_coarse_per_packet = 4;
     ini_params.nt_per_packet = 16;
