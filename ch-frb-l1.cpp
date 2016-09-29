@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <ch_frb_io.hpp>
+#include <ch_frb_rpc.hpp>
 
 #if defined(__AVX2__)
 const static bool HAVE_AVX2 = true;
@@ -108,6 +109,10 @@ int main(int argc, char **argv)
     for (int ibeam = 0; ibeam < 8; ibeam++)
 	spawn_processing_thread(processing_threads[ibeam], stream, ibeam);
 
+    // Make RPC-serving object
+    frb_rpc_server rpc(stream);
+    rpc.start();
+
     // Start listening for packets.
     stream->start_stream();
 
@@ -116,6 +121,8 @@ int main(int argc, char **argv)
     // indicate there is no more data, which initiates the stream shutdown process on the
     // receive side.)
     stream->join_threads();
+
+    rpc.stop();
 
     // Join processing threads
     for (int ibeam = 0; ibeam < 8; ibeam++) {

@@ -12,8 +12,15 @@ BINARIES=ch-frb-l1 ch-frb-simulate-l0
 
 all: $(BINARIES)
 
-ch-frb-l1: ch-frb-l1.cpp
-	$(CPP) -o $@ $< $(CPP_LFLAGS) -lch_frb_io
+INCFILES = ch_frb_rpc.hpp
+
+L1_OBJS = ch-frb-l1.o ch_frb_rpc.o
+
+%.o: %.cpp $(INCFILES)
+	$(CPP) -c -o $@ $<
+
+ch-frb-l1: $(L1_OBJS)
+	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lch_frb_io
 
 ch-frb-simulate-l0: ch-frb-simulate-l0.cpp
 	$(CPP) -o $@ $< $(CPP_LFLAGS) -lch_frb_io
