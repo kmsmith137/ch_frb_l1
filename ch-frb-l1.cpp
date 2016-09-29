@@ -13,6 +13,13 @@
 #include <pthread.h>
 #include <ch_frb_io.hpp>
 
+#if defined(__AVX2__)
+const static bool HAVE_AVX2 = true;
+#else
+#warning "This machine does not have the AVX2 instruction set."
+const static bool HAVE_AVX2 = false;
+#endif
+
 using namespace std;
 
 
@@ -84,7 +91,7 @@ int main(int argc, char **argv)
 {
     ch_frb_io::intensity_network_stream::initializer ini_params;
     ini_params.beam_ids = { 0, 1, 2, 3, 4, 5, 6, 7 };
-    ini_params.mandate_fast_kernels = true;
+    ini_params.mandate_fast_kernels = HAVE_AVX2;
 
     for (int i = 1; i < argc; i++) {
 	if (strcmp(argv[i], "-r"))
