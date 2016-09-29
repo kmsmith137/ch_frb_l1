@@ -1,3 +1,14 @@
+// This is a toy program which simulates a packet stream at the full CHIME data rate,
+// for timing purposes.  The receiver will usually be the counterpart toy program 'ch-frb-l1'.
+//
+// It can be pointed at any IP address, but we usually just run over the loopback IP 127.0.0.1.
+//
+// A major caveat is that the intensity values it sends are just arbitrary numbers, not
+// something more interesting like Gaussian random noise, or even more interesting such
+// as noise + simulated FRB's.  This is because the current simulation code is too slow
+// to simulate anything interesting (even Gaussian noise) at the full CHIME data rate,
+// and fixing this is a to-do item (see discussion in ch_frb_io/README).
+
 #include <random>
 #include <iostream>
 #include <cstring>
@@ -77,7 +88,7 @@ int main(int argc, char **argv)
     if (ini_params.dstname.size() == 0)
 	usage();
 
-    // Now send data
+    // Make output stream object and print a little summary info
 
     auto ostream = ch_frb_io::intensity_network_ostream::make(ini_params);
 
@@ -98,6 +109,8 @@ int main(int argc, char **argv)
     std::normal_distribution<> dist;
 #endif
 
+    // Send data.  The output stream object will automatically throttle packets to its target bandwidth.
+
     for (int ichunk = 0; ichunk < nchunks; ichunk++) {
 	// To avoid the cost of simulating Gaussian noise, we use the following semi-arbitrary procedure.
 	for (unsigned int i = 0; i < intensity.size(); i++)
@@ -107,7 +120,10 @@ int main(int argc, char **argv)
 	ostream->send_chunk(&intensity[0], &weights[0], stride, fpga_count);
     }
 
-    ostream->end_stream(true);  // joins network thread
+
+    // All done!
+
+    ostream->end_stream(true);  // "true" joins network thread
 
     return 0;
 }
