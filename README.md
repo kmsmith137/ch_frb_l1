@@ -4,7 +4,7 @@ containing master executables, bonsai configs, etc.
 Right now it's a placeholder which just contains:
   - "global" instructions for compiling the chimefrb pipeline ([INSTALL.md] (./INSTALL.md))
   - pointers to scattered documentation
-  - some toy programs for sending and receiving packets
+  - some toy programs for timing the chimefrb networking code
 
 ### INSTALLATION
 
