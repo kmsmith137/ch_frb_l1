@@ -20,3 +20,6 @@ ch-frb-simulate-l0: ch-frb-simulate-l0.cpp
 
 clean:
 	rm -f *.o *~ $(BINARIES)
+
+install:
+	echo 'Nothing to install here!'
