@@ -41,7 +41,7 @@ Here are some links to get you started on the "Documentation Easter Egg Hunt":
 
   - ch_frb_io
      - There are some PDF slides in [ch_frb_io/docs] (https://github.com/CHIMEFRB/ch_frb_io/tree/master/docs).
-     - The official spec for the packet protocol is [L0_L1_packet.hpp].
+     - The official spec for the packet protocol is [L0_L1_packet.hpp] (https://github.com/CHIMEFRB/ch_frb_io/blob/master/L0_L1_packet.hpp)
      - The header file [ch_frb_io.hpp] (https://github.com/CHIMEFRB/ch_frb_io/blob/master/ch_frb_io.hpp)
        should be a pretty readable overview of the C++ API.
      - For toy programs which send and receive network streams, see
