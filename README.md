@@ -40,21 +40,21 @@ place (e.g. in code comments or Python docstrings).
 Here are some links to get you started on the "Documentation Easter Egg Hunt":
 
   - ch_frb_io
-     - PDF slides to be written
+     - There are some PDF slides in [ch_frb_io/docs] (https://github.com/CHIMEFRB/ch_frb_io/tree/master/docs).
      - The official spec for the packet protocol is [L0_L1_packet.hpp].
-     - The header file [ch_frb_io.hpp] (https://github.com/CHIMEFRB/ch_frb_io/blob/network_streams/ch_frb_io.hpp)
+     - The header file [ch_frb_io.hpp] (https://github.com/CHIMEFRB/ch_frb_io/blob/master/ch_frb_io.hpp)
        should be a pretty readable overview of the C++ API.
      - For toy programs which send and receive network streams, see
        [ch-frb-simulate-l0.cpp] (./ch-frb-simulate-l0.cpp) and [ch-frb-l1.cpp] (./ch-frb-l1.cpp)
        in this github repo.
      - The python interface to the networking code is in rf_pipelines, not ch_frb_io.
        For toy python pipelines which send and receive network scripts, see
-       [rf_pipelines/examples/example5_network] (https://github.com/kmsmith137/rf_pipelines/tree/network_streams/examples/example5_network).
+       [rf_pipelines/examples/example5_network] (https://github.com/kmsmith137/rf_pipelines/tree/master/examples/example5_network).
 
   - rf_pipelines
-     - There are some PDF slides in [rf_pipelines/docs] (https://github.com/kmsmith137/rf_pipelines/tree/network_streams/docs).
+     - There are some PDF slides in [rf_pipelines/docs] (https://github.com/kmsmith137/rf_pipelines/tree/master/docs).
      - The rf_pipelines package is best "documented by example", so I recommend looking at
-       [rf_pipelines/examples] (https://github.com/kmsmith137/rf_pipelines/tree/network_streams/examples) next.
+       [rf_pipelines/examples] (https://github.com/kmsmith137/rf_pipelines/tree/master/examples) next.
      - The python docstrings should collectively be a pretty complete form of documentation for the rf_pipelines python API.
        (Is there a convenient way to browse python docstrings?  I just use the python interpreter, which is pretty klunky.)
        Some docstring "greatest hits":
@@ -68,7 +68,7 @@ Here are some links to get you started on the "Documentation Easter Egg Hunt":
         # for each entry of 'dir(rf_pipelines)', a docstring is available
         help(rf_pipelines.chime_stream_from_acqdir)   
     ```
-     - The header file [rf_pipelines.hpp] (https://github.com/kmsmith137/rf_pipelines/blob/network_streams/rf_pipelines.hpp)
+     - The header file [rf_pipelines.hpp] (https://github.com/kmsmith137/rf_pipelines/blob/master/rf_pipelines.hpp)
        should be a pretty readable overview of the rf_pipelines C++ api.
 
   - bonsai
@@ -79,7 +79,7 @@ Here are some links to get you started on the "Documentation Easter Egg Hunt":
        is the format and meaning of its config file.  Right now the best documentation is to look at the commented example in
        [bonsai/examples/example_bonsai_config_file.txt] (https://github.com/CHIMEFRB/bonsai/blob/master/examples/example_bonsai_config_file.txt)
      - Most of the example scripts in
-       [rf_pipelines/examples] (https://github.com/kmsmith137/rf_pipelines/tree/network_streams/examples)
+       [rf_pipelines/examples] (https://github.com/kmsmith137/rf_pipelines/tree/master/examples)
        include a bonsai dedisperser in the pipeline, so these may be useful to look at.
        They also show how to run the bonsai code through its rf_pipelines interface, which is the most convenient way to run it.
 
