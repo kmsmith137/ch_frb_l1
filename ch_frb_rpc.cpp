@@ -5,6 +5,13 @@
 #include <ch_frb_rpc.hpp>
 #include <unistd.h>
 
+//  ZeroMQ experiment, from "Hello World server in C++"
+//  Binds REP socket to tcp://*:5555
+//
+#include <zmq.hpp>
+#include <string>
+
+
 using namespace std;
 
 frb_rpc_server::frb_rpc_server(std::shared_ptr<intensity_network_stream> s) :
@@ -63,6 +70,29 @@ static void *rpc_thread_main(void *opaque_arg) {
 
     cout << "Hello, I am the RPC thread" << endl;
 
+    // ZMQ
+    //  Prepare our context and socket
+    zmq::context_t zcontext(1);
+    zmq::socket_t socket(zcontext, ZMQ_REP);
+    socket.bind("tcp://*:5555");
+
+    while (true) {
+        zmq::message_t request;
+
+        //  Wait for next request from client
+        socket.recv(&request);
+        std::cout << "Received RPC request" << std::endl;
+
+        //  Do some 'work'
+        sleep(1);
+
+        //  Send reply back to client
+        zmq::message_t reply(5);
+        memcpy(reply.data(), "World", 5);
+        socket.send(reply);
+    }
+
+    /*
     for (;;) {
         usleep(5000000);
 
@@ -85,6 +115,8 @@ static void *rpc_thread_main(void *opaque_arg) {
            << "    assembled chunks queued: " << counts[intensity_network_stream::event_type::assembled_chunk_queued] << "\n";
         cout << ss.str().c_str();
     }
+     */
+
     return NULL;
 }
 

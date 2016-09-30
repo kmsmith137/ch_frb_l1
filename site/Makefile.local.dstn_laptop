@@ -12,6 +12,8 @@ BINDIR=$(HOME)/chime/bin
 HDF5_INC_DIR=/usr/local/include
 HDF5_LIB_DIR=/usr/local/lib
 
+CPPZMQ_INC_DIR=$(HOME)/chime/cppzmq
+
 #
 # C++ command line
 # Don't forget -std=c++11 -pthread -fPIC
