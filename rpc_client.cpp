@@ -5,6 +5,12 @@
 #include <string>
 #include <iostream>
 
+// msgpack
+#include <msgpack.hpp>
+#include <sstream>
+
+using namespace std;
+
 int main() {
     //  Prepare our context and socket
     zmq::context_t context(1);
@@ -15,8 +21,21 @@ int main() {
     
     //  Do 10 requests, waiting each time for a response
     for (int request_nbr = 0; request_nbr < 10; request_nbr++) {
-        zmq::message_t request(5);
-        memcpy(request.data(), "Hello", 5);
+
+        std::stringstream buffer;
+        std::string funcname = "get_beam_metadata";
+        msgpack::pack(buffer, funcname);
+
+        // multiple copies obviously undesirable...
+        std::string sbuffer(buffer.str());
+
+        cout << "Buffer size: " << sbuffer.size() << ", data: " << sbuffer.data() << endl;
+
+        zmq::message_t request(sbuffer.size());
+        memcpy(request.data(), sbuffer.data(), sbuffer.size());
+
+        // zmq::message_t request(5);
+        // memcpy(request.data(), "Hello", 5);
         std::cout << "Sending Hello " << request_nbr << std::endl;
         socket.send(request);
 

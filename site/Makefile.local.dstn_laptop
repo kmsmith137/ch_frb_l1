@@ -13,6 +13,7 @@ HDF5_INC_DIR=/usr/local/include
 HDF5_LIB_DIR=/usr/local/lib
 
 CPPZMQ_INC_DIR=$(HOME)/chime/cppzmq
+MSGPACK_INC_DIR=/usr/local/include
 
 #
 # C++ command line
