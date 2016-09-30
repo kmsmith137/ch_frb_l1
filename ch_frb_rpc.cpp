@@ -6,7 +6,6 @@
 #include <unistd.h>
 
 using namespace std;
-//namespace event_type = ch_frb_io::intensity_network_stream::event_type;
 
 frb_rpc_server::frb_rpc_server(std::shared_ptr<intensity_network_stream> s) :
     stream(s)
@@ -18,6 +17,44 @@ frb_rpc_server::~frb_rpc_server() {}
 struct rpc_thread_context {
     shared_ptr<ch_frb_io::intensity_network_stream> stream;
 };
+
+/**
+
+ RPC calls:
+
+ - [dict] get_beam_metadata(void)
+ ---> returns an array of dictionaries? describing the beams handled by this
+      L1 node.  Elements would include:
+        int beam_id
+        int nupfreq
+        int nt_per_packet
+        int fpga_counts_per_sample
+        constants like nt_per_assembled_chunk, nfreq_coarse?
+        int64 fpga_count // first fpga count seen; 0 if no L0 packets seen yet
+        int ring buffer capacity?
+        int ring buffer size?
+        int64 min_fpga_count // in ring buffer
+        int64 max_fpga_count // in ring buffer
+        <packet count statistics>
+        <packet counts from each L0 node>
+
+ - [intensity_packet] get_packets([
+          ( beam_id,
+            // high index non-inclusive; 0 means max (no cut)
+            fpga_count_low, fpga_count_high,
+            freq_coarse_low, freq_coarse_high,
+            upfreq_low, upfreq_high,
+            tsamp_low, tsamp_high )
+          ])
+ ---> returns an array of intensity_packets (or sub-packets).
+
+ - [bool] dump_packets(...)
+ ---> to disk?
+
+ */
+
+
+
 
 static void *rpc_thread_main(void *opaque_arg) {
     rpc_thread_context *context = reinterpret_cast<rpc_thread_context *> (opaque_arg);
@@ -66,5 +103,5 @@ void frb_rpc_server::start() {
 void frb_rpc_server::stop() {
     cout << "Stopping RPC server..." << endl;
 }
-//pthread_t network_thread;
+
 
