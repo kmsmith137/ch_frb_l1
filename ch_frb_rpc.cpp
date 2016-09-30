@@ -11,6 +11,9 @@
 #include <zmq.hpp>
 #include <string>
 
+// msgpack
+#include <msgpack.hpp>
+
 
 using namespace std;
 
@@ -83,8 +86,19 @@ static void *rpc_thread_main(void *opaque_arg) {
         socket.recv(&request);
         std::cout << "Received RPC request" << std::endl;
 
+        const char* req_data = reinterpret_cast<const char *>(request.data());
+
+        msgpack::object_handle oh =
+            msgpack::unpack(req_data, request.size());
+        msgpack::object obj = oh.get();
+        std::cout << "Request object:" << obj << std::endl;
+
         //  Do some 'work'
         sleep(1);
+
+        if (obj == "get_beam_metadata") {
+            cout << "get_beam_metadata" << endl;
+        }
 
         //  Send reply back to client
         zmq::message_t reply(5);

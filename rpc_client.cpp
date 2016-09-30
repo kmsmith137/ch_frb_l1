@@ -22,27 +22,33 @@ int main() {
     //  Do 10 requests, waiting each time for a response
     for (int request_nbr = 0; request_nbr < 10; request_nbr++) {
 
-        std::stringstream buffer;
+        // RPC request buffer.
+        msgpack::sbuffer buffer;
         std::string funcname = "get_beam_metadata";
         msgpack::pack(buffer, funcname);
 
-        // multiple copies obviously undesirable...
-        std::string sbuffer(buffer.str());
+        cout << "Buffer size: " << buffer.size() << ", data: " << buffer.data() << endl;
 
-        cout << "Buffer size: " << sbuffer.size() << ", data: " << sbuffer.data() << endl;
+        // no copy
+        zmq::message_t request(buffer.data(), buffer.size(), NULL);
 
-        zmq::message_t request(sbuffer.size());
-        memcpy(request.data(), sbuffer.data(), sbuffer.size());
-
-        // zmq::message_t request(5);
-        // memcpy(request.data(), "Hello", 5);
         std::cout << "Sending Hello " << request_nbr << std::endl;
         socket.send(request);
 
         //  Get the reply.
         zmq::message_t reply;
         socket.recv(&reply);
-        std::cout << "Received World " << request_nbr << std::endl;
+        std::cout << "Received result " << request_nbr << std::endl;
+
+        cout << "Reply has size " << reply.size() << " and data: " << reply.data() << endl;
+
+        const char* reply_data = reinterpret_cast<const char *>(reply.data());
+
+        msgpack::object_handle oh =
+            msgpack::unpack(reply_data, reply.size());
+        msgpack::object obj = oh.get();
+        std::cout << obj << std::endl;
+
     }
     return 0;
 }
