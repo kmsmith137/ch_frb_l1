@@ -14,7 +14,6 @@
 // msgpack
 #include <msgpack.hpp>
 
-
 using namespace std;
 
 frb_rpc_server::frb_rpc_server(std::shared_ptr<intensity_network_stream> s) :
@@ -88,48 +87,53 @@ static void *rpc_thread_main(void *opaque_arg) {
 
         const char* req_data = reinterpret_cast<const char *>(request.data());
 
-        msgpack::object_handle oh =
-            msgpack::unpack(req_data, request.size());
-        msgpack::object obj = oh.get();
-        std::cout << "Request object:" << obj << std::endl;
+        std::size_t offset = 0;
+        //msgpack::unpacker pac;
+        // feed the buffer.
+        //pac.reserve_buffer(request.size());
+        //memcpy(pac.buffer(), buffer.data(), buffer.size());
+        //pac.buffer_consumed(buffer.size());
 
-        //  Do some 'work'
-        sleep(1);
+        msgpack::object_handle oh =
+            msgpack::unpack(req_data, request.size(), offset);
+
+        //msgpack::object obj = oh.get();
+        //string funcname = obj[0];
+        //msgpack::object args = obj[1];
+        string funcname = oh.get().as<string>();
+
+        //cout << "Request object: " << obj << endl;
+        cout << " Function name: " << funcname << endl;
+        //cout << " Function args: " << args << endl;
 
         // RPC reply
         msgpack::sbuffer buffer;
 
-        if (obj == "get_beam_metadata") {
+        if (funcname == "get_beam_metadata") {
             cout << "get_beam_metadata() called" << endl;
-
-            /*
-            intensity_network_stream::initializer ini = stream->get_initializer();
-            int nbeams = ini.beam_ids.size();
-
             std::vector<
-                std::unordered_map<std::string, int64_t> > R;
-
-            int nupfreq, nt_per_packet;
-            uint64_t fpga_counts_per_sample, fpga_count;
-            stream->get_first_packet_params(nupfreq, nt_per_packet,
-                                            fpga_counts_per_sample, fpga_count);
-            R.push_back({
-                { "nupfeq", nupfreq },
-                { "nt_per_packet", nt_per_packet },
-                { "fpga_counts_per_sample", fpga_counts_per_sample },
-                { "fpga_count", fpga_count }
-                });
-
-            for (int i=0; i<nbeams; i++) {
-                R.push_back({
-                        {"beam_id", ini.beam_ids[i]},
-                            });
-            }
-             */
-            std::vector<
-                std::unordered_map<std::string, uint64_t> > R = stream->get_statistics();
-
+                std::unordered_map<std::string, uint64_t> > R =
+                stream->get_statistics();
             msgpack::pack(buffer, R);
+        } else if (funcname == "get_chunks") {
+            cout << "get_chunks() called" << endl;
+
+            // grab arg
+            cout << "Grabbing argument... offset: " << offset << endl;
+            msgpack::object_handle oh =
+                msgpack::unpack(req_data, request.size(), offset);
+            std::vector<std::vector<uint64_t> > args;
+            cout << "Arg: " << oh.get() << endl;
+            args = oh.get().as<decltype(args)>();
+
+            cout << "Chunks: " << args.size() << endl;
+            for (int i=0; i<args.size(); i++) {
+                std::vector<uint64_t> chunk = args[i];
+                cout << "Chunk: " << chunk[0] << ", " << chunk[1] << endl;
+            }
+
+        } else {
+            msgpack::pack(buffer, "No such RPC method");
         }
 
         //  Send reply back to client
@@ -137,31 +141,6 @@ static void *rpc_thread_main(void *opaque_arg) {
         zmq::message_t reply(buffer.data(), buffer.size(), NULL);
         socket.send(reply);
     }
-
-    /*
-    for (;;) {
-        usleep(5000000);
-
-        // stream->  std::shared_ptr<assembled_chunk> get_assembled_chunk(int assembler_index);
-        std::vector<int64_t> counts = stream->get_event_counts();
-
-        stringstream ss;
-        ss << "ch_frb_rpc: stats:\n"
-           << "    bytes received (GB): " << (1.0e-9 * counts[intensity_network_stream::event_type::byte_received]) << "\n"
-           << "    packets received: " << counts[intensity_network_stream::event_type::packet_received] << "\n"
-           << "    good packets: " << counts[intensity_network_stream::event_type::packet_good] << "\n"
-           << "    bad packets: " << counts[intensity_network_stream::event_type::packet_bad] << "\n"
-           << "    dropped packets: " << counts[intensity_network_stream::event_type::packet_dropped] << "\n"
-           << "    end-of-stream packets: " << counts[intensity_network_stream::event_type::packet_end_of_stream] << "\n"
-           << "    beam id mismatches: " << counts[intensity_network_stream::event_type::beam_id_mismatch] << "\n"
-           << "    first-packet mismatches: " << counts[intensity_network_stream::event_type::first_packet_mismatch] << "\n"
-           << "    assembler hits: " << counts[intensity_network_stream::event_type::assembler_hit] << "\n"
-           << "    assembler misses: " << counts[intensity_network_stream::event_type::assembler_miss] << "\n"
-           << "    assembled chunks dropped: " << counts[intensity_network_stream::event_type::assembled_chunk_dropped] << "\n"
-           << "    assembled chunks queued: " << counts[intensity_network_stream::event_type::assembled_chunk_queued] << "\n";
-        cout << ss.str().c_str();
-    }
-     */
 
     return NULL;
 }

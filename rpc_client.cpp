@@ -25,6 +25,8 @@ int main() {
         // RPC request buffer.
         msgpack::sbuffer buffer;
         std::string funcname = "get_beam_metadata";
+        //std::tuple<std::string, bool> call(funcname, false);
+        //msgpack::pack(buffer, call);
         msgpack::pack(buffer, funcname);
 
         cout << "Buffer size: " << buffer.size() << endl;
@@ -32,7 +34,7 @@ int main() {
         // no copy
         zmq::message_t request(buffer.data(), buffer.size(), NULL);
 
-        std::cout << "Sending Hello " << request_nbr << std::endl;
+        std::cout << "Sending metadata request " << request_nbr << std::endl;
         socket.send(request);
 
         //  Get the reply.
@@ -48,6 +50,47 @@ int main() {
             msgpack::unpack(reply_data, reply.size());
         msgpack::object obj = oh.get();
         std::cout << obj << std::endl;
+
+
+
+
+        // Send chunk request
+        buffer = msgpack::sbuffer();
+        
+        funcname = "get_chunks";
+        msgpack::pack(buffer, funcname);
+        std::vector<std::vector<uint64_t> > args;
+
+        std::vector<uint64_t> chunk;
+        // beam id
+        chunk.push_back(3);
+        // chunk id?
+        chunk.push_back(1);
+        args.push_back(chunk);
+                        
+        msgpack::pack(buffer, args);
+
+        cout << "Buffer size: " << buffer.size() << endl;
+
+        // no copy
+        request = zmq::message_t(buffer.data(), buffer.size(), NULL);
+
+        std::cout << "Sending chunk request " << request_nbr << std::endl;
+        socket.send(request);
+
+        //  Get the reply.
+        socket.recv(&reply);
+        std::cout << "Received result " << request_nbr << std::endl;
+
+        cout << "Reply has size " << reply.size() << endl;
+
+        reply_data = reinterpret_cast<const char *>(reply.data());
+
+        oh = msgpack::unpack(reply_data, reply.size());
+            
+        obj = oh.get();
+        std::cout << obj << std::endl;
+
 
     }
     return 0;
