@@ -60,6 +60,7 @@ static void *processing_thread_main(void *opaque_arg)
 	// We call assembled_chunk::decode(), which extracts the data from its low-level 8-bit
 	// representation to a floating-point array, but our processing currently stops there!
 	chunk->decode(&intensity[0], &weights[0], ch_frb_io::constants::nt_per_assembled_chunk);
+    cout << "Decoded beam " << chunk->beam_id << ", chunk " << chunk->ichunk << endl;
     }
 
     return NULL;

@@ -27,7 +27,7 @@ int main() {
         std::string funcname = "get_beam_metadata";
         msgpack::pack(buffer, funcname);
 
-        cout << "Buffer size: " << buffer.size() << ", data: " << buffer.data() << endl;
+        cout << "Buffer size: " << buffer.size() << endl;
 
         // no copy
         zmq::message_t request(buffer.data(), buffer.size(), NULL);
@@ -40,7 +40,7 @@ int main() {
         socket.recv(&reply);
         std::cout << "Received result " << request_nbr << std::endl;
 
-        cout << "Reply has size " << reply.size() << " and data: " << reply.data() << endl;
+        cout << "Reply has size " << reply.size() << endl;
 
         const char* reply_data = reinterpret_cast<const char *>(reply.data());
 

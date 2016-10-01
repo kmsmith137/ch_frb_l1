@@ -96,13 +96,45 @@ static void *rpc_thread_main(void *opaque_arg) {
         //  Do some 'work'
         sleep(1);
 
+        // RPC reply
+        msgpack::sbuffer buffer;
+
         if (obj == "get_beam_metadata") {
-            cout << "get_beam_metadata" << endl;
+            cout << "get_beam_metadata() called" << endl;
+
+            /*
+            intensity_network_stream::initializer ini = stream->get_initializer();
+            int nbeams = ini.beam_ids.size();
+
+            std::vector<
+                std::unordered_map<std::string, int64_t> > R;
+
+            int nupfreq, nt_per_packet;
+            uint64_t fpga_counts_per_sample, fpga_count;
+            stream->get_first_packet_params(nupfreq, nt_per_packet,
+                                            fpga_counts_per_sample, fpga_count);
+            R.push_back({
+                { "nupfeq", nupfreq },
+                { "nt_per_packet", nt_per_packet },
+                { "fpga_counts_per_sample", fpga_counts_per_sample },
+                { "fpga_count", fpga_count }
+                });
+
+            for (int i=0; i<nbeams; i++) {
+                R.push_back({
+                        {"beam_id", ini.beam_ids[i]},
+                            });
+            }
+             */
+            std::vector<
+                std::unordered_map<std::string, uint64_t> > R = stream->get_statistics();
+
+            msgpack::pack(buffer, R);
         }
 
         //  Send reply back to client
-        zmq::message_t reply(5);
-        memcpy(reply.data(), "World", 5);
+        cout << "Sending RPC reply of size " << buffer.size() << endl;
+        zmq::message_t reply(buffer.data(), buffer.size(), NULL);
         socket.send(reply);
     }
 
