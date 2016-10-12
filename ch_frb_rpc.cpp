@@ -1,8 +1,6 @@
 #include <iostream>
 #include <sstream>
 #include <pthread.h>
-#include <ch_frb_io.hpp>
-#include <ch_frb_rpc.hpp>
 #include <unistd.h>
 
 //  ZeroMQ experiment, from "Hello World server in C++"
@@ -13,6 +11,10 @@
 
 // msgpack
 #include <msgpack.hpp>
+
+#include <ch_frb_io.hpp>
+#include <ch_frb_rpc.hpp>
+#include <rpc.hpp>
 
 using namespace std;
 
@@ -76,6 +78,7 @@ static void *rpc_thread_main(void *opaque_arg) {
     //  Prepare our context and socket
     zmq::context_t zcontext(1);
     zmq::socket_t socket(zcontext, ZMQ_REP);
+    //socket.bind("tcp://localhost:5555");
     socket.bind("tcp://*:5555");
 
     while (true) {
@@ -86,31 +89,20 @@ static void *rpc_thread_main(void *opaque_arg) {
         std::cout << "Received RPC request" << std::endl;
 
         const char* req_data = reinterpret_cast<const char *>(request.data());
-
         std::size_t offset = 0;
-        //msgpack::unpacker pac;
-        // feed the buffer.
-        //pac.reserve_buffer(request.size());
-        //memcpy(pac.buffer(), buffer.data(), buffer.size());
-        //pac.buffer_consumed(buffer.size());
 
+        // Unpack the function name (string)
         msgpack::object_handle oh =
             msgpack::unpack(req_data, request.size(), offset);
-
-        //msgpack::object obj = oh.get();
-        //string funcname = obj[0];
-        //msgpack::object args = obj[1];
         string funcname = oh.get().as<string>();
-
-        //cout << "Request object: " << obj << endl;
         cout << " Function name: " << funcname << endl;
-        //cout << " Function args: " << args << endl;
 
         // RPC reply
         msgpack::sbuffer buffer;
 
         if (funcname == "get_beam_metadata") {
             cout << "get_beam_metadata() called" << endl;
+            // No input arguments, so don't unpack anything more
             std::vector<
                 std::unordered_map<std::string, uint64_t> > R =
                 stream->get_statistics();
@@ -119,18 +111,27 @@ static void *rpc_thread_main(void *opaque_arg) {
             cout << "get_chunks() called" << endl;
 
             // grab arg
-            cout << "Grabbing argument... offset: " << offset << endl;
+            cout << "Grabbing arguments" << endl;
             msgpack::object_handle oh =
                 msgpack::unpack(req_data, request.size(), offset);
-            std::vector<std::vector<uint64_t> > args;
-            cout << "Arg: " << oh.get() << endl;
-            args = oh.get().as<decltype(args)>();
+            cout << "Beams: " << oh.get() << endl;
+            vector<uint64_t> beams = oh.get().as<vector<uint64_t> >();
 
-            cout << "Chunks: " << args.size() << endl;
-            for (int i=0; i<args.size(); i++) {
-                std::vector<uint64_t> chunk = args[i];
-                cout << "Chunk: " << chunk[0] << ", " << chunk[1] << endl;
+            uint64_t min_chunk, max_chunk;
+            msgpack::unpack(req_data, request.size(), offset).get().convert(&min_chunk);
+            msgpack::unpack(req_data, request.size(), offset).get().convert(&max_chunk);
+            cout << "Min/max chunk: " << min_chunk << ", " << max_chunk << endl;
+
+            vector<vector<shared_ptr<assembled_chunk> > > snaps = stream->get_ringbuf_snapshots(beams);
+
+            for (auto it = snaps.begin(); it != snaps.end(); it++) {
+                cout << "Beam chunks:" << endl;
+                for (vector<shared_ptr<assembled_chunk> >::iterator it2 = it->begin(); it2 != it->end(); *it2++) {
+                    cout << "  chunk: " << it2->get() << endl;
+                }
             }
+
+            msgpack::pack(buffer, snaps);
 
         } else {
             msgpack::pack(buffer, "No such RPC method");

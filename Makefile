@@ -33,7 +33,7 @@ BINARIES=ch-frb-l1 ch-frb-simulate-l0 rpc-client
 
 all: $(BINARIES)
 
-INCFILES = ch_frb_rpc.hpp
+INCFILES = ch_frb_rpc.hpp rpc.hpp
 
 L1_OBJS = ch-frb-l1.o ch_frb_rpc.o
 
