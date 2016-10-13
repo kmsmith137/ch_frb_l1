@@ -8,7 +8,6 @@
 using namespace std;
 using namespace ch_frb_io;
 
-/*
 class GetChunks_Request {
 public:
     vector<uint64_t> beams;
@@ -16,7 +15,6 @@ public:
     uint64_t max_chunk;
     MSGPACK_DEFINE(beams, min_chunk, max_chunk);
 };
- */
 
 
 namespace msgpack {

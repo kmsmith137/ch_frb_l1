@@ -133,6 +133,30 @@ static void *rpc_thread_main(void *opaque_arg) {
 
             msgpack::pack(buffer, snaps);
 
+
+        } else if (funcname == "get_chunks_2") {
+            cout << "get_chunks_2() called" << endl;
+
+            // grab arg
+            cout << "Grabbing arguments" << endl;
+            msgpack::object_handle oh =
+                msgpack::unpack(req_data, request.size(), offset);
+            cout << "Beams: " << oh.get() << endl;
+            GetChunks_Request req = oh.get().as<GetChunks_Request>();
+
+            vector<vector<shared_ptr<assembled_chunk> > > snaps = stream->get_ringbuf_snapshots(req.beams);
+
+            for (auto it = snaps.begin(); it != snaps.end(); it++) {
+                cout << "Beam chunks:" << endl;
+                for (vector<shared_ptr<assembled_chunk> >::iterator it2 = it->begin(); it2 != it->end(); *it2++) {
+                    cout << "  chunk: " << it2->get() << endl;
+                }
+            }
+
+            msgpack::pack(buffer, snaps);
+
+
+
         } else {
             msgpack::pack(buffer, "No such RPC method");
         }
