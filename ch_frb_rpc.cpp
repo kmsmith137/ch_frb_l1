@@ -2,12 +2,12 @@
 #include <sstream>
 #include <pthread.h>
 #include <unistd.h>
+#include <string>
 
 //  ZeroMQ experiment, from "Hello World server in C++"
 //  Binds REP socket to tcp://*:5555
 //
 #include <zmq.hpp>
-#include <string>
 
 // msgpack
 #include <msgpack.hpp>

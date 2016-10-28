@@ -23,7 +23,6 @@ if __name__ == '__main__':
     rep = msgpack.unpackb(msg)
     print('Reply:', rep)
 
-
     print('Sending get_chunks request...')
     msg = (msgpack.packb('get_chunks') +
            msgpack.packb([1, 3]) +
