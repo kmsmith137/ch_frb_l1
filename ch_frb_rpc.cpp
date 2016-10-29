@@ -27,6 +27,8 @@ frb_rpc_server::~frb_rpc_server() {}
 
 struct rpc_thread_context {
     shared_ptr<ch_frb_io::intensity_network_stream> stream;
+    // eg, "tcp://*:5555";
+    string port;
 };
 
 /**
@@ -70,16 +72,18 @@ struct rpc_thread_context {
 static void *rpc_thread_main(void *opaque_arg) {
     rpc_thread_context *context = reinterpret_cast<rpc_thread_context *> (opaque_arg);
     shared_ptr<ch_frb_io::intensity_network_stream> stream = context->stream;
+    string port = context->port;
     delete context;
 
-    cout << "Hello, I am the RPC thread" << endl;
+    cout << "RPC thread running for port " << port << endl;
 
     // ZMQ
     //  Prepare our context and socket
     zmq::context_t zcontext(1);
     zmq::socket_t socket(zcontext, ZMQ_REP);
     //socket.bind("tcp://localhost:5555");
-    socket.bind("tcp://*:5555");
+    //socket.bind("tcp://*:5555");
+    socket.bind(port);
 
     while (true) {
         zmq::message_t request;
@@ -171,11 +175,12 @@ static void *rpc_thread_main(void *opaque_arg) {
     return NULL;
 }
 
-void frb_rpc_server::start() {
-    cout << "Starting RPC server..." << endl;
+void frb_rpc_server::start(string port) {
+    cout << "Starting RPC server on " << port << endl;
 
     rpc_thread_context *context = new rpc_thread_context;
     context->stream = stream;
+    context->port = port;
 
     int err = pthread_create(&rpc_thread, NULL, rpc_thread_main, context);
     if (err)

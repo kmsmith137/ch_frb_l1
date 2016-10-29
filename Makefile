@@ -72,6 +72,9 @@ ch-frb-l1-debug: $(L1_OBJS) $(IO_OBJS)
 ch-frb-simulate-l0: ch-frb-simulate-l0.cpp
 	$(CPP) -o $@ $< $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io
 
+ch-frb-test: ch-frb-test.cpp ch_frb_rpc.o
+	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io -lzmq -lhdf5
+
 clean:
 	rm -f *.o *~ $(BINARIES)
 

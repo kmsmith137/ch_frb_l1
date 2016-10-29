@@ -9,7 +9,7 @@ public:
     frb_rpc_server(std::shared_ptr<intensity_network_stream>);
     ~frb_rpc_server();
 
-    void start();
+    void start(std::string port = "tcp://*:5555");
     void stop();
 
 protected:
