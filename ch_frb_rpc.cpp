@@ -81,8 +81,6 @@ static void *rpc_thread_main(void *opaque_arg) {
     //  Prepare our context and socket
     zmq::context_t zcontext(1);
     zmq::socket_t socket(zcontext, ZMQ_REP);
-    //socket.bind("tcp://localhost:5555");
-    //socket.bind("tcp://*:5555");
     socket.bind(port);
 
     while (true) {
