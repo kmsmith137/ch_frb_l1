@@ -8,14 +8,52 @@
 using namespace std;
 using namespace ch_frb_io;
 
+/*
+ This header contains code for both RPC clients (if in C++) and servers.
+
+ RPC calls:
+
+ * get_beam_metadata(void)
+
+     Retrieves status and statistics from an L1 node.
+
+     Returns an array of maps, where the maps are from string to uint64_t.
+     The first element of the array contains status for the whole node.
+     The second element contains a mapping from sender IP:port to packet counts received from that sender.
+     The remaining nodes contain stats for each beam.
+
+
+ * get_chunks(GetChunks_Request)
+     
+     Retrieves assembled_chunk data from the L1 ring buffer.
+
+     See below for the contents of GetChunks_Request; in short, request a list
+     of beam ids and a range of chunks.
+
+     Returns an array of intensity_chunks from the L1 node's ring buffer.
+
+
+
+
+ - [bool] dump_packets(...)
+ ---> to disk?
+
+ */
+
+
 class GetChunks_Request {
 public:
     vector<uint64_t> beams;
-    uint64_t min_chunk;
-    uint64_t max_chunk;
+    uint64_t min_chunk;    // or 0 for no limit
+    uint64_t max_chunk;    // or 0 for no limit
     MSGPACK_DEFINE(beams, min_chunk, max_chunk);
 };
 
+
+
+
+
+/** Below here is code for packing objects into msgpack mesages, and vice verse. **/
 
 namespace msgpack {
 MSGPACK_API_VERSION_NAMESPACE(MSGPACK_DEFAULT_API_NS) {
@@ -27,7 +65,7 @@ struct convert<shared_ptr<assembled_chunk> > {
     msgpack::object const& operator()(msgpack::object const& o,
                                       shared_ptr<assembled_chunk>& ch) const {
         if (o.type != msgpack::type::ARRAY) throw msgpack::type_error();
-        cout << "convert msgpack object to shared_ptr<assembled_chunk>..." << endl;
+        //cout << "convert msgpack object to shared_ptr<assembled_chunk>..." << endl;
         if (o.via.array.size != 12) throw msgpack::type_error();
         msgpack::object* arr = o.via.array.ptr;
 
@@ -66,7 +104,7 @@ struct pack<shared_ptr<assembled_chunk> > {
     template <typename Stream>
     packer<Stream>& operator()(msgpack::packer<Stream>& o, shared_ptr<assembled_chunk>  const& ch) const {
         // packing member variables as an array.
-        cout << "Pack shared_ptr<assembled-chunk> into msgpack object..." << endl;
+        //cout << "Pack shared_ptr<assembled-chunk> into msgpack object..." << endl;
         o.pack_array(12);
         o.pack(ch->beam_id);
         o.pack(ch->nupfreq);
@@ -92,20 +130,14 @@ struct pack<shared_ptr<assembled_chunk> > {
     }
 };
 
+    /* Apparently not needed yet?
 template <>
 struct object_with_zone<shared_ptr<assembled_chunk> > {
     void operator()(msgpack::object::with_zone& o, shared_ptr<assembled_chunk>  const& v) const {
         o.type = type::ARRAY;
         cout << "Convert shared_ptr<assembled_chunk> into msgpack object_with_zone" << endl;
-        /*
-        o.via.array.size = 2;
-        o.via.array.ptr = static_cast<msgpack::object*>(
-            o.zone.allocate_align(sizeof(msgpack::object) * o.via.array.size));
-        o.via.array.ptr[0] = msgpack::object(v.get_name(), o.zone);
-        o.via.array.ptr[1] = msgpack::object(v.get_age(), o.zone);
-         */
-    }
-};
+...
+     */
 
 } // namespace adaptor
 } // MSGPACK_API_VERSION_NAMESPACE(MSGPACK_DEFAULT_API_NS)

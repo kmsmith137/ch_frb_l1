@@ -148,7 +148,7 @@ int main(int argc, char** argv) {
         // Currently, we don't have a fake L0 node object, so
         // just create streams for all L0 x L1 nodes
 
-        cout << "L0 node " << i << ":" << endl;
+        cout << "L0 node " << i << ": sending to L0 nodes:" << endl;
 
         vector<shared_ptr<intensity_network_ostream> > nodestreams;
         for (int j=0; j<n_l1_nodes; j++) {
@@ -181,8 +181,7 @@ int main(int argc, char** argv) {
 
             int udp_port = udp_port_l1_base + j;
             ini_params.dstname = "127.0.0.1:" + to_string(udp_port);
-            cout << "  Sending to L1 node " << j << " at "
-                 << ini_params.dstname << endl;
+            cout << "  " << j << ": " << ini_params.dstname << endl;
 
             shared_ptr<intensity_network_ostream> ostream = 
                 intensity_network_ostream::make(ini_params);
@@ -324,6 +323,8 @@ int main(int argc, char** argv) {
             unordered_map<string, uint64_t> m = R[j];
             if (j == 0) {
                 cout << "Node " << i << " status:" << endl << "  ";
+            } else if (j == 1) {
+                cout << endl << "  Per-host packet counts:" << endl << "  ";
             } else {
                 cout << endl << "  Beam " << m["beam_id"] << endl << "  ";
                 m.erase("beam_id");

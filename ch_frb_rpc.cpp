@@ -4,12 +4,7 @@
 #include <unistd.h>
 #include <string>
 
-//  ZeroMQ experiment, from "Hello World server in C++"
-//  Binds REP socket to tcp://*:5555
-//
 #include <zmq.hpp>
-
-// msgpack
 #include <msgpack.hpp>
 
 #include <ch_frb_io.hpp>
@@ -31,40 +26,6 @@ struct rpc_thread_context {
     string port;
 };
 
-/**
-
- RPC calls:
-
- - [dict] get_beam_metadata(void)
- ---> returns an array of dictionaries? describing the beams handled by this
-      L1 node.  Elements would include:
-        int beam_id
-        int nupfreq
-        int nt_per_packet
-        int fpga_counts_per_sample
-        constants like nt_per_assembled_chunk, nfreq_coarse?
-        int64 fpga_count // first fpga count seen; 0 if no L0 packets seen yet
-        int ring buffer capacity?
-        int ring buffer size?
-        int64 min_fpga_count // in ring buffer
-        int64 max_fpga_count // in ring buffer
-        <packet count statistics>
-        <packet counts from each L0 node>
-
- - [intensity_packet] get_packets([
-          ( beam_id,
-            // high index non-inclusive; 0 means max (no cut)
-            fpga_count_low, fpga_count_high,
-            freq_coarse_low, freq_coarse_high,
-            upfreq_low, upfreq_high,
-            tsamp_low, tsamp_high )
-          ])
- ---> returns an array of intensity_packets (or sub-packets).
-
- - [bool] dump_packets(...)
- ---> to disk?
-
- */
 
 
 
@@ -108,55 +69,33 @@ static void *rpc_thread_main(void *opaque_arg) {
                 std::unordered_map<std::string, uint64_t> > R =
                 stream->get_statistics();
             msgpack::pack(buffer, R);
+
         } else if (funcname == "get_chunks") {
-            cout << "get_chunks() called" << endl;
+            cout << "RPC get_chunks() called" << endl;
 
-            // grab arg
-            cout << "Grabbing arguments" << endl;
+            // grab GetChunks_Request argument
             msgpack::object_handle oh =
                 msgpack::unpack(req_data, request.size(), offset);
-            cout << "Beams: " << oh.get() << endl;
-            vector<uint64_t> beams = oh.get().as<vector<uint64_t> >();
-
-            uint64_t min_chunk, max_chunk;
-            msgpack::unpack(req_data, request.size(), offset).get().convert(&min_chunk);
-            msgpack::unpack(req_data, request.size(), offset).get().convert(&max_chunk);
-            cout << "Min/max chunk: " << min_chunk << ", " << max_chunk << endl;
-
-            vector<vector<shared_ptr<assembled_chunk> > > snaps = stream->get_ringbuf_snapshots(beams);
-
-            for (auto it = snaps.begin(); it != snaps.end(); it++) {
-                cout << "Beam chunks:" << endl;
-                for (vector<shared_ptr<assembled_chunk> >::iterator it2 = it->begin(); it2 != it->end(); *it2++) {
-                    cout << "  chunk: " << it2->get() << endl;
-                }
-            }
-
-            msgpack::pack(buffer, snaps);
-
-
-        } else if (funcname == "get_chunks_2") {
-            cout << "get_chunks_2() called" << endl;
-
-            // grab arg
-            cout << "Grabbing arguments" << endl;
-            msgpack::object_handle oh =
-                msgpack::unpack(req_data, request.size(), offset);
-            cout << "Beams: " << oh.get() << endl;
             GetChunks_Request req = oh.get().as<GetChunks_Request>();
 
-            vector<vector<shared_ptr<assembled_chunk> > > snaps = stream->get_ringbuf_snapshots(req.beams);
+            vector<shared_ptr<assembled_chunk> > chunks;
 
-            for (auto it = snaps.begin(); it != snaps.end(); it++) {
-                cout << "Beam chunks:" << endl;
-                for (vector<shared_ptr<assembled_chunk> >::iterator it2 = it->begin(); it2 != it->end(); *it2++) {
-                    cout << "  chunk: " << it2->get() << endl;
+            {
+                // local block to limit the amount of time we hold these in scope
+                // (because we might be preventing the memory from being reclaimed)
+                vector<vector<shared_ptr<assembled_chunk> > > snaps = stream->get_ringbuf_snapshots(req.beams);
+                for (auto it = snaps.begin(); it != snaps.end(); it++) {
+                    for (vector<shared_ptr<assembled_chunk> >::iterator it2 = it->begin(); it2 != it->end(); *it2++) {
+                        //cout << "  chunk: " << it2->get() << endl;
+                        if (req.min_chunk && ((*it2)->ichunk < req.min_chunk))
+                            continue;
+                        if (req.max_chunk && ((*it2)->ichunk > req.max_chunk))
+                            continue;
+                        chunks.push_back(*it2);
+                    }
                 }
             }
-
-            msgpack::pack(buffer, snaps);
-
-
+            msgpack::pack(buffer, chunks);
 
         } else {
             cout << "Error: unknown RPC function name: " << funcname << endl;
@@ -165,7 +104,7 @@ static void *rpc_thread_main(void *opaque_arg) {
 
         //  Send reply back to client
         cout << "Sending RPC reply of size " << buffer.size() << endl;
-        // copy
+        // FIXME -- this copies the buffer
         zmq::message_t reply(buffer.data(), buffer.size());
         int nsent = socket.send(reply);
         //cout << "Sent " << nsent << " (vs " << buffer.size() << ")" << endl;
