@@ -4,6 +4,7 @@
 #include <cassert>
 #include <iostream>
 #include <sstream>
+#include <string>
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
@@ -94,6 +95,11 @@ int main(int argc, char** argv) {
     const int udp_port_l1_base = 10255;
     const int rpc_port_l1_base = 5555;
 
+    // for debugging
+    const int rpc_port_l0_base = 20000;
+
+    unordered_map<int, int> l0_port_map;
+
     vector<shared_ptr<intensity_network_stream> > l1streams;
     // Spawn one processing thread per beam
     pthread_t processing_threads[n_l1_nodes * n_beams_per_l1_node];
@@ -148,6 +154,11 @@ int main(int argc, char** argv) {
         for (int j=0; j<n_l1_nodes; j++) {
 
             ch_frb_io::intensity_network_ostream::initializer ini_params;
+
+            // debug: bind the L0 stream to a UDP port, and record the mapping
+            ini_params.bind_port = rpc_port_l0_base + i * n_l1_nodes + j;
+            l0_port_map[ini_params.bind_port] = i;
+
             for (int k=0; k<n_beams_per_l1_node; k++) {
                 int ibeam = j*n_beams_per_l1_node + k;
                 ini_params.beam_ids.push_back(ibeam);
@@ -208,6 +219,8 @@ int main(int argc, char** argv) {
         cout << endl;
     }
 
+    sleep(1);
+
     cout << "L0 streams packets sent:" << endl;
     for (int i=0; i<n_l0_nodes; i++) {
         cout << "  L0 node " << i << ":  ";
@@ -219,6 +232,45 @@ int main(int argc, char** argv) {
         }
         cout << endl;
     }
+
+    cout << "L1 streams packets received:" << endl;
+    for (int i=0; i<n_l1_nodes; i++) {
+        cout << "  L1 node " << i << ":  ";
+
+        unordered_map<string, uint64_t> counts = l1streams[i]->get_perhost_packets();
+        // Search for L0 port numbers.
+        for (int j=0; j<n_l0_nodes; j++) {
+            string key;
+            bool found = false;
+            for (auto it = counts.begin(); it != counts.end(); it++) {
+                int iport = it->first.rfind(":");
+                int port = stoi(it->first.substr(iport+1));
+                int l0node = l0_port_map[port];
+                if (l0node != j)
+                    continue;
+                key = it->first;
+                found = true;
+                break;
+            }
+            if (found) {
+                cout << counts[key] << "  ";
+                counts.erase(key);
+            } else {
+                cout << "X  ";
+            }
+        }
+        cout << endl;
+
+        // Print packets received from unexpected ports.
+        if (counts.size()) {
+            cout << "Also received packets from:" << endl;
+            for (auto it = counts.begin(); it != counts.end(); it++) {
+                cout << "  " << it->first << ": " << it->second << endl;
+            }
+        }
+        cout << endl;
+    }
+
 
     // Now send some RPC requests to the L1 nodes.
 
@@ -238,7 +290,9 @@ int main(int argc, char** argv) {
         msgpack::sbuffer buffer;
         string funcname = "get_beam_metadata";
         msgpack::pack(buffer, funcname);
-        zmq::message_t request(buffer.data(), buffer.size(), NULL);
+        //zmq::message_t request(buffer.data(), buffer.size(), NULL);
+        // copy
+        zmq::message_t request(buffer.data(), buffer.size());
         cout << "Sending RPC request to L1 node " << i << endl;
         sockets[i]->send(request);
     }
@@ -256,11 +310,16 @@ int main(int argc, char** argv) {
             msgpack::unpack(reply_data, reply.size());
         msgpack::object obj = oh.get();
 
-        //cout << "Reply: " << obj << endl;
+        cout << "Reply: " << obj << endl;
 
         vector<unordered_map<string, uint64_t> > R;
-        obj.convert(&R);
-
+        try {
+            obj.convert(&R);
+        } catch (...) {
+            cout << "Failed to parse RPC reply into list of dictionaries" << endl;
+            cout << "Reply: " << obj << endl;
+        }
+        
         for (int j=0; j<R.size(); j++) {
             unordered_map<string, uint64_t> m = R[j];
             if (j == 0) {
