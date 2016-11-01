@@ -97,13 +97,12 @@ static void *rpc_thread_main(void *opaque_arg) {
         msgpack::object_handle oh =
             msgpack::unpack(req_data, request.size(), offset);
         string funcname = oh.get().as<string>();
-        cout << " Function name: " << funcname << endl;
 
         // RPC reply
         msgpack::sbuffer buffer;
 
         if (funcname == "get_beam_metadata") {
-            cout << "get_beam_metadata() called" << endl;
+            cout << "RPC get_beam_metadata() called" << endl;
             // No input arguments, so don't unpack anything more
             std::vector<
                 std::unordered_map<std::string, uint64_t> > R =
@@ -160,15 +159,16 @@ static void *rpc_thread_main(void *opaque_arg) {
 
 
         } else {
+            cout << "Error: unknown RPC function name: " << funcname << endl;
             msgpack::pack(buffer, "No such RPC method");
         }
 
         //  Send reply back to client
         cout << "Sending RPC reply of size " << buffer.size() << endl;
-        //zmq::message_t reply(buffer.data(), buffer.size(), NULL);
+        // copy
         zmq::message_t reply(buffer.data(), buffer.size());
         int nsent = socket.send(reply);
-        cout << "Sent " << nsent << " (vs " << buffer.size() << ")" << endl;
+        //cout << "Sent " << nsent << " (vs " << buffer.size() << ")" << endl;
         if (nsent == -1) {
             cout << "ERROR: sending RPC reply: "
                  << strerror(zmq_errno()) << endl;

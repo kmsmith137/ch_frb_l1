@@ -42,7 +42,7 @@ static void *processing_thread_main(void *opaque_arg)
     delete context;
 
     for (;;) {
-        cout << "Processing thread " << ithread << " waiting for chunks" << endl;
+        //cout << "Processing thread " << ithread << " waiting for chunks" << endl;
 	// Get assembled data from netwrok
 	auto chunk = stream->get_assembled_chunk(ithread);
 	if (!chunk) {
@@ -78,20 +78,17 @@ static void spawn_processing_thread(pthread_t &thread, const shared_ptr<ch_frb_i
  */
 int main(int argc, char** argv) {
 
-    //const int n_l1_nodes = 4;
-    //const int n_beams_per_l1_node = 4;
-    //const int n_l0_nodes = 8;
+    const int n_l1_nodes = 4;
+    const int n_beams_per_l1_node = 4;
+    const int n_l0_nodes = 8;
 
-    const int n_l1_nodes = 1;
-    const int n_beams_per_l1_node = 1;
-    const int n_l0_nodes = 1;
+    // const int n_l1_nodes = 1;
+    // const int n_beams_per_l1_node = 1;
+    // const int n_l0_nodes = 1;
 
     const int n_coarse_freq_per_l0 = constants::nfreq_coarse_tot / n_l0_nodes;
 
-    //int nchunks = int(gb_to_simulate * 1.0e9 / ostream->nbytes_per_chunk) + 1;
-    //int nchunks = 5;
-
-    //int nchunks = constants::nt_per_assembled_chunk * 5;
+    //int nchunks = int(gb_to_simulate * 1.0e9 / ostream->nbytes_per_chunk) + 1
     int nchunks = 5;
 
     const int udp_port_l1_base = 10255;
@@ -131,11 +128,11 @@ int main(int argc, char** argv) {
         string port = "tcp://127.0.0.1:" + to_string(rpc_port_l1_base + i);
         rpc_ports.push_back(port);
 
-        //cout << "Starting RPC server on " << port << endl;
         shared_ptr<frb_rpc_server> rpc(new frb_rpc_server(stream));
         rpc->start(port);
         rpcs.push_back(rpc);
 
+        // Just give some time for thread startup & logging
         usleep(10000);
     }
 
@@ -183,8 +180,6 @@ int main(int argc, char** argv) {
         l0streams.push_back(nodestreams);
     }
 
-    sleep(5);
-
     shared_ptr<intensity_network_ostream> ostream = l0streams[0][0];
 
     cout << "Packets per chunk: " << ostream->npackets_per_chunk << endl;
@@ -213,8 +208,6 @@ int main(int argc, char** argv) {
         cout << endl;
     }
 
-    sleep(10);
-
     cout << "L0 streams packets sent:" << endl;
     for (int i=0; i<n_l0_nodes; i++) {
         cout << "  L0 node " << i << ":  ";
@@ -226,7 +219,6 @@ int main(int argc, char** argv) {
         }
         cout << endl;
     }
-
 
     // Now send some RPC requests to the L1 nodes.
 
@@ -249,11 +241,7 @@ int main(int argc, char** argv) {
         zmq::message_t request(buffer.data(), buffer.size(), NULL);
         cout << "Sending RPC request to L1 node " << i << endl;
         sockets[i]->send(request);
-
-        usleep(100000);
     }
-
-    usleep(100000);
 
     cout << "Receiving replies from L1 nodes..." << endl;
     for (int i=0; i<n_l1_nodes; i++) {
@@ -268,11 +256,35 @@ int main(int argc, char** argv) {
             msgpack::unpack(reply_data, reply.size());
         msgpack::object obj = oh.get();
 
-        cout << "Reply: " << obj << endl;
-        
+        //cout << "Reply: " << obj << endl;
+
+        vector<unordered_map<string, uint64_t> > R;
+        obj.convert(&R);
+
+        for (int j=0; j<R.size(); j++) {
+            unordered_map<string, uint64_t> m = R[j];
+            if (j == 0) {
+                cout << "Node " << i << " status:" << endl << "  ";
+            } else {
+                cout << endl << "  Beam " << m["beam_id"] << endl << "  ";
+                m.erase("beam_id");
+            }
+            //for (int k=0; k<m.size(); k++) {
+            int k=0;
+            for (auto it = m.begin(); it != m.end(); it++, k++) {
+                //cout << "  " << it->first << " = " << it->second << endl;
+                cout << "  " << it->first << " = " << it->second;
+                if (k != m.size()-1) {
+                    cout << ", ";
+                    if (k % 4 == 3)
+                        cout << endl << "  ";
+                }
+            }
+        }
+        cout << endl;
     }
 
-    sleep(10);
+    sleep(1);
 
     return 0;
 }
