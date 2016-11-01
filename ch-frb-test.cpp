@@ -78,14 +78,21 @@ static void spawn_processing_thread(pthread_t &thread, const shared_ptr<ch_frb_i
  */
 int main(int argc, char** argv) {
 
-    const int n_l1_nodes = 4;
-    const int n_beams_per_l1_node = 4;
-    const int n_l0_nodes = 8;
+    //const int n_l1_nodes = 4;
+    //const int n_beams_per_l1_node = 4;
+    //const int n_l0_nodes = 8;
+
+    const int n_l1_nodes = 1;
+    const int n_beams_per_l1_node = 1;
+    const int n_l0_nodes = 1;
 
     const int n_coarse_freq_per_l0 = constants::nfreq_coarse_tot / n_l0_nodes;
 
     //int nchunks = int(gb_to_simulate * 1.0e9 / ostream->nbytes_per_chunk) + 1;
-    int nchunks = 2;
+    //int nchunks = 5;
+
+    //int nchunks = constants::nt_per_assembled_chunk * 5;
+    int nchunks = 5;
 
     const int udp_port_l1_base = 10255;
     const int rpc_port_l1_base = 5555;
@@ -149,17 +156,21 @@ int main(int argc, char** argv) {
                 ini_params.beam_ids.push_back(ibeam);
             }
             for (int k=0; k<n_coarse_freq_per_l0; k++) {
-                // not guaranteed to be contiguous... but are here.
+                // Coarse freqs are not guaranteed to be contiguous,
+                // but here they are.
                 ini_params.coarse_freq_ids.push_back(i * n_coarse_freq_per_l0 + k);
             }
             ini_params.nupfreq = 16;
             ini_params.nfreq_coarse_per_packet = 4;
             ini_params.nt_per_packet = 16;
-            ini_params.nt_per_chunk = 16;
+            //ini_params.nt_per_chunk = 16;
+            ini_params.nt_per_chunk = constants::nt_per_assembled_chunk;
             ini_params.fpga_counts_per_sample = 400;   // FIXME double-check this number
 
-            ini_params.target_gbps = 0.1;
-            
+            //ini_params.target_gbps = 0.1;
+            ini_params.emit_warning_on_buffer_drop = true;
+            ini_params.throw_exception_on_buffer_drop = true;
+
             int udp_port = udp_port_l1_base + j;
             ini_params.dstname = "127.0.0.1:" + to_string(udp_port);
             cout << "  Sending to L1 node " << j << " at "
@@ -176,10 +187,8 @@ int main(int argc, char** argv) {
 
     shared_ptr<intensity_network_ostream> ostream = l0streams[0][0];
 
-    int npackets = nchunks * ostream->npackets_per_chunk;
-    int nbytes = nchunks * ostream->nbytes_per_chunk;
-    cout << "Packets per chunk: " << npackets << endl;
-    cout << "Bytes per chunk: " << nbytes << endl;
+    cout << "Packets per chunk: " << ostream->npackets_per_chunk << endl;
+    cout << "Bytes per chunk: " << ostream->nbytes_per_chunk << endl;
     
     vector<float> intensity(ostream->elts_per_chunk, 0.0);
     vector<float> weights(ostream->elts_per_chunk, 1.0);
@@ -206,16 +215,17 @@ int main(int argc, char** argv) {
 
     sleep(10);
 
-    /*
-     cout << "L0 streams packets sent:" << endl;
-     for (int i=0; i<n_l0_nodes; i++) {
-     cout << "  L0 node " << i << ":  ";
-     for (int j=0; j<n_l1_nodes; j++) {
-     cout << l0streams[i][j]->npackets_sent << "  ";
-     }
-     cout << endl;
-     }
-     */
+    cout << "L0 streams packets sent:" << endl;
+    for (int i=0; i<n_l0_nodes; i++) {
+        cout << "  L0 node " << i << ":  ";
+        for (int j=0; j<n_l1_nodes; j++) {
+            int64_t tstamp, npackets, nbytes;
+            tstamp = npackets = nbytes = 0;
+            l0streams[i][j]->get_statistics(tstamp, npackets, nbytes);
+            cout << npackets << "  ";
+        }
+        cout << endl;
+    }
 
 
     // Now send some RPC requests to the L1 nodes.
@@ -261,6 +271,8 @@ int main(int argc, char** argv) {
         cout << "Reply: " << obj << endl;
         
     }
+
+    sleep(10);
 
     return 0;
 }

@@ -165,9 +165,14 @@ static void *rpc_thread_main(void *opaque_arg) {
 
         //  Send reply back to client
         cout << "Sending RPC reply of size " << buffer.size() << endl;
-        zmq::message_t reply(buffer.data(), buffer.size(), NULL);
-        socket.send(reply);
-        cout << "Sent" << endl;
+        //zmq::message_t reply(buffer.data(), buffer.size(), NULL);
+        zmq::message_t reply(buffer.data(), buffer.size());
+        int nsent = socket.send(reply);
+        cout << "Sent " << nsent << " (vs " << buffer.size() << ")" << endl;
+        if (nsent == -1) {
+            cout << "ERROR: sending RPC reply: "
+                 << strerror(zmq_errno()) << endl;
+        }
     }
 
     return NULL;
