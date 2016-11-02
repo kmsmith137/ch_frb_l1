@@ -30,14 +30,16 @@ using namespace ch_frb_io;
      See below for the contents of GetChunks_Request; in short, request a list
      of beam ids and a range of chunks.
 
-     Returns an array of intensity_chunks from the L1 node's ring buffer.
+     Returns an array of intensity_chunks from the L1 node's ring buffer, as one giant message.
 
+ * write_chunks(WriteChunks_Request)
 
+     Retrieves assembled_chunk data from the L1 ring buffer and writes them to as HDF5 files to the L1 node's filesystem.
 
+     See below for the contents of WriteChunks_Request; in short, request a list
+     of beam ids and a range of chunks, and specify the filenames to which they are to be written.
 
- - [bool] dump_packets(...)
- ---> to disk?
-
+     Returns a list of WriteChunk_Reply objects, one per beam*chunk.
  */
 
 
@@ -49,6 +51,24 @@ public:
     MSGPACK_DEFINE(beams, min_chunk, max_chunk);
 };
 
+class WriteChunks_Request {
+public:
+    vector<uint64_t> beams;
+    uint64_t min_chunk;    // or 0 for no limit
+    uint64_t max_chunk;    // or 0 for no limit
+    string filename_pattern; // filename printf pattern; file = sprintf(pattern, beam, ichunk)
+    MSGPACK_DEFINE(beams, min_chunk, max_chunk, filename_pattern);
+};
+
+class WriteChunks_Reply {
+public:
+    uint64_t beam;
+    uint64_t chunk;
+    string filename;
+    bool success;
+    string error_message;
+    MSGPACK_DEFINE(beam, chunk, filename, success, error_message);
+};
 
 
 
@@ -81,6 +101,10 @@ struct convert<shared_ptr<assembled_chunk> > {
 
         ch = assembled_chunk::make(beam_id, nupfreq, nt_per_packet, fpga_counts_per_sample, ichunk);
         ch->isample = isample;
+
+        if (ch->nt_coarse != nt_coarse) {
+            throw runtime_error("ch_frb_l1 rpc: assembled_chunk nt_coarse mismatch");
+        }
 
         if (arr[ 9].type != msgpack::type::BIN) throw msgpack::type_error();
         if (arr[10].type != msgpack::type::BIN) throw msgpack::type_error();
