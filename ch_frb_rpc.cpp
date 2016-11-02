@@ -3,6 +3,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <string>
+#include <algorithm>
 
 #include <zmq.hpp>
 #include <msgpack.hpp>
@@ -26,6 +27,10 @@ struct rpc_thread_context {
     string port;
 };
 
+static bool _compare_chunks(shared_ptr<assembled_chunk> a,
+                            shared_ptr<assembled_chunk> b) {
+    return a->ichunk < b->ichunk;
+}
 
 static void
 _get_chunks(shared_ptr<ch_frb_io::intensity_network_stream> stream,
@@ -42,6 +47,8 @@ _get_chunks(shared_ptr<ch_frb_io::intensity_network_stream> stream,
             chunks.push_back(*it2);
         }
     }
+    // Sort by chunk number across beams so that oldest chunks are freed first.
+    sort(chunks.begin(), chunks.end(), _compare_chunks);
 }
 
 
@@ -109,28 +116,37 @@ static void *rpc_thread_main(void *opaque_arg) {
             vector<WriteChunks_Reply> rtn;
 
             for (auto chunk = chunks.begin(); chunk != chunks.end(); chunk++) {
-                char* strp;
                 WriteChunks_Reply rep;
                 rep.beam = (*chunk)->beam_id;
                 rep.chunk = (*chunk)->ichunk;
                 rep.success = false;
+                cout << "Writing chunk for beam " << rep.beam << ", chunk " << rep.chunk << endl;
+                char* strp = NULL;
                 int r = asprintf(&strp, req.filename_pattern.c_str(), (*chunk)->beam_id, (*chunk)->ichunk);
+                cout << "asprintf: " << r << endl;
                 if (r == -1) {
                     rep.error_message = "asprintf failed to format filename";
                     rtn.push_back(rep);
                     continue;
                 }
                 string filename(strp);
+                free(strp);
+                cout << "filename: " << filename << endl;
                 rep.filename = filename;
                 try {
+                    cout << "write_hdf5_file..." << endl;
                     (*chunk)->write_hdf5_file(filename);
+                    cout << "write_hdf5_file succeeded" << endl;
                 } catch (...) {
+                    cout << "Write hdf5 file failed." << endl;
                     rep.error_message = "Failed to write HDF5 file";
                     rtn.push_back(rep);
                     continue;
                 }
                 rep.success = true;
                 rtn.push_back(rep);
+                // Drop this chunk so its memory can be reclaimed
+                (*chunk) = shared_ptr<assembled_chunk>();
             }
             msgpack::pack(buffer, rtn);
 

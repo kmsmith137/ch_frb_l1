@@ -9,9 +9,10 @@ $(error Fatal: Makefile.local must define CPP variable)
 endif
 
 #
-# About the RPC: this experiment uses ZeroMQ for the messaging (sockets)
-# and msgpack for the message encoding (wire format).  This will allow clients
-# to be written in Python and other languages as well as C++.
+# About the RPC subsystem: we're using ZeroMQ for the messaging
+# (sockets) and msgpack for the message encoding (wire format).  This
+# allows clients to be written in Python and other languages as well
+# as C++.
 #
 # ZeroMQ is available in homebrew;
 #
@@ -74,6 +75,9 @@ ch-frb-simulate-l0: ch-frb-simulate-l0.cpp
 
 ch-frb-test: ch-frb-test.cpp ch_frb_rpc.o
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io -lzmq -lhdf5
+
+ch-frb-test-debug: ch-frb-test.cpp ch_frb_rpc.o $(IO_OBJS)
+	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lzmq -lhdf5
 
 clean:
 	rm -f *.o *~ $(BINARIES)

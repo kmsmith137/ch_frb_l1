@@ -11,6 +11,7 @@
 #include <pthread.h>
 #include <ch_frb_io.hpp>
 #include <ch_frb_rpc.hpp>
+#include <rpc.hpp>
 
 #include <msgpack.hpp>
 #include <zmq.hpp>
@@ -181,12 +182,13 @@ int main(int argc, char** argv) {
 
             int udp_port = udp_port_l1_base + j;
             ini_params.dstname = "127.0.0.1:" + to_string(udp_port);
-            cout << "  " << j << ": " << ini_params.dstname << endl;
+            cout << "  " << j << ": " << ini_params.dstname;
 
             shared_ptr<intensity_network_ostream> ostream = 
                 intensity_network_ostream::make(ini_params);
             nodestreams.push_back(ostream);
         }
+        cout << endl;
         l0streams.push_back(nodestreams);
     }
 
@@ -343,6 +345,81 @@ int main(int argc, char** argv) {
         }
         cout << endl;
     }
+
+    // DEBUG: make RPC calls in series.
+
+    cout << "Sending write_chunks requests to L1 nodes..." << endl;
+    for (int i=0; i<n_l1_nodes; i++) {
+        // RPC request buffer.
+        msgpack::sbuffer buffer;
+        string funcname = "write_chunks";
+        msgpack::pack(buffer, funcname);
+        WriteChunks_Request req;
+
+        for (int j=0; j<n_l1_nodes; j++) {
+            if (j)
+                req.beams.push_back(j * n_beams_per_l1_node + (i % n_beams_per_l1_node));
+        }
+        req.min_chunk = 1;
+        req.max_chunk = 1000;
+        req.filename_pattern = "chunk-beam%02llu-chunk%08lli.hdf5";
+        msgpack::pack(buffer, req);
+        
+        // copy
+        zmq::message_t request(buffer.data(), buffer.size());
+        cout << "Sending RPC request to L1 node " << i << endl;
+        sockets[i]->send(request);
+
+        cout << "Receiving reply from L1 node " << i << endl;
+        zmq::message_t reply;
+        sockets[i]->recv(&reply);
+        const char* reply_data = reinterpret_cast<const char *>(reply.data());
+        msgpack::object_handle oh = msgpack::unpack(reply_data, reply.size());
+        msgpack::object obj = oh.get();
+        cout << "Reply: " << obj << endl << endl;
+    }
+
+
+    /*
+    cout << "Sending write_chunks requests to L1 nodes..." << endl;
+    for (int i=0; i<n_l1_nodes; i++) {
+        // RPC request buffer.
+        msgpack::sbuffer buffer;
+        string funcname = "write_chunks";
+        msgpack::pack(buffer, funcname);
+        WriteChunks_Request req;
+
+        for (int j=0; j<n_l1_nodes; j++) {
+            if (j)
+                req.beams.push_back(j * n_beams_per_l1_node + (i % n_beams_per_l1_node));
+        }
+        req.min_chunk = 1;
+        req.max_chunk = 1000;
+        req.filename_pattern = "chunk-beam%02llu-chunk%08lli.hdf5";
+        msgpack::pack(buffer, req);
+        
+        // copy
+        zmq::message_t request(buffer.data(), buffer.size());
+        cout << "Sending RPC request to L1 node " << i << endl;
+        sockets[i]->send(request);
+    }
+
+    cout << "Receiving replies from L1 nodes..." << endl;
+    for (int i=0; i<n_l1_nodes; i++) {
+        //  Get the reply.
+        usleep(100000);
+        
+        cout << "Receiving reply from L1 node " << i << endl;
+        zmq::message_t reply;
+        sockets[i]->recv(&reply);
+        const char* reply_data = reinterpret_cast<const char *>(reply.data());
+        msgpack::object_handle oh =
+            msgpack::unpack(reply_data, reply.size());
+        msgpack::object obj = oh.get();
+
+        cout << "Reply: " << obj << endl;
+    }
+     */
 
     sleep(1);
 
