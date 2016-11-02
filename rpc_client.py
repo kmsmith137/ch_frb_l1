@@ -24,10 +24,9 @@ if __name__ == '__main__':
     print('Reply:', rep)
 
     print('Sending get_chunks request...')
+    ## guess about the format...
     msg = (msgpack.packb('get_chunks') +
-           msgpack.packb([1, 3]) +
-           msgpack.packb(1) +
-           msgpack.packb(100))
+           msgpack.packb([[2], 1, 100]))
     socket.send(msg)
     #  Get the reply.
     msg = socket.recv()
@@ -54,17 +53,4 @@ if __name__ == '__main__':
             print('Offsets:', aoffsets[:16])
             adata = np.fromstring(data, dtype=np.uint8)
             print('Data:', adata[:16])
-
-    print('Sending get_chunks_2 request...')
-    ## guess about the format...
-    msg = (msgpack.packb('get_chunks_2') +
-           msgpack.packb([[2], 1, 100]))
-    socket.send(msg)
-    #  Get the reply.
-    msg = socket.recv()
-    print('Received reply: %i bytes' % len(msg))
-    rep = msgpack.unpackb(msg)
-    print('Parsed reply:', type(rep))
-    print('Number of beams:', len(rep))
-
 

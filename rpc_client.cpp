@@ -54,67 +54,10 @@ int main() {
         cout << obj << endl;
 
 
-
-
         // Send chunk request
         buffer = msgpack::sbuffer();
         
         funcname = "get_chunks";
-        msgpack::pack(buffer, funcname);
-
-        // beam ids
-        vector<uint64_t> beams;
-        beams.push_back(3);
-        // chunk id?
-        beams.push_back(1);
-        msgpack::pack(buffer, beams);
-
-        uint64_t min_chunk = 1;
-        uint64_t max_chunk = 1000;
-
-        msgpack::pack(buffer, min_chunk);
-        msgpack::pack(buffer, max_chunk);
-
-        cout << "Buffer size: " << buffer.size() << endl;
-
-        // no copy
-        request = zmq::message_t(buffer.data(), buffer.size(), NULL);
-
-        cout << "Sending chunk request " << request_nbr << endl;
-        socket.send(request);
-
-        //  Get the reply.
-        socket.recv(&reply);
-        cout << "Received result " << endl;
-
-        cout << "Reply has size " << reply.size() << endl;
-
-        reply_data = reinterpret_cast<const char *>(reply.data());
-
-        oh = msgpack::unpack(reply_data, reply.size());
-        obj = oh.get();
-        //cout << obj << endl;
-        vector<vector<shared_ptr<assembled_chunk> > > beamchunks;
-        obj.convert(&beamchunks);
-
-        cout << "Beam-chunks: " << beamchunks.size() << endl;
-        for (auto it = beamchunks.begin(); it != beamchunks.end(); it++) {
-            cout << "Beam chunks:" << endl;
-            for (auto it2 = it->begin(); it2 != it->end(); *it2++) {
-                cout << "  chunk: " << (*it2)->ndata << " data" << endl;
-            }
-        }
-
-
-
-
-
-
-
-        // Send chunk request (2)
-        buffer = msgpack::sbuffer();
-        
-        funcname = "get_chunks_2";
         msgpack::pack(buffer, funcname);
 
         GetChunks_Request req;
