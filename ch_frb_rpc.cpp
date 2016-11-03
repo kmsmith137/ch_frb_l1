@@ -134,12 +134,13 @@ static void *rpc_thread_main(void *opaque_arg) {
                 cout << "filename: " << filename << endl;
                 rep.filename = filename;
                 try {
-                    cout << "write_hdf5_file..." << endl;
-                    (*chunk)->write_hdf5_file(filename);
-                    cout << "write_hdf5_file succeeded" << endl;
+                    cout << "write_msgpack_file..." << endl;
+                    (*chunk)->msgpack_bitshuffle = true;
+                    (*chunk)->write_msgpack_file(filename);
+                    cout << "write_msgpack_file succeeded" << endl;
                 } catch (...) {
-                    cout << "Write hdf5 file failed." << endl;
-                    rep.error_message = "Failed to write HDF5 file";
+                    cout << "Write sgpack file failed." << endl;
+                    rep.error_message = "Failed to write msgpack file";
                     rtn.push_back(rep);
                     continue;
                 }

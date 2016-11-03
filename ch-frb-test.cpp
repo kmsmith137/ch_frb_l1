@@ -359,39 +359,6 @@ int main(int argc, char** argv) {
     }
 
     // DEBUG: make RPC calls in series.
-
-    cout << "Sending write_chunks requests to L1 nodes..." << endl;
-    for (int i=0; i<n_l1_nodes; i++) {
-        // RPC request buffer.
-        msgpack::sbuffer buffer;
-        string funcname = "write_chunks";
-        msgpack::pack(buffer, funcname);
-        WriteChunks_Request req;
-
-        for (int j=0; j<n_l1_nodes; j++) {
-            if (j)
-                req.beams.push_back(j * n_beams_per_l1_node + (i % n_beams_per_l1_node));
-        }
-        req.min_chunk = 1;
-        req.max_chunk = 1000;
-        req.filename_pattern = "chunk-beam%02llu-chunk%08lli.hdf5";
-        msgpack::pack(buffer, req);
-        
-        // copy
-        zmq::message_t request(buffer.data(), buffer.size());
-        cout << "Sending RPC request to L1 node " << i << endl;
-        sockets[i]->send(request);
-
-        cout << "Receiving reply from L1 node " << i << endl;
-        zmq::message_t reply;
-        sockets[i]->recv(&reply);
-        const char* reply_data = reinterpret_cast<const char *>(reply.data());
-        msgpack::object_handle oh = msgpack::unpack(reply_data, reply.size());
-        msgpack::object obj = oh.get();
-        cout << "Reply: " << obj << endl << endl;
-    }
-
-
     /*
     cout << "Sending write_chunks requests to L1 nodes..." << endl;
     for (int i=0; i<n_l1_nodes; i++) {
@@ -407,7 +374,39 @@ int main(int argc, char** argv) {
         }
         req.min_chunk = 1;
         req.max_chunk = 1000;
-        req.filename_pattern = "chunk-beam%02llu-chunk%08lli.hdf5";
+        req.filename_pattern = "chunk-beam%02llu-chunk%08lli.msgpack";
+        msgpack::pack(buffer, req);
+        
+        // copy
+        zmq::message_t request(buffer.data(), buffer.size());
+        cout << "Sending RPC request to L1 node " << i << endl;
+        sockets[i]->send(request);
+
+        cout << "Receiving reply from L1 node " << i << endl;
+        zmq::message_t reply;
+        sockets[i]->recv(&reply);
+        const char* reply_data = reinterpret_cast<const char *>(reply.data());
+        msgpack::object_handle oh = msgpack::unpack(reply_data, reply.size());
+        msgpack::object obj = oh.get();
+        cout << "Reply: " << obj << endl << endl;
+    }
+     */
+
+    cout << "Sending write_chunks requests to L1 nodes..." << endl;
+    for (int i=0; i<n_l1_nodes; i++) {
+        // RPC request buffer.
+        msgpack::sbuffer buffer;
+        string funcname = "write_chunks";
+        msgpack::pack(buffer, funcname);
+        WriteChunks_Request req;
+
+        for (int j=0; j<n_l1_nodes; j++) {
+            if (j)
+                req.beams.push_back(j * n_beams_per_l1_node + (i % n_beams_per_l1_node));
+        }
+        req.min_chunk = 1;
+        req.max_chunk = 1000;
+        req.filename_pattern = "chunk-beam%02llu-chunk%08lli.msgpack";
         msgpack::pack(buffer, req);
         
         // copy
@@ -417,6 +416,7 @@ int main(int argc, char** argv) {
     }
 
     cout << "Receiving replies from L1 nodes..." << endl;
+    vector<WriteChunks_Reply> wrotechunks;
     for (int i=0; i<n_l1_nodes; i++) {
         //  Get the reply.
         usleep(100000);
@@ -428,10 +428,24 @@ int main(int argc, char** argv) {
         msgpack::object_handle oh =
             msgpack::unpack(reply_data, reply.size());
         msgpack::object obj = oh.get();
-
         cout << "Reply: " << obj << endl;
+
+        vector<WriteChunks_Reply> rep;
+        obj.convert(&rep);
+        cout << "Parsed " << rep.size() << " WriteChunks_Reply objects" << endl;
+        for (auto it = rep.begin(); it != rep.end(); it++)
+            wrotechunks.push_back(*it);
     }
-     */
+
+    cout << "Wrote chunks:" << wrotechunks.size() << endl;
+    for (auto it = wrotechunks.begin(); it != wrotechunks.end(); it++) {
+        cout << "  beam " << it->beam << ", chunk " << it->chunk;
+        if (!it->success) {
+            cout << "Failed: " << it->error_message << endl;
+        } else {
+            cout << " -> " << it->filename << endl;
+        }
+    }
 
     sleep(1);
 

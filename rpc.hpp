@@ -4,6 +4,7 @@
 #include <msgpack.hpp>
 
 #include <ch_frb_io.hpp>
+#include <assembled_chunk_msgpack.hpp>
 
 using namespace std;
 using namespace ch_frb_io;
@@ -72,8 +73,9 @@ public:
 
 
 
-
 /** Below here is code for packing objects into msgpack mesages, and vice verse. **/
+#if 0
+
 
 namespace msgpack {
 MSGPACK_API_VERSION_NAMESPACE(MSGPACK_DEFAULT_API_NS) {
@@ -167,5 +169,4 @@ struct object_with_zone<shared_ptr<assembled_chunk> > {
 } // MSGPACK_API_VERSION_NAMESPACE(MSGPACK_DEFAULT_API_NS)
 } // namespace msgpack
 
-
-
+#endif
