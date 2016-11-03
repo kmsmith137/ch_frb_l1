@@ -49,7 +49,8 @@ public:
     vector<uint64_t> beams;
     uint64_t min_chunk;    // or 0 for no limit
     uint64_t max_chunk;    // or 0 for no limit
-    MSGPACK_DEFINE(beams, min_chunk, max_chunk);
+    bool compress;
+    MSGPACK_DEFINE(beams, min_chunk, max_chunk, compress);
 };
 
 class WriteChunks_Request {

@@ -102,6 +102,10 @@ static void *rpc_thread_main(void *opaque_arg) {
 
             vector<shared_ptr<assembled_chunk> > chunks;
             _get_chunks(stream, req.beams, req.min_chunk, req.max_chunk, chunks);
+            // set compression flag... save original values and revert?
+            for (auto it = chunks.begin(); it != chunks.end(); it++)
+                (*it)->msgpack_bitshuffle = req.compress;
+
             msgpack::pack(buffer, chunks);
 
         } else if (funcname == "write_chunks") {

@@ -80,13 +80,13 @@ static void spawn_processing_thread(pthread_t &thread, const shared_ptr<ch_frb_i
  */
 int main(int argc, char** argv) {
 
-    const int n_l1_nodes = 4;
-    const int n_beams_per_l1_node = 4;
-    const int n_l0_nodes = 8;
+    // const int n_l1_nodes = 4;
+    // const int n_beams_per_l1_node = 4;
+    // const int n_l0_nodes = 8;
 
-    // const int n_l1_nodes = 1;
-    // const int n_beams_per_l1_node = 1;
-    // const int n_l0_nodes = 1;
+    const int n_l1_nodes = 1;
+    const int n_beams_per_l1_node = 1;
+    const int n_l0_nodes = 1;
 
     const int n_coarse_freq_per_l0 = constants::nfreq_coarse_tot / n_l0_nodes;
 
@@ -447,7 +447,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    sleep(1);
+    sleep(120);
 
     return 0;
 }
