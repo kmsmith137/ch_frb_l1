@@ -5,12 +5,23 @@ import msgpack
 
 import numpy as np
 
+#import matplotlib
+import pylab as plt
+
 if __name__ == '__main__':
     context = zmq.Context()
 
-    n_l1_nodes = 1
-    n_beams_per_l1_node = 1
-    rpc_port_l1_base = 5555;
+    if True:
+        n_l1_nodes = 4
+        n_beams_per_l1_node = 4
+        n_l0_nodes = 8
+    else:
+        n_l1_nodes = 1
+        n_beams_per_l1_node = 1
+        n_l0_nodes = 1
+
+    rpc_port_l1_base = 5555
+    udp_port_l0_base = 20000
     
     # Create sockets to talk to L1 nodes...
     sockets = []
@@ -24,16 +35,74 @@ if __name__ == '__main__':
     for socket in sockets:
         msg = msgpack.packb('get_beam_metadata')
         socket.send(msg)
+
+    npackets_grid = np.zeros((n_l0_nodes, n_l1_nodes), int)
+
+    l0_addrs = {}
+    for i in range(n_l0_nodes):
+        for j in range(n_l1_nodes):
+            l0_addrs['127.0.0.1:%i' % (udp_port_l0_base + i*n_l1_nodes + j)] = i
+
+    nodestats = []
+            
     print('Waiting for get_beam_metadata replies...')
-    for socket in sockets:
+    for i,socket in enumerate(sockets):
         #  Get the reply.
         msg = socket.recv()
         print('Received reply: %i bytes' % len(msg))
         # print('Message:', repr(msg))
         rep = msgpack.unpackb(msg)
-        print('Reply:', rep)
+        #print('Reply:', rep)
+        print('Node stats:', rep[0])
+        print('Per-node packet counts:', rep[1])
+        for r in rep[2:]:
+            print('Beam:', r)
 
+        nodestats.append(rep[0])
 
+        for k,v in rep[1].items():
+            j = l0_addrs[k]
+            npackets_grid[j, i] = v
+
+    plt.clf()
+    plt.imshow(npackets_grid, interpolation='nearest', origin='lower',
+               vmin=0) #, cmap='hot')
+    plt.colorbar()
+    plt.xlabel('L1 node number')
+    plt.xticks(np.arange(n_l1_nodes))
+    plt.ylabel('L0 node number')
+    plt.title('Number of packets sent between L0/L1 nodes')
+    plt.savefig('packets.png')
+
+    plt.clf()
+    plt.plot([n['count_stream_mismatch'] for n in nodestats], '.-',
+             label='stream mismatch')
+    plt.plot([n['count_assembler_queued'] for n in nodestats], '.-',
+             label='assembler queued')
+    plt.plot([n['count_assembler_hits'] for n in nodestats], '.-',
+             label='assembler hits')
+    plt.plot([n['count_assembler_misses'] for n in nodestats], '.-',
+             label='assembler misses')
+    plt.plot([n['count_assembler_drops'] for n in nodestats], '.-',
+             label='assembler drops')
+    plt.plot([n['count_packets_received'] for n in nodestats], '.-',
+             label='packets: received')
+    plt.plot([n['count_packets_good'] for n in nodestats], '.-',
+             label='packets: good')
+    plt.plot([n['count_packets_bad'] for n in nodestats], '.-',
+             label='packets: bad')
+    plt.plot([n['count_packets_dropped'] for n in nodestats], '.-',
+             label='packets: dropped')
+    plt.plot([n['count_beam_id_mismatch'] for n in nodestats], '.-',
+             label='beam id mismatch')
+    plt.xlabel('L1 node number')
+    plt.xticks(np.arange(n_l1_nodes))
+    plt.legend()
+    plt.yscale('symlog')
+    plt.savefig('counts.png')
+
+    
+            
     print('Sending write_chunks requests...')
     for socket in sockets:
         beams = [0,1,2]

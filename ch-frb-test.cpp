@@ -80,13 +80,15 @@ static void spawn_processing_thread(pthread_t &thread, const shared_ptr<ch_frb_i
  */
 int main(int argc, char** argv) {
 
-    // const int n_l1_nodes = 4;
-    // const int n_beams_per_l1_node = 4;
-    // const int n_l0_nodes = 8;
+    const int n_l1_nodes = 4;
+    const int n_beams_per_l1_node = 4;
+    const int n_l0_nodes = 8;
 
-    const int n_l1_nodes = 1;
-    const int n_beams_per_l1_node = 1;
-    const int n_l0_nodes = 1;
+    /*
+     const int n_l1_nodes = 1;
+     const int n_beams_per_l1_node = 1;
+     const int n_l0_nodes = 1;
+     */
 
     const int n_coarse_freq_per_l0 = constants::nfreq_coarse_tot / n_l0_nodes;
 
@@ -221,6 +223,7 @@ int main(int argc, char** argv) {
         cout << endl;
     }
 
+    /*
     cout << "Sending end-stream packets..." << endl;
     for (int i=0; i<n_l0_nodes; i++) {
         for (int j=0; j<n_l1_nodes; j++) {
@@ -237,6 +240,8 @@ int main(int argc, char** argv) {
     for (int j=0; j<n_l1_nodes; j++) {
         l1streams[j]->join_threads();
     }
+     */
+    sleep(1);
 
     cout << "L0 streams packets sent:" << endl;
     for (int i=0; i<n_l0_nodes; i++) {
@@ -447,7 +452,26 @@ int main(int argc, char** argv) {
         }
     }
 
-    sleep(120);
+    sleep(5);
+
+    for (int ichunk = nchunks;; ichunk++) {
+        // To avoid the cost of simulating Gaussian noise, we use the following semi-arbitrary procedure.
+        for (unsigned int i = 0; i < intensity.size(); i++)
+            intensity[i] = ichunk + i;
+
+        int64_t fpga_count = int64_t(ichunk) * int64_t(ostream->fpga_counts_per_chunk);
+
+        cout << "Sending chunk " << ichunk << " (fpga_count " << fpga_count << ") L0/L1..." << endl;
+        for (int i=0; i<n_l0_nodes; i++) {
+            for (int j=0; j<n_l1_nodes; j++) {
+                cout << i << "/" << j << " ";
+                l0streams[i][j]->send_chunk(&intensity[0], &weights[0], stride, fpga_count);
+            }
+        }
+        cout << endl;
+
+        sleep(15);
+    }
 
     return 0;
 }
