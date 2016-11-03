@@ -91,7 +91,8 @@ int main(int argc, char** argv) {
     const int n_coarse_freq_per_l0 = constants::nfreq_coarse_tot / n_l0_nodes;
 
     //int nchunks = int(gb_to_simulate * 1.0e9 / ostream->nbytes_per_chunk) + 1
-    int nchunks = 5;
+    //int nchunks = 5;
+    int nchunks = 3;
 
     const int udp_port_l1_base = 10255;
     const int rpc_port_l1_base = 5555;
@@ -220,7 +221,22 @@ int main(int argc, char** argv) {
         cout << endl;
     }
 
+    cout << "Sending end-stream packets..." << endl;
+    for (int i=0; i<n_l0_nodes; i++) {
+        for (int j=0; j<n_l1_nodes; j++) {
+            cout << i << "/" << j << " ";
+            l0streams[i][j]->end_stream(true);
+        }
+    }
+
+    // HACK -- L0 end_stream() + L1 join_threads() seems to drop some
+    // packets
     sleep(1);
+
+    cout << "Joining L1 network threads..." << endl;
+    for (int j=0; j<n_l1_nodes; j++) {
+        l1streams[j]->join_threads();
+    }
 
     cout << "L0 streams packets sent:" << endl;
     for (int i=0; i<n_l0_nodes; i++) {
@@ -307,11 +323,9 @@ int main(int argc, char** argv) {
         zmq::message_t reply;
         sockets[i]->recv(&reply);
         const char* reply_data = reinterpret_cast<const char *>(reply.data());
-        msgpack::object_handle oh =
-            msgpack::unpack(reply_data, reply.size());
+        msgpack::object_handle oh = msgpack::unpack(reply_data, reply.size());
         msgpack::object obj = oh.get();
-
-        cout << "Reply: " << obj << endl;
+        //cout << "Reply: " << obj << endl;
 
         vector<unordered_map<string, uint64_t> > R;
         try {
@@ -331,10 +345,8 @@ int main(int argc, char** argv) {
                 cout << endl << "  Beam " << m["beam_id"] << endl << "  ";
                 m.erase("beam_id");
             }
-            //for (int k=0; k<m.size(); k++) {
             int k=0;
             for (auto it = m.begin(); it != m.end(); it++, k++) {
-                //cout << "  " << it->first << " = " << it->second << endl;
                 cout << "  " << it->first << " = " << it->second;
                 if (k != m.size()-1) {
                     cout << ", ";
