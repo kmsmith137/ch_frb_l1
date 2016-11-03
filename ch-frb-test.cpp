@@ -98,7 +98,7 @@ int main(int argc, char** argv) {
     const int rpc_port_l1_base = 5555;
 
     // for debugging
-    const int rpc_port_l0_base = 20000;
+    const int udp_port_l0_base = 20000;
 
     unordered_map<int, int> l0_port_map;
 
@@ -158,7 +158,7 @@ int main(int argc, char** argv) {
             ch_frb_io::intensity_network_ostream::initializer ini_params;
 
             // debug: bind the L0 stream to a UDP port, and record the mapping
-            ini_params.bind_port = rpc_port_l0_base + i * n_l1_nodes + j;
+            ini_params.bind_port = udp_port_l0_base + i * n_l1_nodes + j;
             l0_port_map[ini_params.bind_port] = i;
 
             for (int k=0; k<n_beams_per_l1_node; k++) {
