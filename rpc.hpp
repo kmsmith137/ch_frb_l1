@@ -26,6 +26,48 @@ using namespace ch_frb_io;
      packet counts received from that sender.
      - The remaining elements contain stats for each beam.
 
+     Example return value (in python notation; # are annotations, not
+     part of the message):
+
+     [
+       # Node statistics: first packet properties, packet counts
+       {'first_packet_received': 1, 'fpga_count': 0, 'nupfreq': 16,
+        'nbeams': 4, 'nt_per_packet': 16, 'fpga_counts_per_sample': 400,
+        'count_bytes_received': 628752384,
+        'count_packets_received': 147456,
+        'count_packets_good': 147456,
+        'count_packets_bad': 0,
+        'count_packets_dropped': 0,
+        'count_packets_endofstream': 0,
+        'count_beam_id_mismatch': 0,
+        'count_stream_mismatch': 0,
+        'count_assembler_queued': 28,
+        'count_assembler_hits': 589824,
+        'count_assembler_drops': 0,
+        'count_assembler_misses': 0,
+       },
+
+       # Per-node packet counts: number of packets from L0 nodes (this was from
+       # an 8-node local test
+       {'127.0.0.1:20023': 18432, '127.0.0.1:20031': 18432, '127.0.0.1:20027': 18432,
+        '127.0.0.1:20011': 18432, '127.0.0.1:20003': 18432, '127.0.0.1:20015': 18432,
+        '127.0.0.1:20007': 18432, '127.0.0.1:20019': 18432},
+
+       # Per-Beam stats
+       {'beam_id': 12, 'ringbuf_next': 7, 'ringbuf_capacity': 8,
+        'ringbuf_chunk_min': 0, 'ringbuf_chunk_max': 6, 'ringbuf_ready': 0,
+        'ringbuf_ntotal': 7},
+       {'beam_id': 13, 'ringbuf_next': 7, 'ringbuf_capacity': 8,
+        'ringbuf_chunk_min': 0, 'ringbuf_chunk_max': 6, 'ringbuf_ready': 0,
+        'ringbuf_ntotal': 7},
+       {'beam_id': 14, 'ringbuf_next': 7, 'ringbuf_capacity': 8,
+        'ringbuf_chunk_min': 0, 'ringbuf_chunk_max': 6, 'ringbuf_ready': 0,
+        'ringbuf_ntotal': 7},
+       {'beam_id': 15, 'ringbuf_next': 7, 'ringbuf_capacity': 8,
+        'ringbuf_chunk_min': 0, 'ringbuf_chunk_max': 6, 'ringbuf_ready': 0,
+        'ringbuf_ntotal': 7},
+      ]
+
 
  * get_chunks(GetChunks_Request)
      
