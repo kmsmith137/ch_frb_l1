@@ -18,29 +18,38 @@ using namespace ch_frb_io;
 
      Retrieves status and statistics from an L1 node.
 
-     Returns an array of maps, where the maps are from string to uint64_t.
-     The first element of the array contains status for the whole node.
-     The second element contains a mapping from sender IP:port to packet counts received from that sender.
-     The remaining nodes contain stats for each beam.
+     Returns an array of maps, where the maps are from string to
+     uint64_t.
+     - The first element of the array contains status for the
+       whole node.
+     - The second element contains a mapping from sender IP:port to
+     packet counts received from that sender.
+     - The remaining elements contain stats for each beam.
 
 
  * get_chunks(GetChunks_Request)
      
      Retrieves assembled_chunk data from the L1 ring buffer.
 
-     See below for the contents of GetChunks_Request; in short, request a list
-     of beam ids and a range of chunks.
+     See below for the contents of GetChunks_Request; in short,
+     request a list of beam ids and a range of chunks.
 
-     Returns an array of intensity_chunks from the L1 node's ring buffer, as one giant message.
+     Returns an array of assembled_chunks from the L1 node's ring
+     buffer, as one giant message.
+
 
  * write_chunks(WriteChunks_Request)
 
-     Retrieves assembled_chunk data from the L1 ring buffer and writes them to as HDF5 files to the L1 node's filesystem.
+     Retrieves assembled_chunk data from the L1 ring buffer and writes
+     them to as files to the L1 node's filesystem, in a custom msgpack
+     format.
 
-     See below for the contents of WriteChunks_Request; in short, request a list
-     of beam ids and a range of chunks, and specify the filenames to which they are to be written.
+     See below for the contents of WriteChunks_Request; in short,
+     request a list of beam ids and a range of chunks, and specify the
+     filenames to which they are to be written.
 
      Returns a list of WriteChunk_Reply objects, one per beam*chunk.
+
  */
 
 
