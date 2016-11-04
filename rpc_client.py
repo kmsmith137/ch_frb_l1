@@ -36,37 +36,35 @@ if __name__ == '__main__':
         msg = msgpack.packb('get_beam_metadata')
         socket.send(msg)
 
-    npackets_grid = np.zeros((n_l0_nodes, n_l1_nodes), int)
+    beam_meta = []
+    print('Waiting for get_beam_metadata replies...')
+    for i,socket in enumerate(sockets):
+        msg = socket.recv()
+        print('Received reply: %i bytes' % len(msg))
+        reply = msgpack.unpackb(msg)
+        beam_meta.append(reply)
 
+
+    # make plots from replies
+    npackets_grid = np.zeros((n_l0_nodes, n_l1_nodes), int)
     l0_addrs = {}
     for i in range(n_l0_nodes):
         for j in range(n_l1_nodes):
             l0_addrs['127.0.0.1:%i' % (udp_port_l0_base + i*n_l1_nodes + j)] = i
-
     nodestats = []
-            
-    print('Waiting for get_beam_metadata replies...')
-    for i,socket in enumerate(sockets):
-        #  Get the reply.
-        msg = socket.recv()
-        print('Received reply: %i bytes' % len(msg))
-        # print('Message:', repr(msg))
-        rep = msgpack.unpackb(msg)
-        #print('Reply:', rep)
+    for rep in beam_meta:
         print('Node stats:', rep[0])
         print('Per-node packet counts:', rep[1])
         for r in rep[2:]:
             print('Beam:', r)
-
         nodestats.append(rep[0])
-
         for k,v in rep[1].items():
             j = l0_addrs[k]
             npackets_grid[j, i] = v
 
     plt.clf()
-    plt.imshow(npackets_grid, interpolation='nearest', origin='lower',
-               vmin=0) #, cmap='hot')
+    plt.imshow(npackets_grid, interpolation='nearest', origin='lower')
+    #    vmin=0) #, cmap='hot')
     plt.colorbar()
     plt.xlabel('L1 node number')
     plt.xticks(np.arange(n_l1_nodes))
@@ -97,7 +95,7 @@ if __name__ == '__main__':
              label='beam id mismatch')
     plt.xlabel('L1 node number')
     plt.xticks(np.arange(n_l1_nodes))
-    plt.legend()
+    plt.legend(fontsize=8)
     plt.yscale('symlog')
     plt.savefig('counts.png')
 
@@ -114,12 +112,13 @@ if __name__ == '__main__':
         socket.send(msg)
     print('Waiting for write_chunks replies...')
     for socket in sockets:
-        #  Get the reply.
         msg = socket.recv()
         print('Received reply: %i bytes' % len(msg))
         # print('Message:', repr(msg))
         rep = msgpack.unpackb(msg)
         print('Reply:', rep)
+
+
 
     print('Sending get_chunks requests...')
     for socket in sockets:
