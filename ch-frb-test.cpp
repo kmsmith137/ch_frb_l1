@@ -9,6 +9,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <sys/time.h>
 #include <ch_frb_io.hpp>
 #include <ch_frb_rpc.hpp>
 #include <rpc.hpp>
@@ -75,6 +76,88 @@ static void spawn_processing_thread(pthread_t &thread, const shared_ptr<ch_frb_i
     // no "delete context"!
 }
 
+
+class leaky_intensity_network_ostream : public intensity_network_ostream {
+
+public:
+
+    static shared_ptr<leaky_intensity_network_ostream> make(const intensity_network_ostream::initializer &ini_params) {
+        // copied from intensity_network_ostream
+        leaky_intensity_network_ostream *retp = new leaky_intensity_network_ostream(ini_params);
+        shared_ptr<leaky_intensity_network_ostream> ret(retp);
+        ret->_open_socket();
+
+        //int err = pthread_create(&ret->network_thread, NULL, leaky_intensity_network_ostream::network_pthread_main, (void *)retp);
+        int err = pthread_create(&ret->network_thread, NULL, intensity_network_ostream::network_pthread_main, (void *)&ret);
+        if (err < 0)
+            throw runtime_error(string("ch_frb_io: pthread_create() failed in intensity_network_ostream constructor: ") + strerror(errno));
+
+        pthread_mutex_lock(&ret->state_lock);
+        while (!ret->network_thread_started)
+            pthread_cond_wait(&ret->cond_state_changed, &ret->state_lock);
+        pthread_mutex_unlock(&ret->state_lock);
+
+        return ret;
+    }
+
+    /*
+    static void* network_pthread_main(void *opaque_arg) {
+        if (!opaque_arg)
+            throw runtime_error("ch_frb_io: internal error: NULL opaque pointer passed to leaky_network_pthread_main()");
+        // Note that the arg/opaque_arg pointer is only dereferenced here, for reasons explained in a comment in make() above.
+        leaky_intensity_network_ostream *stream = (leaky_intensity_network_ostream*)opaque_arg;
+
+        cout << "Starting leaky network thread" << endl;
+
+        if (!stream)
+            throw runtime_error("ch_frb_io: internal error: empty shared_ptr passed to leaky_network_pthread_main()");
+
+        try {
+            stream->_network_thread_body();
+        } catch (...) {
+            stream->end_stream(false);   // "false" means "don't join threads" (would deadlock otherwise!)
+            throw;
+        }
+        stream->end_stream(false);   // "false" has same meaning as above
+        return NULL;
+    }
+     */
+
+    double packet_drop_rate = 0.0;
+
+protected:
+    default_random_engine generator;
+    uniform_real_distribution<double> rando;
+
+    leaky_intensity_network_ostream(const intensity_network_ostream::initializer &ini_params) :
+        intensity_network_ostream(ini_params),
+        rando(0., 1.) {
+
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        generator.seed(tv.tv_usec);
+        cout << "Seeded random number generator: " << tv.tv_usec << endl;
+    }
+
+    virtual ssize_t _send(int socket, const uint8_t* packet, int nbytes, int flags) {
+        //cout << "leaky ostream::_send" << endl;
+        bool dosend = true;
+        if (this->packet_drop_rate > 0) {
+            // drop this packet?
+            double r = rando(generator);
+            if (r < this->packet_drop_rate) {
+                dosend = false;
+            }
+            //cout << "Leaky ostream: drop rate " << this->packet_drop_rate << ", random " << r << ", sending: " << dosend << endl;
+        }
+        if (dosend)
+            return send(socket, packet, nbytes, flags);
+        else
+            return nbytes;
+    }
+};
+
+
 /*
  * 
  */
@@ -110,7 +193,7 @@ int main(int argc, char** argv) {
     vector<shared_ptr<frb_rpc_server> > rpcs;
     vector<string> rpc_ports;
 
-    vector<vector<shared_ptr<intensity_network_ostream> > > l0streams;
+    vector<vector<shared_ptr<leaky_intensity_network_ostream> > > l0streams;
 
     for (int i=0; i<n_l1_nodes; i++) {
         ch_frb_io::intensity_network_stream::initializer ini_params;
@@ -154,7 +237,7 @@ int main(int argc, char** argv) {
 
         cout << "L0 node " << i << ": sending to L0 nodes:" << endl;
 
-        vector<shared_ptr<intensity_network_ostream> > nodestreams;
+        vector<shared_ptr<leaky_intensity_network_ostream> > nodestreams;
         for (int j=0; j<n_l1_nodes; j++) {
 
             ch_frb_io::intensity_network_ostream::initializer ini_params;
@@ -187,8 +270,9 @@ int main(int argc, char** argv) {
             ini_params.dstname = "127.0.0.1:" + to_string(udp_port);
             cout << "  " << j << ": " << ini_params.dstname;
 
-            shared_ptr<intensity_network_ostream> ostream = 
-                intensity_network_ostream::make(ini_params);
+            shared_ptr<leaky_intensity_network_ostream> ostream = 
+                leaky_intensity_network_ostream::make(ini_params);
+            ostream->packet_drop_rate = 0.1;
             nodestreams.push_back(ostream);
         }
         cout << endl;

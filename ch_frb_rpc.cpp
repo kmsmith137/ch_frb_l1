@@ -47,7 +47,7 @@ _get_chunks(shared_ptr<ch_frb_io::intensity_network_stream> stream,
             chunks.push_back(*it2);
         }
     }
-    // Sort by chunk number across beams so that oldest chunks are freed first.
+    // Sort by chunk number across beams so that olest chunks are freed first.
     sort(chunks.begin(), chunks.end(), _compare_chunks);
 }
 

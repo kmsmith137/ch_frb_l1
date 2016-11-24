@@ -52,7 +52,7 @@ if __name__ == '__main__':
         for j in range(n_l1_nodes):
             l0_addrs['127.0.0.1:%i' % (udp_port_l0_base + i*n_l1_nodes + j)] = i
     nodestats = []
-    for rep in beam_meta:
+    for i,rep in enumerate(beam_meta):
         print('Node stats:', rep[0])
         print('Per-node packet counts:', rep[1])
         for r in rep[2:]:
@@ -64,7 +64,7 @@ if __name__ == '__main__':
 
     plt.clf()
     plt.imshow(npackets_grid, interpolation='nearest', origin='lower')
-    #    vmin=0) #, cmap='hot')
+    #vmin=0)
     plt.colorbar()
     plt.xlabel('L1 node number')
     plt.xticks(np.arange(n_l1_nodes))
