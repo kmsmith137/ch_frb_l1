@@ -7,6 +7,36 @@ import random
 import zmq
 import msgpack
 
+'''
+A python prototype of how an async version of the RPC server might
+work.
+
+One desired property is that the server respond to client requests
+quickly, because we don't want requested data to drop out of the ring
+buffer while we're servicing some other client's request.  Therefore,
+we want the RPC server to have one or more workers that are actually
+writing files to disk, and then the RPC server itself just has to poll
+on the client socket waiting for requests, and the worker socket
+waiting for replies; when it gets one it forwards it to the client.
+
+In C++, if we use shared_ptrs to keep the assembled_chunks alive, then
+we need to work a little harder.  The RPC server will receive client
+requests and retrieve shared_ptrs for the assembled_chunks to be
+written out.  It needs to communicate those shared_ptrs to the worker
+threads, in such a way that the shared_ptr stays alive.  Perhaps we
+should use a (mutex-protected) std::queue of shared_ptrs (or a struct
+including the shared_ptr and other function args) to pass them between
+the RPC server and worker threads.  We could still use ZMQ for the
+messaging, but the server to worker request would just be an empty
+message saying "grab work from the queue"; the reply could stay the
+same and go via ZMQ.
+
+Otherwise, the RPC server would have to keep like a map of the
+requests to shared_ptrs, removing them when the request completed.
+
+'''
+
+
 class Worker(threading.Thread):
     def __init__(self, context):
         threading.Thread.__init__(self)
