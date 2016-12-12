@@ -79,6 +79,9 @@ ch-frb-test: ch-frb-test.cpp ch_frb_rpc.o
 ch-frb-test-debug: ch-frb-test.cpp ch_frb_rpc.o $(IO_OBJS)
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lzmq -lhdf5
 
+ringbuf: l1-ringbuf.cpp $(IO_OBJS)
+	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lhdf5
+
 clean:
 	rm -f *.o *~ $(BINARIES)
 
