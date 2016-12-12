@@ -27,6 +27,8 @@
 
   - Improving the bonsai code, so that in particular the output is in "sigmas".
 
+  - rf_pipelines internal changes, to allow efficient transform chains at downsampled resolution.
+
   - Write code to 16K-upchannelize data.
 
   - Make a plan for collecting more data of various types.
@@ -59,3 +61,5 @@
   - Slow pulsar search related RPC's and master search code.
 
   - Use SSD as destination for writes if NFS server is not available.
+
+  - What to do about bright RFI removal?
