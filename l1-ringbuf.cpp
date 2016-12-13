@@ -34,6 +34,18 @@ protected:
 
 };
 
+static bool
+assembled_chunk_overlaps_range(const shared_ptr<assembled_chunk> ch, 
+                               uint64_t min_fpga_counts,
+                               uint64_t max_fpga_counts) {
+    uint64_t fpga0 = ch->isample * ch->fpga_counts_per_sample;
+    uint64_t fpga1 = fpga0 + constants::nt_per_assembled_chunk * ch->fpga_counts_per_sample;
+    cout << "Chunk FPGA counts range " << fpga0 << " to " << fpga1 << endl;
+    if ((fpga0 > max_fpga_counts) || (fpga1 < min_fpga_counts))
+        return false;
+    return true;
+}
+
 class L1Ringbuf {
     friend class AssembledChunkRingbuf;
 
@@ -105,6 +117,30 @@ public:
             }
         }
     }
+
+    void retrieve(uint64_t min_fpga_counts, uint64_t max_fpga_counts,
+                  vector<shared_ptr<assembled_chunk> >& chunks) {
+        // Check downstream queue
+        cout << "Retrieve: checking downstream queue" << endl;
+        for (auto it = _q.begin(); it != _q.end(); it++) {
+            if (assembled_chunk_overlaps_range(*it, min_fpga_counts, max_fpga_counts)) {
+                chunks.push_back(*it);
+            }
+        }
+        for (size_t i=0; i<Nbins; i++) {
+            cout << "Retrieve: binning " << i << endl;
+            _rb[i]->snapshot(chunks, std::bind(assembled_chunk_overlaps_range, placeholders::_1, min_fpga_counts, max_fpga_counts));
+
+            if ((i < Nbins-1) && (_dropped[i])) {
+                cout << "Checking dropped chunk at level " << i << endl;
+                if (assembled_chunk_overlaps_range(_dropped[i], min_fpga_counts, max_fpga_counts)) {
+                    chunks.push_back(_dropped[i]);
+                }
+            }
+        }
+
+        
+    }
     
 protected:
     // The queue for downstream
@@ -134,8 +170,11 @@ protected:
             // FIXME -- bin down
             assembled_chunk* binned = new assembled_chunk(ch->beam_id, ch->nupfreq, ch->nt_per_packet, ch->fpga_counts_per_sample, _dropped[binlevel]->ichunk);
             // push onto _rb[level+1]
+            cout << "Pushing onto level " << (binlevel+1) << endl;
             _rb[binlevel+1]->push(binned);
+            cout << "Dropping shared_ptr..." << endl;
             _dropped[binlevel].reset();
+            cout << "Done dropping" << endl;
         } else {
             // Keep this one until its partner arrives!
             cout << "Saving as _dropped" << binlevel << endl;
@@ -152,7 +191,163 @@ void AssembledChunkRingbuf::dropping(shared_ptr<assembled_chunk> t) {
 
 
 
+
+#include <zmq.hpp>
+#include <pthread.h>
+
+// RPC multi-threaded server, from
+// http://zguide.zeromq.org/cpp:asyncsrv
+
+class RpcWorker {
+public:
+    RpcWorker(zmq::context_t* ctx) ://, int sock_type) :
+        //_ctx(ctx),
+        _socket(*ctx, ZMQ_DEALER) {
+    }
+
+    void run() {
+        _socket.connect("inproc://rpc-backend");
+
+        while (true) {
+            zmq::message_t client;
+            zmq::message_t msg;
+            _socket.recv(&client);
+            _socket.recv(&msg);
+            //zmq::message_t copied_id;
+            //zmq::message_t copied_msg;
+            //copied_id.copy(&identity);
+            //copied_msg.copy(&msg);
+            // FIXME
+            _socket.send(client, ZMQ_SNDMORE);
+            _socket.send(msg);
+            //zmq::message_t reply;
+            //_socket.send(reply);
+        }
+    }
+
+private:
+    //zmq::context_t &_ctx;
+    zmq::socket_t _socket;
+};
+
+struct rpc_worker_thread_context {
+    zmq::context_t* ctx;
+};
+
+static void* rpc_worker_thread_main(void *opaque_arg) {
+    rpc_worker_thread_context *context = reinterpret_cast<rpc_worker_thread_context *>(opaque_arg);
+    //shared_ptr<ch_frb_io::intensity_network_stream> stream = context->stream;
+    //string port = context->port;
+    zmq::context_t* ctx = context->ctx;
+    delete context;
+
+    RpcWorker rpc(ctx);
+    rpc.run();
+    return NULL;
+}
+
+
+class RpcServer {
+public:
+    RpcServer(zmq::context_t &ctx, string port) :
+        _ctx(ctx),
+        _frontend(_ctx, ZMQ_ROUTER),
+        _backend(_ctx, ZMQ_DEALER),
+        _port(port)
+    {}
+
+    void run() {
+        cout << "RpcServer::run()" << endl;
+        _frontend.bind(_port);
+        _backend.bind("inproc://rpc-backend");
+
+        //std::vector<RpcWorker*> workers;
+        std::vector<pthread_t*> worker_threads;
+        
+        // How many threads are writing to disk at once?
+        int nworkers = 2;
+
+        for (int i=0; i<nworkers; i++) {
+            pthread_t* thread = new pthread_t;
+            //RpcWorker* worker = new RpcWorker(_ctx, ZMQ_DEALER);
+            //workers.push_back(worker);
+            //pthread_create(thread, NULL, std::bind(&RpcWorker::work, worker), NULL);
+            rpc_worker_thread_context *context = new rpc_worker_thread_context;
+            context->ctx = &_ctx;
+            pthread_create(thread, NULL, rpc_worker_thread_main, context);
+            worker_threads.push_back(thread);
+        }
+
+        // This shouldn't return
+        //zmq::proxy(_frontend, _backend, nullptr);
+        for (;;) {
+            zmq::message_t client;
+            zmq::message_t req;
+            _frontend.recv(&client);
+            _frontend.recv(&req);
+
+            cout << "Received message from client" << endl;
+
+            //_backend.send(&client);
+            //_backend.send(&req);
+        }
+
+        // FIXME -- join threads?
+        for (int i=0; i<nworkers; i++) {
+            //delete workers[i];
+            delete worker_threads[i];
+        }
+    }
+
+private:
+    zmq::context_t &_ctx;
+    zmq::socket_t _frontend;
+    zmq::socket_t _backend;
+    string _port;
+};
+
+struct rpc_thread_contextX {
+    //shared_ptr<ch_frb_io::intensity_network_stream> stream;
+    // eg, "tcp://*:5555";
+    string port;
+};
+
+static void *rpc_thread_main(void *opaque_arg) {
+    rpc_thread_contextX *context = reinterpret_cast<rpc_thread_contextX *> (opaque_arg);
+    //shared_ptr<ch_frb_io::intensity_network_stream> stream = context->stream;
+    string port = context->port;
+    delete context;
+
+    zmq::context_t ctx;
+    RpcServer rpc(ctx, port);
+    rpc.run();
+    return NULL;
+}
+
+void rpc_server_start(string port) {
+    cout << "Starting RPC server on " << port << endl;
+
+    rpc_thread_contextX *context = new rpc_thread_contextX;
+    //context->stream = stream;
+    context->port = port;
+
+    pthread_t* rpc_thread = new pthread_t;
+
+    //int err = pthread_create(&rpc_thread, NULL, rpc_thread_main, context);
+    int err = pthread_create(rpc_thread, NULL, rpc_thread_main, context);
+    if (err)
+        throw runtime_error(string("pthread_create() failed to create RPC thread: ") + strerror(errno));
+    
+}
+
+
+#include <unistd.h>
+
+
 int main() {
+
+    //rpc_server_start("tcp://*:5555");
+    rpc_server_start("tcp://127.0.0.1:5555");
 
     L1Ringbuf rb;
 
@@ -171,6 +366,7 @@ int main() {
 
     for (int i=0; i<100; i++) {
         ch = new assembled_chunk(beam, nupfreq, nt_per, fpga_per, i);
+        cout << "Pushing " << i << endl;
         rb.push(ch);
 
         cout << "Pushed " << i << endl;
@@ -196,6 +392,13 @@ int main() {
     cout << endl;
 
 
+    vector<shared_ptr<assembled_chunk> > chunks;
+    cout << "Retrieving chunks..." << endl;
+    rb.retrieve(30000000, 50000000, chunks);
+    cout << "Got " << chunks.size() << endl;
+
+
+    usleep(30 * 1000000);
 }
 
 
