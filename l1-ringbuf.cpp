@@ -209,16 +209,21 @@ public:
         _socket.connect("inproc://rpc-backend");
 
         while (true) {
-            zmq::message_t client;
+            /*
+             zmq::message_t client;
+             zmq::message_t msg;
+             _socket.recv(&client);
+             _socket.recv(&msg);
+             */
             zmq::message_t msg;
-            _socket.recv(&client);
             _socket.recv(&msg);
+            cout << "Received: " << msg.data() << endl;
             //zmq::message_t copied_id;
             //zmq::message_t copied_msg;
             //copied_id.copy(&identity);
             //copied_msg.copy(&msg);
             // FIXME
-            _socket.send(client, ZMQ_SNDMORE);
+            //_socket.send(client, ZMQ_SNDMORE);
             _socket.send(msg);
             //zmq::message_t reply;
             //_socket.send(reply);
@@ -278,18 +283,36 @@ public:
             worker_threads.push_back(thread);
         }
 
-        // This shouldn't return
-        //zmq::proxy(_frontend, _backend, nullptr);
+        //vector<zmq::zmq_pollitem_t> pollitems;
+        //pollitems.push_back
+
+        zmq_pollitem_t pollitems[] = {
+            { _frontend, 0, ZMQ_POLLIN, 0 },
+            { _backend,  0, ZMQ_POLLIN, 0 },
+        };
+        //int rc = zmq_poll (items, 1, HEARTBEAT_INTERVAL * ZMQ_POLL_MSEC);
+
         for (;;) {
+            int rc = zmq::poll(pollitems, 2, -1);
+
             zmq::message_t client;
-            zmq::message_t req;
-            _frontend.recv(&client);
-            _frontend.recv(&req);
+            zmq::message_t msg;
 
-            cout << "Received message from client" << endl;
-
-            //_backend.send(&client);
-            //_backend.send(&req);
+            if (pollitems[0].revents & ZMQ_POLLIN) {
+                cout << "Received message from client" << endl;
+                _frontend.recv(&client);
+                _frontend.recv(&msg);
+                //
+                zmq::message_t empty("hello", 6);
+                _backend.send(empty);
+            }
+            if (pollitems[1].revents & ZMQ_POLLIN) {
+                cout << "Received reply from worker" << endl;
+                _backend.recv(&client);
+                _backend.recv(&msg);
+                _frontend.send(client);
+                _frontend.send(msg);
+            }
         }
 
         // FIXME -- join threads?
