@@ -205,6 +205,10 @@ void AssembledChunkRingbuf::dropping(shared_ptr<assembled_chunk> t) {
 
 #include "rpc.hpp"
 
+static string msg_string(zmq::message_t &msg) {
+    return string(static_cast<const char*>(msg.data()), msg.size());
+}
+
 // RPC multi-threaded server, structure from
 // http://zguide.zeromq.org/cpp:asyncsrv
 
@@ -293,6 +297,9 @@ public:
             msgpack::sbuffer buffer;
             msgpack::pack(buffer, rep);
             zmq::message_t reply(buffer.data(), buffer.size());
+
+            cout << "Worker: sending reply for client " << msg_string(*(w.client)) << endl;
+
             _socket.send(w.client, ZMQ_SNDMORE);
             _socket.send(reply);
         }
@@ -375,7 +382,14 @@ void RpcServer::run() {
     };
 
     for (;;) {
-        int r = zmq::poll(pollitems, 2, -1);
+        pthread_mutex_lock(&this->_q_lock);
+        size_t n = _write_reqs.size();
+        pthread_mutex_unlock(&this->_q_lock);
+
+        cout << "RpcServer: polling.  Queued chunks to write: " << n << endl;
+
+        //int r = zmq::poll(pollitems, 2, -1);
+        int r = zmq::poll(pollitems, 2, 5000);
         if (r == -1) {
             cout << "zmq::poll error: " << strerror(errno) << endl;
             break;
@@ -387,16 +401,26 @@ void RpcServer::run() {
         if (pollitems[0].revents & ZMQ_POLLIN) {
             cout << "Received message from client" << endl;
             _frontend.recv(&client);
+
+            cout << "Client: " << msg_string(client) << endl;
+
             _frontend.recv(&msg);
-            //zmq::message_t empty("hello", 6);
-            //_backend.send(empty);
             _handle_request(&client, &msg);
         }
         if (pollitems[1].revents & ZMQ_POLLIN) {
             cout << "Received reply from worker" << endl;
             _backend.recv(&client);
             _backend.recv(&msg);
-            _frontend.send(client);
+
+            msgpack::object_handle oh =
+                msgpack::unpack(reinterpret_cast<const char *>(msg.data()),
+                                msg.size());
+            //WriteChunks_Reply rep = oh.get().as<WriteChunks_Reply>();
+            msgpack::object obj = oh.get();
+            cout << "  message: " << obj << endl;
+            cout << "  client: " << msg_string(client) << endl;
+
+            _frontend.send(client, ZMQ_SNDMORE);
             _frontend.send(msg);
         }
     }
@@ -507,25 +531,14 @@ int RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) 
             w.filename = string(strp);
             free(strp);
             //rep.filename = filename;
-            // try {
-            //     cout << "write_msgpack_file..." << endl;
-            //     (*chunk)->msgpack_bitshuffle = true;
-            //     (*chunk)->write_msgpack_file(filename);
-            //     cout << "write_msgpack_file succeeded" << endl;
-            // } catch (...) {
-            //     cout << "Write sgpack file failed." << endl;
-            //     rep.error_message = "Failed to write msgpack file";
-            //     rtn.push_back(rep);
-            //     continue;
-            // }
             // rep.success = true;
             // rtn.push_back(rep);
-            // // Drop this chunk so its memory can be reclaimed
-            // (*chunk) = shared_ptr<assembled_chunk>();
             w.client = new zmq::message_t;
             w.client->copy(client);
             w.priority = req.priority;
             w.chunk = *chunk;
+
+            cout << "Client copy: " << msg_string(*client) << " -> " << msg_string(*(w.client)) << endl;
 
             _add_write_request(w);
         }

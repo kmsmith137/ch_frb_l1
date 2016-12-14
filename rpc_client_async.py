@@ -5,11 +5,15 @@ import threading
 
 def client_thread(context, me):
     socket = context.socket(zmq.DEALER)
+    socket.set(zmq.IDENTITY, "client%i" % me)
     socket.connect('tcp://localhost:5555')
     
     beams = [0,1,2]
-    minfpga = 0
-    maxfpga = 50000000
+    #minfpga = 0
+    #maxfpga = 50000000
+    #38502400 to 38912000
+    minfpga = 38600000
+    maxfpga = 38600000
     filename_pat = 'chunk-%02llu-chunk%08llu-py.msgpack'
     msg = (msgpack.packb('write_chunks') +
            msgpack.packb([beams, minfpga, maxfpga, filename_pat]))
@@ -29,12 +33,15 @@ if __name__ == '__main__':
 
     t1 = threading.Thread(target=client_thread, args=(context,1))
     t2 = threading.Thread(target=client_thread, args=(context,2))
+    t1.daemon = True
+    t2.daemon = True
     t1.start()
-    t2.start()
+    #t2.start()
 
     from time import sleep
     sleep(10)
     import sys
+    print('Quitting')
     sys.exit(0)
     
     t1.join()
