@@ -205,14 +205,50 @@ void AssembledChunkRingbuf::dropping(shared_ptr<assembled_chunk> t) {
 
 #include "rpc.hpp"
 
-// RPC multi-threaded server, from
+// RPC multi-threaded server, structure from
 // http://zguide.zeromq.org/cpp:asyncsrv
+
+struct write_chunk_request {
+    zmq::message_t* client;
+    string filename;
+    int priority;
+    shared_ptr<assembled_chunk> chunk;
+};
+
+class RpcServer {
+public:
+    RpcServer(zmq::context_t &ctx, string port,
+              vector<shared_ptr<L1Ringbuf> > ringbufs);
+    ~RpcServer();
+    write_chunk_request pop_write_request();
+    void run();
+
+protected:
+    int _handle_request(zmq::message_t* client, zmq::message_t* request);
+    void _add_write_request(write_chunk_request &req);
+    void _get_chunks(vector<uint64_t> &beams,
+                     uint64_t min_fpga, uint64_t max_fpga,
+                     vector<shared_ptr<assembled_chunk> > &chunks);
+private:
+    zmq::context_t &_ctx;
+    zmq::socket_t _frontend;
+    zmq::socket_t _backend;
+    string _port;
+
+    // the queue of write requests to be run by the RpcWorker(s)
+    deque<write_chunk_request> _write_reqs;
+    // (and the mutex for it)
+    pthread_mutex_t _q_lock;
+
+    vector<shared_ptr<L1Ringbuf> > _ringbufs;
+};
 
 class RpcWorker {
 public:
-    RpcWorker(zmq::context_t* ctx) ://, int sock_type) :
+    RpcWorker(zmq::context_t* ctx, RpcServer* server) ://, int sock_type) :
         //_ctx(ctx),
-        _socket(*ctx, ZMQ_DEALER) {
+        _socket(*ctx, ZMQ_DEALER),
+        _server(server) {
     }
 
     void run() {
@@ -227,7 +263,12 @@ public:
              */
             zmq::message_t msg;
             _socket.recv(&msg);
-            cout << "Received: " << msg.data() << endl;
+            string msgstr(reinterpret_cast<const char*>(msg.data()));
+            cout << "Received: " << msgstr << endl;
+
+            // Pull a write_chunk_request off the queue!
+            write_chunk_request w = _server->pop_write_request();
+
             //zmq::message_t copied_id;
             //zmq::message_t copied_msg;
             //copied_id.copy(&identity);
@@ -243,286 +284,271 @@ public:
 private:
     //zmq::context_t &_ctx;
     zmq::socket_t _socket;
+    RpcServer* _server;
 };
 
 struct rpc_worker_thread_context {
     zmq::context_t* ctx;
+    RpcServer* server;
 };
 
 static void* rpc_worker_thread_main(void *opaque_arg) {
     rpc_worker_thread_context *context = reinterpret_cast<rpc_worker_thread_context *>(opaque_arg);
-    //shared_ptr<ch_frb_io::intensity_network_stream> stream = context->stream;
-    //string port = context->port;
     zmq::context_t* ctx = context->ctx;
+    RpcServer* server = context->server;
     delete context;
 
-    RpcWorker rpc(ctx);
+    RpcWorker rpc(ctx, server);
     rpc.run();
     return NULL;
 }
 
+RpcServer::RpcServer(zmq::context_t &ctx, string port,
+                     vector<shared_ptr<L1Ringbuf> > ringbufs) :
+    _ctx(ctx),
+    _frontend(_ctx, ZMQ_ROUTER),
+    _backend(_ctx, ZMQ_DEALER),
+    _port(port),
+    _ringbufs(ringbufs)
+{
+    pthread_mutex_init(&this->_q_lock, NULL);
+}
 
-struct write_chunk_request {
-    zmq::message_t* client;
-    string filename;
-    int priority;
-    shared_ptr<assembled_chunk> chunk;
-};
+RpcServer::~RpcServer() {
+    pthread_mutex_destroy(&this->_q_lock);
+}
 
-class RpcServer {
-public:
-    RpcServer(zmq::context_t &ctx, string port,
-              vector<shared_ptr<L1Ringbuf> > ringbufs) :
-        _ctx(ctx),
-        _frontend(_ctx, ZMQ_ROUTER),
-        _backend(_ctx, ZMQ_DEALER),
-        _port(port),
-        _ringbufs(ringbufs)
-    {
-        pthread_mutex_init(&this->_q_lock, NULL);
-    }
+write_chunk_request RpcServer::pop_write_request() {
+    write_chunk_request wreq;
+    pthread_mutex_lock(&this->_q_lock);
+    if (_write_reqs.empty())
+        throw runtime_error(string("pop_write_request(): queue is empty"));
+    wreq = _write_reqs.front();
+    _write_reqs.pop_front();
+    pthread_mutex_unlock(&this->_q_lock);
+    return wreq;
+}
 
-    ~RpcServer() {
-        pthread_mutex_destroy(&this->_q_lock);
-    }
+void RpcServer::run() {
+    cout << "RpcServer::run()" << endl;
+    _frontend.bind(_port);
+    _backend.bind("inproc://rpc-backend");
 
-    void run() {
-        cout << "RpcServer::run()" << endl;
-        _frontend.bind(_port);
-        _backend.bind("inproc://rpc-backend");
-
-        //std::vector<RpcWorker*> workers;
-        std::vector<pthread_t*> worker_threads;
+    //std::vector<RpcWorker*> workers;
+    std::vector<pthread_t*> worker_threads;
         
-        // How many threads are writing to disk at once?
-        int nworkers = 2;
+    // How many threads are writing to disk at once?
+    int nworkers = 2;
 
-        for (int i=0; i<nworkers; i++) {
-            pthread_t* thread = new pthread_t;
-            //RpcWorker* worker = new RpcWorker(_ctx, ZMQ_DEALER);
-            //workers.push_back(worker);
-            //pthread_create(thread, NULL, std::bind(&RpcWorker::work, worker), NULL);
-            rpc_worker_thread_context *context = new rpc_worker_thread_context;
-            context->ctx = &_ctx;
-            pthread_create(thread, NULL, rpc_worker_thread_main, context);
-            worker_threads.push_back(thread);
+    for (int i=0; i<nworkers; i++) {
+        pthread_t* thread = new pthread_t;
+        //RpcWorker* worker = new RpcWorker(_ctx, ZMQ_DEALER);
+        //workers.push_back(worker);
+        //pthread_create(thread, NULL, std::bind(&RpcWorker::work, worker), NULL);
+        rpc_worker_thread_context *context = new rpc_worker_thread_context;
+        context->ctx = &_ctx;
+        context->server = this;
+        pthread_create(thread, NULL, rpc_worker_thread_main, context);
+        worker_threads.push_back(thread);
+    }
+
+    zmq_pollitem_t pollitems[] = {
+        { _frontend, 0, ZMQ_POLLIN, 0 },
+        { _backend,  0, ZMQ_POLLIN, 0 },
+    };
+
+    for (;;) {
+        int r = zmq::poll(pollitems, 2, -1);
+        if (r == -1) {
+            cout << "zmq::poll error: " << strerror(errno) << endl;
+            break;
         }
 
-        //vector<zmq::zmq_pollitem_t> pollitems;
-        //pollitems.push_back
-
-        zmq_pollitem_t pollitems[] = {
-            { _frontend, 0, ZMQ_POLLIN, 0 },
-            { _backend,  0, ZMQ_POLLIN, 0 },
-        };
-        //int rc = zmq_poll (items, 1, HEARTBEAT_INTERVAL * ZMQ_POLL_MSEC);
-
-        for (;;) {
-            int r = zmq::poll(pollitems, 2, -1);
-            if (r == -1) {
-                cout << "zmq::poll error: " << strerror(errno) << endl;
-                break;
-            }
-
-            zmq::message_t client;
-            zmq::message_t msg;
-
-            if (pollitems[0].revents & ZMQ_POLLIN) {
-                cout << "Received message from client" << endl;
-                _frontend.recv(&client);
-                _frontend.recv(&msg);
-                //
-                //zmq::message_t empty("hello", 6);
-                //_backend.send(empty);
-                _handle_request(&client, &msg);
-            }
-            if (pollitems[1].revents & ZMQ_POLLIN) {
-                cout << "Received reply from worker" << endl;
-                _backend.recv(&client);
-                _backend.recv(&msg);
-                _frontend.send(client);
-                _frontend.send(msg);
-            }
+        zmq::message_t client;
+        zmq::message_t msg;
+        
+        if (pollitems[0].revents & ZMQ_POLLIN) {
+            cout << "Received message from client" << endl;
+            _frontend.recv(&client);
+            _frontend.recv(&msg);
+            //zmq::message_t empty("hello", 6);
+            //_backend.send(empty);
+            _handle_request(&client, &msg);
         }
-
-        // FIXME -- join threads?
-        for (int i=0; i<nworkers; i++) {
-            //delete workers[i];
-            delete worker_threads[i];
+        if (pollitems[1].revents & ZMQ_POLLIN) {
+            cout << "Received reply from worker" << endl;
+            _backend.recv(&client);
+            _backend.recv(&msg);
+            _frontend.send(client);
+            _frontend.send(msg);
         }
     }
 
-protected:
-    int _handle_request(zmq::message_t* client, zmq::message_t* request) {
-        const char* req_data = reinterpret_cast<const char *>(request->data());
-        std::size_t offset = 0;
+    // FIXME -- join threads?
+    for (int i=0; i<nworkers; i++) {
+        //delete workers[i];
+        delete worker_threads[i];
+    }
+}
 
-        // Unpack the function name (string)
-        msgpack::object_handle oh =
-            msgpack::unpack(req_data, request->size(), offset);
-        string funcname = oh.get().as<string>();
+int RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) {
+    const char* req_data = reinterpret_cast<const char *>(request->data());
+    std::size_t offset = 0;
 
-        // RPC reply
-        msgpack::sbuffer buffer;
+    // Unpack the function name (string)
+    msgpack::object_handle oh =
+        msgpack::unpack(req_data, request->size(), offset);
+    string funcname = oh.get().as<string>();
 
-        if (funcname == "get_beam_metadata") {
-            cout << "RPC get_beam_metadata() called" << endl;
-            // No input arguments, so don't unpack anything more
-            /*
-            // FIXME
-            std::vector<
-                std::unordered_map<std::string, uint64_t> > R =
-                stream->get_statistics();
-            msgpack::pack(buffer, R);
-             */
+    // RPC reply
+    msgpack::sbuffer buffer;
 
-            //  Send reply back to client
-            cout << "Sending RPC reply of size " << buffer.size() << endl;
-            // FIXME -- this copies the buffer
-            zmq::message_t reply(buffer.data(), buffer.size());
-            zmq::message_t client_copy;
-            client_copy.copy(client);
-            int nsent = _frontend.send(client_copy, ZMQ_MORE);
-            //cout << "Sent " << nsent << " (vs " << buffer.size() << ")" << endl;
-            if (nsent == -1) {
-                cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
-                return -1;
-            }
-            nsent = _frontend.send(reply);
-            if (nsent == -1) {
-                cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
-                return -1;
-            }
-            return 0;
+    if (funcname == "get_beam_metadata") {
+        cout << "RPC get_beam_metadata() called" << endl;
+        // No input arguments, so don't unpack anything more
+        /*
+        // FIXME
+        std::vector<
+            std::unordered_map<std::string, uint64_t> > R =
+            stream->get_statistics();
+        msgpack::pack(buffer, R);
+         */
 
-            /*
-        } else if (funcname == "get_chunks") {
-            cout << "RPC get_chunks() called" << endl;
-
-            // grab GetChunks_Request argument
-            msgpack::object_handle oh =
-                msgpack::unpack(req_data, request.size(), offset);
-            GetChunks_Request req = oh.get().as<GetChunks_Request>();
-
-            vector<shared_ptr<assembled_chunk> > chunks;
-            _get_chunks(stream, req.beams, req.min_chunk, req.max_chunk, chunks);
-            // set compression flag... save original values and revert?
-            for (auto it = chunks.begin(); it != chunks.end(); it++)
-                (*it)->msgpack_bitshuffle = req.compress;
-
-            msgpack::pack(buffer, chunks);
-             */
-        } else if (funcname == "write_chunks") {
-            cout << "RPC write_chunks() called" << endl;
-
-            // grab WriteChunks_Request argument
-            msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
-            WriteChunks_Request req = oh.get().as<WriteChunks_Request>();
-
-            cout << "WriteChunks request: FPGA range " << req.min_fpga << "--" << req.max_fpga << endl;
-            cout << "beams: [ ";
-            for (auto beamit = req.beams.begin(); beamit != req.beams.end(); beamit++)
-                cout << (*beamit) << " ";
-            cout << "]" << endl;
-
-            vector<shared_ptr<assembled_chunk> > chunks;
-            _get_chunks(req.beams, req.min_fpga, req.max_fpga, chunks);
-
-            cout << "get_chunks: got " << chunks.size() << " chunks" << endl;
-
-            // FIXME -- should we send back an immediate status reply with the
-            // list of chunks & filenames to be written??
-
-            //vector<WriteChunks_Reply> rtn;
-            for (auto chunk = chunks.begin(); chunk != chunks.end(); chunk++) {
-                // WriteChunks_Reply rep;
-                // rep.beam = (*chunk)->beam_id;
-                // rep.chunk = (*chunk)->ichunk;
-                // rep.success = false;
-                // cout << "Writing chunk for beam " << rep.beam << ", chunk " << rep.chunk << endl;
-                write_chunk_request w;
-                char* strp = NULL;
-                int r = asprintf(&strp, req.filename_pattern.c_str(), (*chunk)->beam_id, (*chunk)->ichunk);
-                if (r == -1) {
-                    //rep.error_message = "asprintf failed to format filename";
-                    //rtn.push_back(rep);
-                    cout << "Failed to format filename: " << req.filename_pattern << endl;
-                    continue;
-                }
-                w.filename = string(strp);
-                free(strp);
-                //rep.filename = filename;
-                // try {
-                //     cout << "write_msgpack_file..." << endl;
-                //     (*chunk)->msgpack_bitshuffle = true;
-                //     (*chunk)->write_msgpack_file(filename);
-                //     cout << "write_msgpack_file succeeded" << endl;
-                // } catch (...) {
-                //     cout << "Write sgpack file failed." << endl;
-                //     rep.error_message = "Failed to write msgpack file";
-                //     rtn.push_back(rep);
-                //     continue;
-                // }
-                // rep.success = true;
-                // rtn.push_back(rep);
-                // // Drop this chunk so its memory can be reclaimed
-                // (*chunk) = shared_ptr<assembled_chunk>();
-                w.client = new zmq::message_t;
-                w.client->copy(client);
-                w.priority = req.priority;
-                w.chunk = *chunk;
-
-                _add_write_request(w);
-            }
-            //msgpack::pack(buffer, rtn);
-            return 0;
-        } else {
-            // Silent failure?
-            cout << "Error: unknown RPC function name: " << funcname << endl;
-            //msgpack::pack(buffer, "No such RPC method");
+        //  Send reply back to client
+        cout << "Sending RPC reply of size " << buffer.size() << endl;
+        // FIXME -- this copies the buffer
+        zmq::message_t reply(buffer.data(), buffer.size());
+        zmq::message_t client_copy;
+        client_copy.copy(client);
+        int nsent = _frontend.send(client_copy, ZMQ_MORE);
+        //cout << "Sent " << nsent << " (vs " << buffer.size() << ")" << endl;
+        if (nsent == -1) {
+            cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
             return -1;
         }
-    }
-        
-    void _add_write_request(write_chunk_request &req) {
-        pthread_mutex_lock(&this->_q_lock);
-        // FIXME -- priority queue; merge requests for same chunk.
-        _write_reqs.push_back(req);
-        cout << "Added write request: now " << _write_reqs.size() << " queued" << endl;
-        pthread_mutex_unlock(&this->_q_lock);
-    }
-
-    void _get_chunks(vector<uint64_t> &beams,
-                     uint64_t min_fpga, uint64_t max_fpga,
-                     vector<shared_ptr<assembled_chunk> > &chunks) {
-        cout << "_get_chunks: checking " << _ringbufs.size() << " ring buffers" << endl;
-        for (auto it = _ringbufs.begin(); it != _ringbufs.end(); it++) {
-            cout << "_get_chunks: checking ringbuf with beamid " << (*it)->_beam_id << endl;
-            for (auto beamit = beams.begin(); beamit != beams.end(); beamit++) {
-                cout << "  beam " << (*beamit) << endl;
-                if (*beamit != (*it)->_beam_id)
-                    continue;
-                (*it)->retrieve(min_fpga, max_fpga, chunks);
-                break;
-            }
+        nsent = _frontend.send(reply);
+        if (nsent == -1) {
+            cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
+            return -1;
         }
-        
+        return 0;
+
+        /*
+    } else if (funcname == "get_chunks") {
+        cout << "RPC get_chunks() called" << endl;
+
+        // grab GetChunks_Request argument
+        msgpack::object_handle oh =
+            msgpack::unpack(req_data, request.size(), offset);
+        GetChunks_Request req = oh.get().as<GetChunks_Request>();
+
+        vector<shared_ptr<assembled_chunk> > chunks;
+        _get_chunks(stream, req.beams, req.min_chunk, req.max_chunk, chunks);
+        // set compression flag... save original values and revert?
+        for (auto it = chunks.begin(); it != chunks.end(); it++)
+            (*it)->msgpack_bitshuffle = req.compress;
+
+        msgpack::pack(buffer, chunks);
+         */
+    } else if (funcname == "write_chunks") {
+        cout << "RPC write_chunks() called" << endl;
+
+        // grab WriteChunks_Request argument
+        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
+        WriteChunks_Request req = oh.get().as<WriteChunks_Request>();
+
+        cout << "WriteChunks request: FPGA range " << req.min_fpga << "--" << req.max_fpga << endl;
+        cout << "beams: [ ";
+        for (auto beamit = req.beams.begin(); beamit != req.beams.end(); beamit++)
+            cout << (*beamit) << " ";
+        cout << "]" << endl;
+
+        vector<shared_ptr<assembled_chunk> > chunks;
+        _get_chunks(req.beams, req.min_fpga, req.max_fpga, chunks);
+
+        cout << "get_chunks: got " << chunks.size() << " chunks" << endl;
+
+        // FIXME -- should we send back an immediate status reply with the
+        // list of chunks & filenames to be written??
+
+        //vector<WriteChunks_Reply> rtn;
+        for (auto chunk = chunks.begin(); chunk != chunks.end(); chunk++) {
+            // WriteChunks_Reply rep;
+            // rep.beam = (*chunk)->beam_id;
+            // rep.chunk = (*chunk)->ichunk;
+            // rep.success = false;
+            // cout << "Writing chunk for beam " << rep.beam << ", chunk " << rep.chunk << endl;
+            write_chunk_request w;
+            char* strp = NULL;
+            int r = asprintf(&strp, req.filename_pattern.c_str(), (*chunk)->beam_id, (*chunk)->ichunk);
+            if (r == -1) {
+                //rep.error_message = "asprintf failed to format filename";
+                //rtn.push_back(rep);
+                cout << "Failed to format filename: " << req.filename_pattern << endl;
+                continue;
+            }
+            w.filename = string(strp);
+            free(strp);
+            //rep.filename = filename;
+            // try {
+            //     cout << "write_msgpack_file..." << endl;
+            //     (*chunk)->msgpack_bitshuffle = true;
+            //     (*chunk)->write_msgpack_file(filename);
+            //     cout << "write_msgpack_file succeeded" << endl;
+            // } catch (...) {
+            //     cout << "Write sgpack file failed." << endl;
+            //     rep.error_message = "Failed to write msgpack file";
+            //     rtn.push_back(rep);
+            //     continue;
+            // }
+            // rep.success = true;
+            // rtn.push_back(rep);
+            // // Drop this chunk so its memory can be reclaimed
+            // (*chunk) = shared_ptr<assembled_chunk>();
+            w.client = new zmq::message_t;
+            w.client->copy(client);
+            w.priority = req.priority;
+            w.chunk = *chunk;
+
+            _add_write_request(w);
+        }
+        //msgpack::pack(buffer, rtn);
+        return 0;
+    } else {
+        // Silent failure?
+        cout << "Error: unknown RPC function name: " << funcname << endl;
+        //msgpack::pack(buffer, "No such RPC method");
+        return -1;
     }
+}
+        
+void RpcServer::_add_write_request(write_chunk_request &req) {
+    pthread_mutex_lock(&this->_q_lock);
+    // FIXME -- priority queue; merge requests for same chunk.
+    _write_reqs.push_back(req);
+    cout << "Added write request: now " << _write_reqs.size() << " queued" << endl;
+    pthread_mutex_unlock(&this->_q_lock);
+    // Also send message to backend workers
+    zmq::message_t empty("hello", 6);
+    _backend.send(empty);
+}
 
-private:
-    zmq::context_t &_ctx;
-    zmq::socket_t _frontend;
-    zmq::socket_t _backend;
-    string _port;
-
-    // the queue of write requests to be run by the RpcWorker(s)
-    deque<write_chunk_request> _write_reqs;
-    // (and the mutex for it)
-    pthread_mutex_t _q_lock;
-
-    vector<shared_ptr<L1Ringbuf> > _ringbufs;
-
-};
+void RpcServer::_get_chunks(vector<uint64_t> &beams,
+                            uint64_t min_fpga, uint64_t max_fpga,
+                            vector<shared_ptr<assembled_chunk> > &chunks) {
+    cout << "_get_chunks: checking " << _ringbufs.size() << " ring buffers" << endl;
+    for (auto it = _ringbufs.begin(); it != _ringbufs.end(); it++) {
+        cout << "_get_chunks: checking ringbuf with beamid " << (*it)->_beam_id << endl;
+        for (auto beamit = beams.begin(); beamit != beams.end(); beamit++) {
+            cout << "  beam " << (*beamit) << endl;
+            if (*beamit != (*it)->_beam_id)
+                continue;
+            (*it)->retrieve(min_fpga, max_fpga, chunks);
+            break;
+        }
+    }
+    
+}
 
 struct rpc_thread_contextX {
     vector<shared_ptr<L1Ringbuf> > ringbufs;
