@@ -116,7 +116,7 @@ static void *rpc_thread_main(void *opaque_arg) {
             WriteChunks_Request req = oh.get().as<WriteChunks_Request>();
 
             vector<shared_ptr<assembled_chunk> > chunks;
-            _get_chunks(stream, req.beams, req.min_chunk, req.max_chunk, chunks);
+            _get_chunks(stream, req.beams, req.min_fpga, req.max_fpga, chunks);
             vector<WriteChunks_Reply> rtn;
 
             for (auto chunk = chunks.begin(); chunk != chunks.end(); chunk++) {

@@ -38,10 +38,13 @@ static bool
 assembled_chunk_overlaps_range(const shared_ptr<assembled_chunk> ch, 
                                uint64_t min_fpga_counts,
                                uint64_t max_fpga_counts) {
+    if (min_fpga_counts == 0 && max_fpga_counts == 0)
+        return true;
     uint64_t fpga0 = ch->isample * ch->fpga_counts_per_sample;
     uint64_t fpga1 = fpga0 + constants::nt_per_assembled_chunk * ch->fpga_counts_per_sample;
     cout << "Chunk FPGA counts range " << fpga0 << " to " << fpga1 << endl;
-    if ((fpga0 > max_fpga_counts) || (fpga1 < min_fpga_counts))
+    if ((max_fpga_counts && (fpga0 > max_fpga_counts)) ||
+        (min_fpga_counts && (fpga1 < min_fpga_counts)))
         return false;
     return true;
 }
@@ -52,7 +55,8 @@ class L1Ringbuf {
     static const size_t Nbins = 4;
 
 public:
-    L1Ringbuf() :
+    L1Ringbuf(uint64_t beam_id) :
+        _beam_id(beam_id),
         _q(),
         _rb(),
         _dropped()
@@ -141,6 +145,9 @@ public:
 
         
     }
+
+public:
+    uint64_t _beam_id;
     
 protected:
     // The queue for downstream
@@ -193,7 +200,10 @@ void AssembledChunkRingbuf::dropping(shared_ptr<assembled_chunk> t) {
 
 
 #include <zmq.hpp>
+#include <msgpack.hpp>
 #include <pthread.h>
+
+#include "rpc.hpp"
 
 // RPC multi-threaded server, from
 // http://zguide.zeromq.org/cpp:asyncsrv
@@ -252,14 +262,29 @@ static void* rpc_worker_thread_main(void *opaque_arg) {
 }
 
 
+struct write_chunk_request {
+    zmq::message_t* client;
+    string filename;
+    int priority;
+    shared_ptr<assembled_chunk> chunk;
+};
+
 class RpcServer {
 public:
-    RpcServer(zmq::context_t &ctx, string port) :
+    RpcServer(zmq::context_t &ctx, string port,
+              vector<shared_ptr<L1Ringbuf> > ringbufs) :
         _ctx(ctx),
         _frontend(_ctx, ZMQ_ROUTER),
         _backend(_ctx, ZMQ_DEALER),
-        _port(port)
-    {}
+        _port(port),
+        _ringbufs(ringbufs)
+    {
+        pthread_mutex_init(&this->_q_lock, NULL);
+    }
+
+    ~RpcServer() {
+        pthread_mutex_destroy(&this->_q_lock);
+    }
 
     void run() {
         cout << "RpcServer::run()" << endl;
@@ -293,7 +318,11 @@ public:
         //int rc = zmq_poll (items, 1, HEARTBEAT_INTERVAL * ZMQ_POLL_MSEC);
 
         for (;;) {
-            int rc = zmq::poll(pollitems, 2, -1);
+            int r = zmq::poll(pollitems, 2, -1);
+            if (r == -1) {
+                cout << "zmq::poll error: " << strerror(errno) << endl;
+                break;
+            }
 
             zmq::message_t client;
             zmq::message_t msg;
@@ -303,8 +332,9 @@ public:
                 _frontend.recv(&client);
                 _frontend.recv(&msg);
                 //
-                zmq::message_t empty("hello", 6);
-                _backend.send(empty);
+                //zmq::message_t empty("hello", 6);
+                //_backend.send(empty);
+                _handle_request(&client, &msg);
             }
             if (pollitems[1].revents & ZMQ_POLLIN) {
                 cout << "Received reply from worker" << endl;
@@ -322,15 +352,180 @@ public:
         }
     }
 
+protected:
+    int _handle_request(zmq::message_t* client, zmq::message_t* request) {
+        const char* req_data = reinterpret_cast<const char *>(request->data());
+        std::size_t offset = 0;
+
+        // Unpack the function name (string)
+        msgpack::object_handle oh =
+            msgpack::unpack(req_data, request->size(), offset);
+        string funcname = oh.get().as<string>();
+
+        // RPC reply
+        msgpack::sbuffer buffer;
+
+        if (funcname == "get_beam_metadata") {
+            cout << "RPC get_beam_metadata() called" << endl;
+            // No input arguments, so don't unpack anything more
+            /*
+            // FIXME
+            std::vector<
+                std::unordered_map<std::string, uint64_t> > R =
+                stream->get_statistics();
+            msgpack::pack(buffer, R);
+             */
+
+            //  Send reply back to client
+            cout << "Sending RPC reply of size " << buffer.size() << endl;
+            // FIXME -- this copies the buffer
+            zmq::message_t reply(buffer.data(), buffer.size());
+            zmq::message_t client_copy;
+            client_copy.copy(client);
+            int nsent = _frontend.send(client_copy, ZMQ_MORE);
+            //cout << "Sent " << nsent << " (vs " << buffer.size() << ")" << endl;
+            if (nsent == -1) {
+                cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
+                return -1;
+            }
+            nsent = _frontend.send(reply);
+            if (nsent == -1) {
+                cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
+                return -1;
+            }
+            return 0;
+
+            /*
+        } else if (funcname == "get_chunks") {
+            cout << "RPC get_chunks() called" << endl;
+
+            // grab GetChunks_Request argument
+            msgpack::object_handle oh =
+                msgpack::unpack(req_data, request.size(), offset);
+            GetChunks_Request req = oh.get().as<GetChunks_Request>();
+
+            vector<shared_ptr<assembled_chunk> > chunks;
+            _get_chunks(stream, req.beams, req.min_chunk, req.max_chunk, chunks);
+            // set compression flag... save original values and revert?
+            for (auto it = chunks.begin(); it != chunks.end(); it++)
+                (*it)->msgpack_bitshuffle = req.compress;
+
+            msgpack::pack(buffer, chunks);
+             */
+        } else if (funcname == "write_chunks") {
+            cout << "RPC write_chunks() called" << endl;
+
+            // grab WriteChunks_Request argument
+            msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
+            WriteChunks_Request req = oh.get().as<WriteChunks_Request>();
+
+            cout << "WriteChunks request: FPGA range " << req.min_fpga << "--" << req.max_fpga << endl;
+            cout << "beams: [ ";
+            for (auto beamit = req.beams.begin(); beamit != req.beams.end(); beamit++)
+                cout << (*beamit) << " ";
+            cout << "]" << endl;
+
+            vector<shared_ptr<assembled_chunk> > chunks;
+            _get_chunks(req.beams, req.min_fpga, req.max_fpga, chunks);
+
+            cout << "get_chunks: got " << chunks.size() << " chunks" << endl;
+
+            // FIXME -- should we send back an immediate status reply with the
+            // list of chunks & filenames to be written??
+
+            //vector<WriteChunks_Reply> rtn;
+            for (auto chunk = chunks.begin(); chunk != chunks.end(); chunk++) {
+                // WriteChunks_Reply rep;
+                // rep.beam = (*chunk)->beam_id;
+                // rep.chunk = (*chunk)->ichunk;
+                // rep.success = false;
+                // cout << "Writing chunk for beam " << rep.beam << ", chunk " << rep.chunk << endl;
+                write_chunk_request w;
+                char* strp = NULL;
+                int r = asprintf(&strp, req.filename_pattern.c_str(), (*chunk)->beam_id, (*chunk)->ichunk);
+                if (r == -1) {
+                    //rep.error_message = "asprintf failed to format filename";
+                    //rtn.push_back(rep);
+                    cout << "Failed to format filename: " << req.filename_pattern << endl;
+                    continue;
+                }
+                w.filename = string(strp);
+                free(strp);
+                //rep.filename = filename;
+                // try {
+                //     cout << "write_msgpack_file..." << endl;
+                //     (*chunk)->msgpack_bitshuffle = true;
+                //     (*chunk)->write_msgpack_file(filename);
+                //     cout << "write_msgpack_file succeeded" << endl;
+                // } catch (...) {
+                //     cout << "Write sgpack file failed." << endl;
+                //     rep.error_message = "Failed to write msgpack file";
+                //     rtn.push_back(rep);
+                //     continue;
+                // }
+                // rep.success = true;
+                // rtn.push_back(rep);
+                // // Drop this chunk so its memory can be reclaimed
+                // (*chunk) = shared_ptr<assembled_chunk>();
+                w.client = new zmq::message_t;
+                w.client->copy(client);
+                w.priority = req.priority;
+                w.chunk = *chunk;
+
+                _add_write_request(w);
+            }
+            //msgpack::pack(buffer, rtn);
+            return 0;
+        } else {
+            // Silent failure?
+            cout << "Error: unknown RPC function name: " << funcname << endl;
+            //msgpack::pack(buffer, "No such RPC method");
+            return -1;
+        }
+    }
+        
+    void _add_write_request(write_chunk_request &req) {
+        pthread_mutex_lock(&this->_q_lock);
+        // FIXME -- priority queue; merge requests for same chunk.
+        _write_reqs.push_back(req);
+        cout << "Added write request: now " << _write_reqs.size() << " queued" << endl;
+        pthread_mutex_unlock(&this->_q_lock);
+    }
+
+    void _get_chunks(vector<uint64_t> &beams,
+                     uint64_t min_fpga, uint64_t max_fpga,
+                     vector<shared_ptr<assembled_chunk> > &chunks) {
+        cout << "_get_chunks: checking " << _ringbufs.size() << " ring buffers" << endl;
+        for (auto it = _ringbufs.begin(); it != _ringbufs.end(); it++) {
+            cout << "_get_chunks: checking ringbuf with beamid " << (*it)->_beam_id << endl;
+            for (auto beamit = beams.begin(); beamit != beams.end(); beamit++) {
+                cout << "  beam " << (*beamit) << endl;
+                if (*beamit != (*it)->_beam_id)
+                    continue;
+                (*it)->retrieve(min_fpga, max_fpga, chunks);
+                break;
+            }
+        }
+        
+    }
+
 private:
     zmq::context_t &_ctx;
     zmq::socket_t _frontend;
     zmq::socket_t _backend;
     string _port;
+
+    // the queue of write requests to be run by the RpcWorker(s)
+    deque<write_chunk_request> _write_reqs;
+    // (and the mutex for it)
+    pthread_mutex_t _q_lock;
+
+    vector<shared_ptr<L1Ringbuf> > _ringbufs;
+
 };
 
 struct rpc_thread_contextX {
-    //shared_ptr<ch_frb_io::intensity_network_stream> stream;
+    vector<shared_ptr<L1Ringbuf> > ringbufs;
     // eg, "tcp://*:5555";
     string port;
 };
@@ -339,19 +534,20 @@ static void *rpc_thread_main(void *opaque_arg) {
     rpc_thread_contextX *context = reinterpret_cast<rpc_thread_contextX *> (opaque_arg);
     //shared_ptr<ch_frb_io::intensity_network_stream> stream = context->stream;
     string port = context->port;
+    vector<shared_ptr<L1Ringbuf> > ringbufs = context->ringbufs;
     delete context;
 
     zmq::context_t ctx;
-    RpcServer rpc(ctx, port);
+    RpcServer rpc(ctx, port, ringbufs);
     rpc.run();
     return NULL;
 }
 
-void rpc_server_start(string port) {
+void rpc_server_start(string port, vector<shared_ptr<L1Ringbuf> > ringbufs) {
     cout << "Starting RPC server on " << port << endl;
 
     rpc_thread_contextX *context = new rpc_thread_contextX;
-    //context->stream = stream;
+    context->ringbufs = ringbufs;
     context->port = port;
 
     pthread_t* rpc_thread = new pthread_t;
@@ -369,10 +565,12 @@ void rpc_server_start(string port) {
 
 int main() {
 
-    //rpc_server_start("tcp://*:5555");
-    rpc_server_start("tcp://127.0.0.1:5555");
+    vector<shared_ptr<L1Ringbuf> > ringbufs;
+    shared_ptr<L1Ringbuf> rb(new L1Ringbuf(1));
+    ringbufs.push_back(rb);
 
-    L1Ringbuf rb;
+    rpc_server_start("tcp://127.0.0.1:5555", ringbufs);
+
 
     int beam = 77;
     int nupfreq = 4;
@@ -390,10 +588,10 @@ int main() {
     for (int i=0; i<100; i++) {
         ch = new assembled_chunk(beam, nupfreq, nt_per, fpga_per, i);
         cout << "Pushing " << i << endl;
-        rb.push(ch);
+        rb->push(ch);
 
         cout << "Pushed " << i << endl;
-        rb.print();
+        rb->print();
         cout << endl;
 
         // downstream thread consumes with a lag of 2...
@@ -401,23 +599,23 @@ int main() {
             // Randomly consume 0 to 2 chunks
             if (rando(rng)) {
                 cout << "Downstream consumes a chunk" << endl;
-                rb.pop();
+                rb->pop();
             }
             if (rando(rng)) {
                 cout << "Downstream consumes a chunk" << endl;
-                rb.pop();
+                rb->pop();
             }
         }
     }
 
     cout << "End state:" << endl;
-    rb.print();
+    rb->print();
     cout << endl;
 
 
     vector<shared_ptr<assembled_chunk> > chunks;
     cout << "Retrieving chunks..." << endl;
-    rb.retrieve(30000000, 50000000, chunks);
+    rb->retrieve(30000000, 50000000, chunks);
     cout << "Got " << chunks.size() << endl;
 
 

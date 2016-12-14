@@ -51,7 +51,10 @@ IO_OBJS = \
 	../ch_frb_io/intensity_packet.o \
 	../ch_frb_io/lexical_cast.o \
 	../ch_frb_io/udp_packet_list.o \
-	../ch_frb_io/udp_packet_ringbuf.o
+	../ch_frb_io/udp_packet_ringbuf.o \
+	../ch_frb_io/bitshuffle/bitshuffle.o \
+	../ch_frb_io/bitshuffle/bitshuffle_core.o \
+	../ch_frb_io/bitshuffle/iochain.o
 
 # Append compile flags
 CPP_CFLAGS ?=
@@ -80,7 +83,7 @@ ch-frb-test-debug: ch-frb-test.cpp ch_frb_rpc.o $(IO_OBJS)
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lzmq -lhdf5
 
 ringbuf: l1-ringbuf.cpp $(IO_OBJS)
-	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lzmq -lhdf5
+	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lzmq -lhdf5 -llz4
 
 clean:
 	rm -f *.o *~ $(BINARIES)

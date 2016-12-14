@@ -107,10 +107,11 @@ public:
 class WriteChunks_Request {
 public:
     vector<uint64_t> beams;
-    uint64_t min_chunk;    // or 0 for no limit
-    uint64_t max_chunk;    // or 0 for no limit
+    uint64_t min_fpga;    // or 0 for no limit
+    uint64_t max_fpga;    // or 0 for no limit
     string filename_pattern; // filename printf pattern; file = sprintf(pattern, beam, ichunk)
-    MSGPACK_DEFINE(beams, min_chunk, max_chunk, filename_pattern);
+    int priority;
+    MSGPACK_DEFINE(beams, min_fpga, max_fpga, filename_pattern, priority);
 };
 
 class WriteChunks_Reply {

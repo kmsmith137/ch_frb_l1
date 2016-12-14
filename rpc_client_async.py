@@ -8,11 +8,11 @@ def client_thread(context, me):
     socket.connect('tcp://localhost:5555')
     
     beams = [0,1,2]
-    minchunk = 0
-    maxchunk = 5
+    minfpga = 0
+    maxfpga = 50000000
     filename_pat = 'chunk-%02llu-chunk%08llu-py.msgpack'
     msg = (msgpack.packb('write_chunks') +
-           msgpack.packb([beams, minchunk, maxchunk, filename_pat]))
+           msgpack.packb([beams, minfpga, maxfpga, filename_pat]))
     print('Client', me, ': sending request...')
     socket.send(msg)
     #print('Client', me', : Waiting for write_chunks replies...')
@@ -32,6 +32,11 @@ if __name__ == '__main__':
     t1.start()
     t2.start()
 
+    from time import sleep
+    sleep(10)
+    import sys
+    sys.exit(0)
+    
     t1.join()
     t2.join()
     context.term()
