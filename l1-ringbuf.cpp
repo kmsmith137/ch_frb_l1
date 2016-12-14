@@ -300,8 +300,12 @@ public:
 
             cout << "Worker: sending reply for client " << msg_string(*(w.client)) << endl;
 
-            _socket.send(w.client, ZMQ_SNDMORE);
+            cout << " client message: " << w.client->size() << " bytes" << endl;
+
+            _socket.send(*w.client, ZMQ_SNDMORE);
+            cout << " reply: " << reply.size() << " bytes" << endl;
             _socket.send(reply);
+            delete w.client;
         }
     }
 
@@ -409,8 +413,28 @@ void RpcServer::run() {
         }
         if (pollitems[1].revents & ZMQ_POLLIN) {
             cout << "Received reply from worker" << endl;
+            //bool more;
+            int more;
+            //zmq::message_t empty;
+            //_backend.recv(&empty);
+            //cout << "empty: " << empty.size() << " bytes" << endl;
+            //bool more = _backend.getsockopt<bool>(ZMQ_RCVMORE);
+            //cout << "more: " << more << endl;
+            //assert(more);
             _backend.recv(&client);
+            cout << "client: " << client.size() << " bytes" << endl;
+            cout << "  client: " << msg_string(client) << endl;
+            //more = _backend.getsockopt<bool>(ZMQ_RCVMORE);
+            more = _backend.getsockopt<int>(ZMQ_RCVMORE);
+            //_backend.getsockopt(ZMQ_RCVMORE
+            cout << "more: " << more << endl;
+            assert(more);
             _backend.recv(&msg);
+            cout << "message: " << msg.size() << " bytes" << endl;
+            //more = _backend.getsockopt<bool>(ZMQ_RCVMORE);
+            more = _backend.getsockopt<int>(ZMQ_RCVMORE);
+            cout << "more: " << more << endl;
+            assert(!more);
 
             msgpack::object_handle oh =
                 msgpack::unpack(reinterpret_cast<const char *>(msg.data()),
@@ -418,7 +442,6 @@ void RpcServer::run() {
             //WriteChunks_Reply rep = oh.get().as<WriteChunks_Reply>();
             msgpack::object obj = oh.get();
             cout << "  message: " << obj << endl;
-            cout << "  client: " << msg_string(client) << endl;
 
             _frontend.send(client, ZMQ_SNDMORE);
             _frontend.send(msg);
@@ -533,8 +556,8 @@ int RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) 
             //rep.filename = filename;
             // rep.success = true;
             // rtn.push_back(rep);
-            w.client = new zmq::message_t;
-            w.client->copy(client);
+            //w.client->copy(client);
+            w.client = new zmq::message_t(client->data(), client->size());
             w.priority = req.priority;
             w.chunk = *chunk;
 
