@@ -269,15 +269,32 @@ public:
             // Pull a write_chunk_request off the queue!
             write_chunk_request w = _server->pop_write_request();
 
-            //zmq::message_t copied_id;
-            //zmq::message_t copied_msg;
-            //copied_id.copy(&identity);
-            //copied_msg.copy(&msg);
-            // FIXME
-            //_socket.send(client, ZMQ_SNDMORE);
-            _socket.send(msg);
-            //zmq::message_t reply;
-            //_socket.send(reply);
+            cout << "Worker got write request: beam " << w.chunk->beam_id << ", chunk " << w.chunk->ichunk << ", FPGA counts " << (w.chunk->isample * w.chunk->fpga_counts_per_sample) << endl;
+
+            WriteChunks_Reply rep;
+            rep.beam = w.chunk->beam_id;
+            rep.chunk = w.chunk->ichunk;
+            rep.success = false;
+            rep.filename = w.filename;
+
+            try {
+                cout << "write_msgpack_file..." << endl;
+                w.chunk->msgpack_bitshuffle = true;
+                w.chunk->write_msgpack_file(w.filename);
+                cout << "write_msgpack_file succeeded" << endl;
+                rep.success = true;
+            } catch (...) {
+                cout << "Write msgpack file failed." << endl;
+                rep.error_message = "Failed to write msgpack file";
+            }
+            // Drop this chunk so its memory can be reclaimed
+            w.chunk.reset();
+
+            msgpack::sbuffer buffer;
+            msgpack::pack(buffer, rep);
+            zmq::message_t reply(buffer.data(), buffer.size());
+            _socket.send(w.client, ZMQ_SNDMORE);
+            _socket.send(reply);
         }
     }
 
@@ -420,7 +437,7 @@ int RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) 
         zmq::message_t reply(buffer.data(), buffer.size());
         zmq::message_t client_copy;
         client_copy.copy(client);
-        int nsent = _frontend.send(client_copy, ZMQ_MORE);
+        int nsent = _frontend.send(client_copy, ZMQ_SNDMORE);
         //cout << "Sent " << nsent << " (vs " << buffer.size() << ")" << endl;
         if (nsent == -1) {
             cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
