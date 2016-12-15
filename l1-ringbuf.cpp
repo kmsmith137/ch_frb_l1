@@ -1,3 +1,4 @@
+#include <unistd.h>
 #include <iostream>
 #include "ch_frb_io.hpp"
 #include "ringbuf.hpp"
@@ -5,7 +6,7 @@ using namespace ch_frb_io;
 using namespace std;
 
 std::ostream& operator<<(std::ostream& s, const assembled_chunk& ch) {
-    s << "assembled_chunk(beam " << ch.beam_id << ", ichunk " << ch.ichunk << ")";
+    s << "assembled_chunk(beam " << ch.beam_id << ", ichunk " << ch.ichunk << " at " << (void*)(&ch) << ")";
     return s;
 }
 
@@ -128,17 +129,23 @@ public:
         cout << "Retrieve: checking downstream queue" << endl;
         for (auto it = _q.begin(); it != _q.end(); it++) {
             if (assembled_chunk_overlaps_range(*it, min_fpga_counts, max_fpga_counts)) {
+                cout << "  got: " << *(*it) << endl;
                 chunks.push_back(*it);
             }
         }
         for (size_t i=0; i<Nbins; i++) {
             cout << "Retrieve: binning " << i << endl;
+            size_t size0 = chunks.size();
             _rb[i]->snapshot(chunks, std::bind(assembled_chunk_overlaps_range, placeholders::_1, min_fpga_counts, max_fpga_counts));
+            size_t size1 = chunks.size();
+            for (size_t j=size0; j<size1; j++)
+                cout << "  got: " << *(chunks[j]) << endl;
 
             if ((i < Nbins-1) && (_dropped[i])) {
                 cout << "Checking dropped chunk at level " << i << endl;
                 if (assembled_chunk_overlaps_range(_dropped[i], min_fpga_counts, max_fpga_counts)) {
                     chunks.push_back(_dropped[i]);
+                    cout << "  got: " << *(_dropped[i]) << endl;
                 }
             }
         }
@@ -306,6 +313,11 @@ public:
             sbuffer_to_message(buffer, reply);
              */
             zmq::message_t reply = sbuffer_to_message(buffer);
+
+
+            // DEBUG
+            cout << "RpcWorker: sleeping..." << endl;
+            usleep(1000000);
 
             //cout << "Worker: sending reply for client " << msg_string(*(w.client)) << " and message " << reply.size() << " bytes" << endl;
             _socket.send(*w.client, ZMQ_SNDMORE);
@@ -557,11 +569,51 @@ int RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) 
 void RpcServer::_add_write_request(write_chunk_request &req) {
     pthread_mutex_lock(&this->_q_lock);
     // FIXME -- priority queue; merge requests for same chunk.
-    _write_reqs.push_back(req);
+
+    // Highest priority goes at the front of the queue.
+    // Search for the first element with priority lower than this one's.
+    // AND search for a higher-priority duplicate of this element.
+    deque<write_chunk_request>::iterator it;
+    for (it = _write_reqs.begin(); it != _write_reqs.end(); it++) {
+        if (it->chunk == req.chunk) {
+            cout << "Found an existing write request for chunk: beam " << req.chunk->beam_id << ", ichunk " << req.chunk->ichunk << " with >= priority" << endl;
+            pthread_mutex_unlock(&this->_q_lock);
+            return;
+        }
+        if (it->priority < req.priority)
+            // Found where we should insert this request!
+            break;
+    }
+    bool added = true;
+    _write_reqs.insert(it, req);
+    // Now check for duplicate chunks with lower priority after this
+    // newly added one.  Since the "insert" invalidates all existing
+    // iterators, we have to start from scratch.
+    // Iterate up to the chunk we just inserted.
+    for (it = _write_reqs.begin(); it != _write_reqs.end(); it++)
+        if (it->chunk == req.chunk)
+            break;
+    it++;
+    for (; it != _write_reqs.end(); it++) {
+        if (it->chunk == req.chunk) {
+            cout << "Found existing write request for this chunk with priority " << it->priority << " vs " << req.priority << endl;
+            _write_reqs.erase(it);
+            // There can only be one existing copy of this chunk, so we're done.
+            // Mark that we have not added more work overall.
+            added = false;
+            break;
+        }
+    }
+
     cout << "Added write request: now " << _write_reqs.size() << " queued" << endl;
+    cout << "Queue:" << endl;
+    for (it = _write_reqs.begin(); it != _write_reqs.end(); it++) {
+        cout << "  priority " << it->priority << ", chunk " << *(it->chunk) << endl;
+    }
     pthread_mutex_unlock(&this->_q_lock);
-    // Also send message to backend workers to trigger doing work.
-    _backend.send(NULL, 0);
+    if (added)
+        // Send (empty) message to backend workers to trigger doing work.
+        _backend.send(NULL, 0);
 }
 
 void RpcServer::_get_chunks(vector<uint64_t> &beams,
@@ -609,16 +661,15 @@ void rpc_server_start(string port, vector<shared_ptr<L1Ringbuf> > ringbufs) {
         throw runtime_error(string("pthread_create() failed to create RPC thread: ") + strerror(errno));
 }
 
-#include <unistd.h>
-
 int main() {
 
+    int beam = 77;
+
     vector<shared_ptr<L1Ringbuf> > ringbufs;
-    shared_ptr<L1Ringbuf> rb(new L1Ringbuf(1));
+    shared_ptr<L1Ringbuf> rb(new L1Ringbuf(beam));
     ringbufs.push_back(rb);
     rpc_server_start("tcp://127.0.0.1:5555", ringbufs);
 
-    int beam = 77;
     int nupfreq = 4;
     int nt_per = 16;
     int fpga_per = 400;

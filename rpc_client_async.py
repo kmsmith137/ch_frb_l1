@@ -8,18 +8,28 @@ def client_thread(context, me):
     socket.set(zmq.IDENTITY, "client%i" % me)
     socket.connect('tcp://localhost:5555')
     
-    beams = [0,1,2]
+    beams = [76,77,78]
     #minfpga = 0
     #maxfpga = 50000000
     #38502400 to 38912000
     minfpga = 38600000
     maxfpga = 38600000
+    priority = 10
     filename_pat = 'chunk-%02llu-chunk%08llu-py.msgpack'
     msg = (msgpack.packb('write_chunks') +
-           msgpack.packb([beams, minfpga, maxfpga, filename_pat]))
+           msgpack.packb([beams, minfpga, maxfpga, filename_pat, priority]))
     print('Client', me, ': sending request...')
     socket.send(msg)
-    #print('Client', me', : Waiting for write_chunks replies...')
+
+    beams = [77]
+    priority = 20
+    filename_pat = 'chunk-%02llu-chunk%08llu-py.msgpack'
+    msg = (msgpack.packb('write_chunks') +
+           msgpack.packb([beams, minfpga, maxfpga, filename_pat, priority]))
+    print('Client', me, ': sending request...')
+    socket.send(msg)
+
+    
     while True:
         msg = socket.recv()
         #print('Client', me, ': Received reply: %i bytes' % len(msg))
