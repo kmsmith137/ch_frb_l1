@@ -247,10 +247,19 @@ private:
     vector<shared_ptr<L1Ringbuf> > _ringbufs;
 };
 
+static void myfree(void* p, void*) {
+    ::free(p);
+}
+
+static zmq::message_t sbuffer_to_message(msgpack::sbuffer &buffer) {
+    zmq::message_t msg(buffer.data(), buffer.size(), myfree);
+    buffer.release();
+    return msg;
+}
+
 class RpcWorker {
 public:
-    RpcWorker(zmq::context_t* ctx, RpcServer* server) ://, int sock_type) :
-        //_ctx(ctx),
+    RpcWorker(zmq::context_t* ctx, RpcServer* server) :
         _socket(*ctx, ZMQ_DEALER),
         _server(server) {
     }
@@ -259,16 +268,9 @@ public:
         _socket.connect("inproc://rpc-backend");
 
         while (true) {
-            /*
-             zmq::message_t client;
-             zmq::message_t msg;
-             _socket.recv(&client);
-             _socket.recv(&msg);
-             */
             zmq::message_t msg;
             _socket.recv(&msg);
-            string msgstr(reinterpret_cast<const char*>(msg.data()));
-            cout << "Received: " << msgstr << endl;
+            // Expect empty message from RpcServer
 
             // Pull a write_chunk_request off the queue!
             write_chunk_request w = _server->pop_write_request();
@@ -282,7 +284,7 @@ public:
             rep.filename = w.filename;
 
             try {
-                cout << "write_msgpack_file..." << endl;
+                cout << "write_msgpack_file: " << w.filename << endl;
                 w.chunk->msgpack_bitshuffle = true;
                 w.chunk->write_msgpack_file(w.filename);
                 cout << "write_msgpack_file succeeded" << endl;
@@ -296,21 +298,23 @@ public:
 
             msgpack::sbuffer buffer;
             msgpack::pack(buffer, rep);
-            zmq::message_t reply(buffer.data(), buffer.size());
+            /*
+            //zmq::message_t reply(buffer.data(), buffer.size());
+             zmq::message_t reply(buffer.data(), buffer.size(), myfree);
+             buffer.release();
+            zmq::message_t reply;
+            sbuffer_to_message(buffer, reply);
+             */
+            zmq::message_t reply = sbuffer_to_message(buffer);
 
-            cout << "Worker: sending reply for client " << msg_string(*(w.client)) << endl;
-
-            cout << " client message: " << w.client->size() << " bytes" << endl;
-
+            //cout << "Worker: sending reply for client " << msg_string(*(w.client)) << " and message " << reply.size() << " bytes" << endl;
             _socket.send(*w.client, ZMQ_SNDMORE);
-            cout << " reply: " << reply.size() << " bytes" << endl;
             _socket.send(reply);
             delete w.client;
         }
     }
 
 private:
-    //zmq::context_t &_ctx;
     zmq::socket_t _socket;
     RpcServer* _server;
 };
@@ -362,7 +366,6 @@ void RpcServer::run() {
     _frontend.bind(_port);
     _backend.bind("inproc://rpc-backend");
 
-    //std::vector<RpcWorker*> workers;
     std::vector<pthread_t*> worker_threads;
         
     // How many threads are writing to disk at once?
@@ -370,9 +373,6 @@ void RpcServer::run() {
 
     for (int i=0; i<nworkers; i++) {
         pthread_t* thread = new pthread_t;
-        //RpcWorker* worker = new RpcWorker(_ctx, ZMQ_DEALER);
-        //workers.push_back(worker);
-        //pthread_create(thread, NULL, std::bind(&RpcWorker::work, worker), NULL);
         rpc_worker_thread_context *context = new rpc_worker_thread_context;
         context->ctx = &_ctx;
         context->server = this;
@@ -405,44 +405,34 @@ void RpcServer::run() {
         if (pollitems[0].revents & ZMQ_POLLIN) {
             cout << "Received message from client" << endl;
             _frontend.recv(&client);
-
             cout << "Client: " << msg_string(client) << endl;
-
             _frontend.recv(&msg);
             _handle_request(&client, &msg);
         }
         if (pollitems[1].revents & ZMQ_POLLIN) {
             cout << "Received reply from worker" << endl;
-            //bool more;
             int more;
-            //zmq::message_t empty;
-            //_backend.recv(&empty);
-            //cout << "empty: " << empty.size() << " bytes" << endl;
-            //bool more = _backend.getsockopt<bool>(ZMQ_RCVMORE);
-            //cout << "more: " << more << endl;
-            //assert(more);
-            _backend.recv(&client);
-            cout << "client: " << client.size() << " bytes" << endl;
+            if (_backend.recv(&client) == 0) {
+                cout << "Received zero bytes!" << endl;
+                continue;
+            }
             cout << "  client: " << msg_string(client) << endl;
-            //more = _backend.getsockopt<bool>(ZMQ_RCVMORE);
             more = _backend.getsockopt<int>(ZMQ_RCVMORE);
-            //_backend.getsockopt(ZMQ_RCVMORE
-            cout << "more: " << more << endl;
             assert(more);
-            _backend.recv(&msg);
+            if (_backend.recv(&msg) == 0) {
+                cout << "Received zero bytes!" << endl;
+                continue;
+            }
             cout << "message: " << msg.size() << " bytes" << endl;
-            //more = _backend.getsockopt<bool>(ZMQ_RCVMORE);
             more = _backend.getsockopt<int>(ZMQ_RCVMORE);
-            cout << "more: " << more << endl;
             assert(!more);
 
-            msgpack::object_handle oh =
-                msgpack::unpack(reinterpret_cast<const char *>(msg.data()),
-                                msg.size());
-            //WriteChunks_Reply rep = oh.get().as<WriteChunks_Reply>();
-            msgpack::object obj = oh.get();
-            cout << "  message: " << obj << endl;
-
+            /*
+             msgpack::object_handle oh =
+             msgpack::unpack(reinterpret_cast<const char *>(msg.data()), msg.size());
+             msgpack::object obj = oh.get();
+             cout << "  message: " << obj << endl;
+             */
             _frontend.send(client, ZMQ_SNDMORE);
             _frontend.send(msg);
         }
@@ -450,7 +440,6 @@ void RpcServer::run() {
 
     // FIXME -- join threads?
     for (int i=0; i<nworkers; i++) {
-        //delete workers[i];
         delete worker_threads[i];
     }
 }
@@ -460,8 +449,7 @@ int RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) 
     std::size_t offset = 0;
 
     // Unpack the function name (string)
-    msgpack::object_handle oh =
-        msgpack::unpack(req_data, request->size(), offset);
+    msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
     string funcname = oh.get().as<string>();
 
     // RPC reply
@@ -480,18 +468,13 @@ int RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) 
 
         //  Send reply back to client
         cout << "Sending RPC reply of size " << buffer.size() << endl;
-        // FIXME -- this copies the buffer
-        zmq::message_t reply(buffer.data(), buffer.size());
-        zmq::message_t client_copy;
-        client_copy.copy(client);
-        int nsent = _frontend.send(client_copy, ZMQ_SNDMORE);
-        //cout << "Sent " << nsent << " (vs " << buffer.size() << ")" << endl;
-        if (nsent == -1) {
-            cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
-            return -1;
-        }
-        nsent = _frontend.send(reply);
-        if (nsent == -1) {
+
+        zmq::message_t reply = sbuffer_to_message(buffer);
+        //zmq::message_t client_copy;
+        //client_copy.copy(client);
+        //int nsent = _frontend.send(client_copy, ZMQ_SNDMORE);
+        if (!(_frontend.send(client, ZMQ_SNDMORE) &&
+              _frontend.send(reply))) {
             cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
             return -1;
         }
@@ -529,7 +512,6 @@ int RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) 
 
         vector<shared_ptr<assembled_chunk> > chunks;
         _get_chunks(req.beams, req.min_fpga, req.max_fpga, chunks);
-
         cout << "get_chunks: got " << chunks.size() << " chunks" << endl;
 
         // FIXME -- should we send back an immediate status reply with the
@@ -553,16 +535,14 @@ int RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) 
             }
             w.filename = string(strp);
             free(strp);
-            //rep.filename = filename;
+            // rep.filename = filename;
             // rep.success = true;
             // rtn.push_back(rep);
-            //w.client->copy(client);
+
+            // Copy client ID
             w.client = new zmq::message_t(client->data(), client->size());
             w.priority = req.priority;
             w.chunk = *chunk;
-
-            cout << "Client copy: " << msg_string(*client) << " -> " << msg_string(*(w.client)) << endl;
-
             _add_write_request(w);
         }
         //msgpack::pack(buffer, rtn);
@@ -570,7 +550,6 @@ int RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) 
     } else {
         // Silent failure?
         cout << "Error: unknown RPC function name: " << funcname << endl;
-        //msgpack::pack(buffer, "No such RPC method");
         return -1;
     }
 }
@@ -581,9 +560,8 @@ void RpcServer::_add_write_request(write_chunk_request &req) {
     _write_reqs.push_back(req);
     cout << "Added write request: now " << _write_reqs.size() << " queued" << endl;
     pthread_mutex_unlock(&this->_q_lock);
-    // Also send message to backend workers
-    zmq::message_t empty("hello", 6);
-    _backend.send(empty);
+    // Also send message to backend workers to trigger doing work.
+    _backend.send(NULL, 0);
 }
 
 void RpcServer::_get_chunks(vector<uint64_t> &beams,
@@ -591,16 +569,13 @@ void RpcServer::_get_chunks(vector<uint64_t> &beams,
                             vector<shared_ptr<assembled_chunk> > &chunks) {
     cout << "_get_chunks: checking " << _ringbufs.size() << " ring buffers" << endl;
     for (auto it = _ringbufs.begin(); it != _ringbufs.end(); it++) {
-        cout << "_get_chunks: checking ringbuf with beamid " << (*it)->_beam_id << endl;
         for (auto beamit = beams.begin(); beamit != beams.end(); beamit++) {
-            cout << "  beam " << (*beamit) << endl;
             if (*beamit != (*it)->_beam_id)
                 continue;
             (*it)->retrieve(min_fpga, max_fpga, chunks);
             break;
         }
     }
-    
 }
 
 struct rpc_thread_contextX {
@@ -611,7 +586,6 @@ struct rpc_thread_contextX {
 
 static void *rpc_thread_main(void *opaque_arg) {
     rpc_thread_contextX *context = reinterpret_cast<rpc_thread_contextX *> (opaque_arg);
-    //shared_ptr<ch_frb_io::intensity_network_stream> stream = context->stream;
     string port = context->port;
     vector<shared_ptr<L1Ringbuf> > ringbufs = context->ringbufs;
     delete context;
@@ -630,26 +604,19 @@ void rpc_server_start(string port, vector<shared_ptr<L1Ringbuf> > ringbufs) {
     context->port = port;
 
     pthread_t* rpc_thread = new pthread_t;
-
-    //int err = pthread_create(&rpc_thread, NULL, rpc_thread_main, context);
     int err = pthread_create(rpc_thread, NULL, rpc_thread_main, context);
     if (err)
         throw runtime_error(string("pthread_create() failed to create RPC thread: ") + strerror(errno));
-    
 }
 
-
 #include <unistd.h>
-
 
 int main() {
 
     vector<shared_ptr<L1Ringbuf> > ringbufs;
     shared_ptr<L1Ringbuf> rb(new L1Ringbuf(1));
     ringbufs.push_back(rb);
-
     rpc_server_start("tcp://127.0.0.1:5555", ringbufs);
-
 
     int beam = 77;
     int nupfreq = 4;
@@ -657,7 +624,6 @@ int main() {
     int fpga_per = 400;
 
     assembled_chunk* ch;
-    //ch = assembled_chunk::make(4, nupfreq, nt_per, fpga_per, 42);
 
     std::random_device rd;
     std::mt19937 rng(rd());
@@ -691,12 +657,10 @@ int main() {
     rb->print();
     cout << endl;
 
-
     vector<shared_ptr<assembled_chunk> > chunks;
     cout << "Retrieving chunks..." << endl;
     rb->retrieve(30000000, 50000000, chunks);
     cout << "Got " << chunks.size() << endl;
-
 
     usleep(30 * 1000000);
 }
