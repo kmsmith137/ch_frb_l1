@@ -1,10 +1,15 @@
-#include "l1-ringbuf.hpp"
 #include <unistd.h>
-#include <zmq.hpp>
-#include <msgpack.hpp>
 #include <pthread.h>
 
+#include <zmq.hpp>
+#include <msgpack.hpp>
+
+#include "l1-ringbuf.hpp"
+
 #include "rpc.hpp"
+
+using namespace std;
+using namespace ch_frb_io;
 
 static string msg_string(zmq::message_t &msg) {
     return string(static_cast<const char*>(msg.data()), msg.size());

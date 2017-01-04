@@ -42,6 +42,7 @@ L1_OBJS = ch-frb-l1.o ch_frb_rpc.o
 IO_OBJS = \
 	../ch_frb_io/assembled_chunk.o \
 	../ch_frb_io/assembled_chunk_ringbuf.o \
+	../ch_frb_io/l1-ringbuf.o \
 	../ch_frb_io/avx2_kernels.o \
 	../ch_frb_io/hdf5.o \
 	../ch_frb_io/intensity_hdf5_file.o \
@@ -82,7 +83,7 @@ ch-frb-test: ch-frb-test.cpp ch_frb_rpc.o
 ch-frb-test-debug: ch-frb-test.cpp ch_frb_rpc.o $(IO_OBJS)
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lzmq -lhdf5
 
-ringbuf: l1-ringbuf.cpp l1-rpc.cpp $(IO_OBJS)
+ringbuf: l1-rpc.cpp $(IO_OBJS)
 	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lzmq -lhdf5 -llz4
 
 clean:
