@@ -53,6 +53,14 @@
   - Figure out how we're doing logging.
 
   - Telescoping ring buffer.
+
+  - Bonsai RPC's:
+
+      - C++ server-side RPC's for retrieving ring-buffered coarse-grained triggers.
+
+      - C++ client-side RPC's for sending a stream of coarse-grained triggers to the L1B process.
+
+      - Python server-side RPC's for receiving coarse-grained triggers at L1B.
   
   - Polished version of rf_weblines that can be used over the internet.
 
