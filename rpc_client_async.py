@@ -28,7 +28,6 @@ def client_thread(context, me):
            msgpack.packb([beams, minfpga, maxfpga, filename_pat, priority]))
     print('Client', me, ': sending request...')
     socket.send(msg)
-
     
     while True:
         msg = socket.recv()

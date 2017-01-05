@@ -28,7 +28,7 @@ struct write_chunk_request {
 class RpcServer {
 public:
     RpcServer(zmq::context_t &ctx, string port,
-              vector<shared_ptr<L1Ringbuf> > ringbufs);
+              shared_ptr<ch_frb_io::intensity_network_stream> stream);
     ~RpcServer();
     write_chunk_request pop_write_request();
     void run();
@@ -50,7 +50,7 @@ private:
     // (and the mutex for it)
     pthread_mutex_t _q_lock;
 
-    vector<shared_ptr<L1Ringbuf> > _ringbufs;
+    shared_ptr<ch_frb_io::intensity_network_stream> _stream;
 };
 
 static void myfree(void* p, void*) {
@@ -147,12 +147,12 @@ static void* rpc_worker_thread_main(void *opaque_arg) {
 }
 
 RpcServer::RpcServer(zmq::context_t &ctx, string port,
-                     vector<shared_ptr<L1Ringbuf> > ringbufs) :
+                     shared_ptr<ch_frb_io::intensity_network_stream> stream) :
     _ctx(ctx),
     _frontend(_ctx, ZMQ_ROUTER),
     _backend(_ctx, ZMQ_DEALER),
     _port(port),
-    _ringbufs(ringbufs)
+    _stream(stream)
 {
     pthread_mutex_init(&this->_q_lock, NULL);
 }
@@ -238,6 +238,7 @@ void RpcServer::run() {
             more = _backend.getsockopt<int>(ZMQ_RCVMORE);
             assert(!more);
 
+            // Don't need to unpack the message -- just pass it on to the client
             /*
              msgpack::object_handle oh =
              msgpack::unpack(reinterpret_cast<const char *>(msg.data()), msg.size());
@@ -269,13 +270,10 @@ int RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) 
     if (funcname == "get_beam_metadata") {
         cout << "RPC get_beam_metadata() called" << endl;
         // No input arguments, so don't unpack anything more
-        /*
-        // FIXME
         std::vector<
             std::unordered_map<std::string, uint64_t> > R =
-            stream->get_statistics();
+            _stream->get_statistics();
         msgpack::pack(buffer, R);
-         */
 
         //  Send reply back to client
         cout << "Sending RPC reply of size " << buffer.size() << endl;
@@ -418,19 +416,16 @@ void RpcServer::_add_write_request(write_chunk_request &req) {
 void RpcServer::_get_chunks(vector<uint64_t> &beams,
                             uint64_t min_fpga, uint64_t max_fpga,
                             vector<shared_ptr<assembled_chunk> > &chunks) {
-    cout << "_get_chunks: checking " << _ringbufs.size() << " ring buffers" << endl;
-    for (auto it = _ringbufs.begin(); it != _ringbufs.end(); it++) {
-        for (auto beamit = beams.begin(); beamit != beams.end(); beamit++) {
-            if (*beamit != (*it)->_beam_id)
-                continue;
-            (*it)->retrieve(min_fpga, max_fpga, chunks);
-            break;
-        }
+    vector<vector<shared_ptr<assembled_chunk> > > ch;
+    ch = _stream->get_ringbuf_snapshots(beams, min_fpga, max_fpga);
+    // collapse vector-of-vectors to vector.
+    for (auto beamit = ch.begin(); beamit != ch.end(); beamit++) {
+        chunks.insert(chunks.end(), beamit->begin(), beamit->end());
     }
 }
 
 struct rpc_thread_contextX {
-    vector<shared_ptr<L1Ringbuf> > ringbufs;
+    shared_ptr<ch_frb_io::intensity_network_stream> stream;
     // eg, "tcp://*:5555";
     string port;
 };
@@ -438,20 +433,21 @@ struct rpc_thread_contextX {
 static void *rpc_thread_main(void *opaque_arg) {
     rpc_thread_contextX *context = reinterpret_cast<rpc_thread_contextX *> (opaque_arg);
     string port = context->port;
-    vector<shared_ptr<L1Ringbuf> > ringbufs = context->ringbufs;
+    shared_ptr<ch_frb_io::intensity_network_stream> stream = context->stream;
     delete context;
 
     zmq::context_t ctx;
-    RpcServer rpc(ctx, port, ringbufs);
+    RpcServer rpc(ctx, port, stream);
     rpc.run();
     return NULL;
 }
 
-void rpc_server_start(string port, vector<shared_ptr<L1Ringbuf> > ringbufs) {
+void rpc_server_start(string port,
+                      shared_ptr<ch_frb_io::intensity_network_stream> stream) {
     cout << "Starting RPC server on " << port << endl;
 
     rpc_thread_contextX *context = new rpc_thread_contextX;
-    context->ringbufs = ringbufs;
+    context->stream = stream;
     context->port = port;
 
     pthread_t* rpc_thread = new pthread_t;
@@ -464,10 +460,14 @@ int main() {
 
     int beam = 77;
 
-    vector<shared_ptr<L1Ringbuf> > ringbufs;
-    shared_ptr<L1Ringbuf> rb(new L1Ringbuf(beam));
-    ringbufs.push_back(rb);
-    rpc_server_start("tcp://127.0.0.1:5555", ringbufs);
+    intensity_network_stream::initializer ini;
+    ini.beam_ids.push_back(beam);
+    //ini.mandate_fast_kernels = HAVE_AVX2;
+
+    shared_ptr<intensity_network_stream> stream = intensity_network_stream::make(ini);
+    stream->start_stream();
+
+    rpc_server_start("tcp://127.0.0.1:5555", stream);
 
     int nupfreq = 4;
     int nt_per = 16;
@@ -483,34 +483,38 @@ int main() {
     for (int i=0; i<100; i++) {
         ch = new assembled_chunk(beam, nupfreq, nt_per, fpga_per, i);
         cout << "Pushing " << i << endl;
-        rb->push(ch);
-
+        stream->inject_assembled_chunk(ch);
         cout << "Pushed " << i << endl;
-        rb->print();
-        cout << endl;
 
         // downstream thread consumes with a lag of 2...
         if (i >= 2) {
             // Randomly consume 0 to 2 chunks
             if (rando(rng)) {
                 cout << "Downstream consumes a chunk" << endl;
-                rb->pop();
+                stream->get_assembled_chunk(0, false);
             }
             if (rando(rng)) {
                 cout << "Downstream consumes a chunk" << endl;
-                rb->pop();
+                stream->get_assembled_chunk(0, false);
             }
         }
     }
 
     cout << "End state:" << endl;
-    rb->print();
-    cout << endl;
+    //rb->print();
+    //cout << endl;
 
-    vector<shared_ptr<assembled_chunk> > chunks;
+    vector<vector<shared_ptr<assembled_chunk> > > chunks;
     cout << "Retrieving chunks..." << endl;
-    rb->retrieve(30000000, 50000000, chunks);
-    cout << "Got " << chunks.size() << endl;
+    //rb->retrieve(30000000, 50000000, chunks);
+    vector<uint64_t> beams;
+    beams.push_back(beam);
+    chunks = stream->get_ringbuf_snapshots(beams);
+    cout << "Got " << chunks.size() << " beams, with number of chunks:";
+    for (auto it = chunks.begin(); it != chunks.end(); it++) {
+        cout << " " << it->size();
+    }
+    cout << endl;
 
     usleep(30 * 1000000);
 }
