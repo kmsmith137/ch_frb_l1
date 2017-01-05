@@ -125,18 +125,25 @@ if __name__ == '__main__':
             up.feed(msg)
             funcname = up.next()
             print('Function name:', funcname)
-            args = up.next()
-            print('Args:', args)
 
-            if funcname != 'write_chunks':
+            if funcname == 'write_chunks':
+                args = up.next()
+                print('Args:', args)
+                beams, min_chunk, max_chunk, fn_pat = args
+                # For each beam x chunk, send a request to the worker pool.
+                for chunk in range(min_chunk, max_chunk):
+                    print('Sending request to worker...')
+                    beam, filename = 1, 'filename.msgpack'
+                    req = msgpack.packb((beam, chunk, filename))
+                    backend.send_multipart((client, req))
+
+            elif funcname == 'get_statistics':
+                reply = msgpack.packb([{'hello':42, 'world':43},{'yo':100},])
+                print('Client:', client)
+                #socket.send_multipart([client, reply])
+                socket.send(client, zmq.SNDMORE);
+                socket.send(reply);
+            else:
                 print('Unknown funcname', funcname)
                 continue
         
-            beams, min_chunk, max_chunk, fn_pat = args
-            # For each beam x chunk, send a request to the worker pool.
-            for chunk in range(min_chunk, max_chunk):
-                print('Sending request to worker...')
-                beam, filename = 1, 'filename.msgpack'
-                req = msgpack.packb((beam, chunk, filename))
-                backend.send_multipart((client, req))
-

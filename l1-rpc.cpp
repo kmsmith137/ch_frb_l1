@@ -57,8 +57,8 @@ static void myfree(void* p, void*) {
     ::free(p);
 }
 
-static zmq::message_t sbuffer_to_message(msgpack::sbuffer &buffer) {
-    zmq::message_t msg(buffer.data(), buffer.size(), myfree);
+static zmq::message_t* sbuffer_to_message(msgpack::sbuffer &buffer) {
+    zmq::message_t* msg = new zmq::message_t(buffer.data(), buffer.size(), myfree);
     buffer.release();
     return msg;
 }
@@ -111,7 +111,7 @@ public:
             zmq::message_t reply;
             sbuffer_to_message(buffer, reply);
              */
-            zmq::message_t reply = sbuffer_to_message(buffer);
+            zmq::message_t* reply = sbuffer_to_message(buffer);
 
 
             // DEBUG
@@ -119,8 +119,10 @@ public:
             usleep(1000000);
 
             //cout << "Worker: sending reply for client " << msg_string(*(w.client)) << " and message " << reply.size() << " bytes" << endl;
-            _socket.send(*w.client, ZMQ_SNDMORE);
-            _socket.send(reply);
+            if (!(_socket.send(*w.client, ZMQ_SNDMORE) &&
+                  _socket.send(*reply))) {
+                cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
+            }
             delete w.client;
         }
     }
@@ -154,6 +156,8 @@ RpcServer::RpcServer(zmq::context_t &ctx, string port,
     _port(port),
     _stream(stream)
 {
+    _frontend.setsockopt(ZMQ_ROUTER_MANDATORY, 1);
+
     pthread_mutex_init(&this->_q_lock, NULL);
 }
 
@@ -245,8 +249,10 @@ void RpcServer::run() {
              msgpack::object obj = oh.get();
              cout << "  message: " << obj << endl;
              */
-            _frontend.send(client, ZMQ_SNDMORE);
-            _frontend.send(msg);
+            if (!(_frontend.send(client, ZMQ_SNDMORE) &&
+                  _frontend.send(msg))) {
+                cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
+            }
         }
     }
 
@@ -267,26 +273,23 @@ int RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) 
     // RPC reply
     msgpack::sbuffer buffer;
 
-    if (funcname == "get_beam_metadata") {
-        cout << "RPC get_beam_metadata() called" << endl;
+    if (funcname == "get_statistics") {
+        cout << "RPC get_statistics() called" << endl;
         // No input arguments, so don't unpack anything more
-        std::vector<
-            std::unordered_map<std::string, uint64_t> > R =
-            _stream->get_statistics();
-        msgpack::pack(buffer, R);
+        vector<unordered_map<string, uint64_t> > stats = _stream->get_statistics();
+        msgpack::pack(buffer, stats);
 
         //  Send reply back to client
         cout << "Sending RPC reply of size " << buffer.size() << endl;
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        cout << "  client: " << msg_string(*client) << endl;
 
-        zmq::message_t reply = sbuffer_to_message(buffer);
-        //zmq::message_t client_copy;
-        //client_copy.copy(client);
-        //int nsent = _frontend.send(client_copy, ZMQ_SNDMORE);
-        if (!(_frontend.send(client, ZMQ_SNDMORE) &&
-              _frontend.send(reply))) {
+        if (!(_frontend.send(*client, ZMQ_SNDMORE) &&
+              _frontend.send(*reply))) {
             cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
             return -1;
         }
+        cout << "Sent stats reply!" << endl;
         return 0;
 
         /*

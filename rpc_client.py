@@ -31,13 +31,13 @@ if __name__ == '__main__':
         socket.connect('tcp://localhost:%i' % (rpc_port_l1_base + i))
         sockets.append(socket)
 
-    print('Sending get_beam_metadata requests...')
+    print('Sending get_statistics requests...')
     for socket in sockets:
-        msg = msgpack.packb('get_beam_metadata')
+        msg = msgpack.packb('get_statistics')
         socket.send(msg)
 
     beam_meta = []
-    print('Waiting for get_beam_metadata replies...')
+    print('Waiting for get_statistics replies...')
     for i,socket in enumerate(sockets):
         msg = socket.recv()
         print('Received reply: %i bytes' % len(msg))

@@ -14,7 +14,7 @@ using namespace ch_frb_io;
 
  RPC calls:
 
- * get_beam_metadata(void)
+ * get_statistics(void)
 
      Retrieves status and statistics from an L1 node.
 
