@@ -19,7 +19,7 @@ static string msg_string(zmq::message_t &msg) {
 // http://zguide.zeromq.org/cpp:asyncsrv
 
 struct write_chunk_request {
-    zmq::message_t* client;
+    vector<zmq::message_t*> clients;
     string filename;
     int priority;
     shared_ptr<assembled_chunk> chunk;
@@ -104,26 +104,31 @@ public:
 
             msgpack::sbuffer buffer;
             msgpack::pack(buffer, rep);
-            /*
-            //zmq::message_t reply(buffer.data(), buffer.size());
-             zmq::message_t reply(buffer.data(), buffer.size(), myfree);
-             buffer.release();
-            zmq::message_t reply;
-            sbuffer_to_message(buffer, reply);
-             */
             zmq::message_t* reply = sbuffer_to_message(buffer);
-
 
             // DEBUG
             cout << "RpcWorker: sleeping..." << endl;
-            usleep(1000000);
+            usleep(3000000);
 
-            //cout << "Worker: sending reply for client " << msg_string(*(w.client)) << " and message " << reply.size() << " bytes" << endl;
-            if (!(_socket.send(*w.client, ZMQ_SNDMORE) &&
-                  _socket.send(*reply))) {
-                cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
+            string smsg = "Sending reply to clients: [";
+            for (size_t i = 0; i < w.clients.size(); i++)
+                smsg += " " + msg_string(*w.clients[i]);
+            cout << smsg << " ]" << endl;
+            // Send reply to each client waiting for this chunk.
+            for (size_t i = 0; i < w.clients.size(); i++) {
+                zmq::message_t* client = w.clients[i];
+                zmq::message_t* thisreply = reply;
+                if ((w.clients.size() > 1) && (i < (w.clients.size()-1))) {
+                    // make a copy for all but last client.
+                    thisreply = new zmq::message_t();
+                    thisreply->copy(reply);
+                }
+                if (!(_socket.send(*client, ZMQ_SNDMORE) &&
+                      _socket.send(*thisreply))) {
+                    cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
+                }
+                delete client;
             }
-            delete w.client;
         }
     }
 
@@ -156,6 +161,7 @@ RpcServer::RpcServer(zmq::context_t &ctx, string port,
     _port(port),
     _stream(stream)
 {
+    // Require messages sent on the frontend socket to have valid addresses.
     _frontend.setsockopt(ZMQ_ROUTER_MANDATORY, 1);
 
     pthread_mutex_init(&this->_q_lock, NULL);
@@ -184,7 +190,7 @@ void RpcServer::run() {
     std::vector<pthread_t*> worker_threads;
         
     // How many threads are writing to disk at once?
-    int nworkers = 2;
+    int nworkers = 1;
 
     for (int i=0; i<nworkers; i++) {
         pthread_t* thread = new pthread_t;
@@ -275,7 +281,8 @@ int RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) 
 
     if (funcname == "get_statistics") {
         cout << "RPC get_statistics() called" << endl;
-        // No input arguments, so don't unpack anything more
+        // No input arguments, so don't unpack anything more.
+        // Gather stats...
         vector<unordered_map<string, uint64_t> > stats = _stream->get_statistics();
         msgpack::pack(buffer, stats);
 
@@ -326,38 +333,25 @@ int RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) 
         _get_chunks(req.beams, req.min_fpga, req.max_fpga, chunks);
         cout << "get_chunks: got " << chunks.size() << " chunks" << endl;
 
-        // FIXME -- should we send back an immediate status reply with the
-        // list of chunks & filenames to be written??
-
-        //vector<WriteChunks_Reply> rtn;
         for (auto chunk = chunks.begin(); chunk != chunks.end(); chunk++) {
-            // WriteChunks_Reply rep;
-            // rep.beam = (*chunk)->beam_id;
-            // rep.chunk = (*chunk)->ichunk;
-            // rep.success = false;
-            // cout << "Writing chunk for beam " << rep.beam << ", chunk " << rep.chunk << endl;
             write_chunk_request w;
             char* strp = NULL;
             int r = asprintf(&strp, req.filename_pattern.c_str(), (*chunk)->beam_id, (*chunk)->ichunk);
             if (r == -1) {
-                //rep.error_message = "asprintf failed to format filename";
-                //rtn.push_back(rep);
                 cout << "Failed to format filename: " << req.filename_pattern << endl;
                 continue;
             }
             w.filename = string(strp);
             free(strp);
-            // rep.filename = filename;
-            // rep.success = true;
-            // rtn.push_back(rep);
 
             // Copy client ID
-            w.client = new zmq::message_t(client->data(), client->size());
+            zmq::message_t* client_copy = new zmq::message_t();
+            client_copy->copy(client);
+            w.clients.push_back(client_copy);
             w.priority = req.priority;
             w.chunk = *chunk;
             _add_write_request(w);
         }
-        //msgpack::pack(buffer, rtn);
         return 0;
     } else {
         // Silent failure?
@@ -377,6 +371,8 @@ void RpcServer::_add_write_request(write_chunk_request &req) {
     for (it = _write_reqs.begin(); it != _write_reqs.end(); it++) {
         if (it->chunk == req.chunk) {
             cout << "Found an existing write request for chunk: beam " << req.chunk->beam_id << ", ichunk " << req.chunk->ichunk << " with >= priority" << endl;
+            // Found a higher-priority existing entry -- add this request's clients to the existing one.
+            it->clients.insert(it->clients.end(), req.clients.begin(), req.clients.end());
             pthread_mutex_unlock(&this->_q_lock);
             return;
         }
@@ -393,13 +389,18 @@ void RpcServer::_add_write_request(write_chunk_request &req) {
     for (it = _write_reqs.begin(); it != _write_reqs.end(); it++)
         if (it->chunk == req.chunk)
             break;
+    deque<write_chunk_request>::iterator newreq = it;
     it++;
     for (; it != _write_reqs.end(); it++) {
         if (it->chunk == req.chunk) {
             cout << "Found existing write request for this chunk with priority " << it->priority << " vs " << req.priority << endl;
+            // Before deleting the lower-priority entry, copy its clients.
+            newreq->clients.insert(newreq->clients.end(),
+                                   it->clients.begin(), it->clients.end());
             _write_reqs.erase(it);
-            // There can only be one existing copy of this chunk, so we're done.
-            // Mark that we have not added more work overall.
+            // There can only be one existing copy of this chunk, so
+            // we're done.  Mark that we have not added more work
+            // overall.
             added = false;
             break;
         }
@@ -408,7 +409,10 @@ void RpcServer::_add_write_request(write_chunk_request &req) {
     cout << "Added write request: now " << _write_reqs.size() << " queued" << endl;
     cout << "Queue:" << endl;
     for (it = _write_reqs.begin(); it != _write_reqs.end(); it++) {
-        cout << "  priority " << it->priority << ", chunk " << *(it->chunk) << endl;
+        cout << "  priority " << it->priority << ", chunk " << *(it->chunk) << ", clients [";
+        for (auto it2 = it->clients.begin(); it2 != it->clients.end(); it2++)
+            cout << " " << msg_string(**it2);
+        cout << " ]" << endl;
     }
     pthread_mutex_unlock(&this->_q_lock);
     if (added)

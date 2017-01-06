@@ -49,7 +49,7 @@ if __name__ == '__main__':
     t1.daemon = True
     t2.daemon = True
     t1.start()
-    #t2.start()
+    t2.start()
 
     from time import sleep
     sleep(10)
