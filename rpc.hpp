@@ -91,6 +91,13 @@
 
      FIXME -- document multiple async replies.
 
+
+ * shutdown()
+
+     Flushes the intensity_network_stream and shuts down the RPC
+     server ASAP.  Any queued write requests that have not been
+     completed will be dropped.
+
  */
 
 

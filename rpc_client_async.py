@@ -71,6 +71,18 @@ if __name__ == '__main__':
     sleep(10)
     import sys
     tprint('Quitting')
+
+    # Tell RPC server to quit too
+    socket = context.socket(zmq.DEALER)
+    socket.set(zmq.IDENTITY, "clientX")
+    socket.connect('tcp://localhost:5555')
+    token = 666
+    msg = msgpack.packb(['shutdown', token])
+    tprint('Asking server to shutdown...')
+    socket.send(msg)
+
+    sleep(1)
+
     sys.exit(0)
     
     t1.join()

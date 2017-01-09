@@ -17,12 +17,7 @@ pthread_t* l1_rpc_server_start(std::shared_ptr<ch_frb_io::intensity_network_stre
 
 // implementation detail: a struct used to communicate between threads
 // of the RPC server.
-struct write_chunk_request {
-    std::vector<std::pair<zmq::message_t*, uint32_t> > clients;
-    std::string filename;
-    int priority;
-    std::shared_ptr<ch_frb_io::assembled_chunk> chunk;
-};
+struct write_chunk_request;
 
 // The main L1 RPC server object.
 class L1RpcServer {
@@ -37,7 +32,7 @@ public:
     void run();
 
     // called by RPC worker threads.
-    write_chunk_request pop_write_request();
+    write_chunk_request* pop_write_request();
 
 protected:
     // responds to the given RPC request, either sending immediate
@@ -47,7 +42,7 @@ protected:
     // enqueues the given request to write an assembled_chunk to disk;
     // will be processed by worker threads.  Handles the priority
     // queuing.
-    void _add_write_request(write_chunk_request &req);
+    void _add_write_request(write_chunk_request* req);
 
     // retrieves assembled_chunks overlapping the given range of
     // FPGA-count values from the ring buffers for the given beam IDs.
@@ -68,9 +63,14 @@ private:
     std::string _port;
 
     // the queue of write requests to be run by the RpcWorker(s)
-    std::deque<write_chunk_request> _write_reqs;
+    std::deque<write_chunk_request*> _write_reqs;
     // (and the mutex for it)
     pthread_mutex_t _q_lock;
+
+    pthread_cond_t _q_cond;
+
+    // flag when we are shutting down.
+    bool _shutdown;
 
     // the stream we are serving RPC requests for.
     std::shared_ptr<ch_frb_io::intensity_network_stream> _stream;
