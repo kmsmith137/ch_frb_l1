@@ -3,15 +3,26 @@ import zmq
 import msgpack
 import threading
 
+print_lock = threading.Lock()
+
+def tprint(*args):
+    with print_lock:
+        print(*args)
+
 def client_thread(context, me):
     socket = context.socket(zmq.DEALER)
     socket.set(zmq.IDENTITY, "client%i" % me)
     socket.connect('tcp://localhost:5555')
 
     msg = msgpack.packb('get_statistics')
-    print('Client', me, ': sending stats request...')
+    tprint('Client', me, ': sending stats request...')
     socket.send(msg)
 
+    # Wait for a reply...
+    msg = socket.recv()
+    rep = msgpack.unpackb(msg)
+    tprint('Client', me, ': got reply:', rep)
+    
     beams = [76,77,78]
     #minfpga = 0
     #maxfpga = 50000000
@@ -22,7 +33,7 @@ def client_thread(context, me):
     filename_pat = 'chunk-beam%02u-fpga%012llu+%08llu-py.msgpack'
     msg = (msgpack.packb('write_chunks') +
            msgpack.packb([beams, minfpga, maxfpga, filename_pat, priority]))
-    print('Client', me, ': sending write request...')
+    tprint('Client', me, ': sending write request...')
     socket.send(msg)
 
     beams = [77]
@@ -30,15 +41,15 @@ def client_thread(context, me):
     #filename_pat = 'chunk-%02llu-chunk%08llu-py.msgpack'
     msg = (msgpack.packb('write_chunks') +
            msgpack.packb([beams, minfpga, maxfpga, filename_pat, priority]))
-    print('Client', me, ': sending write request...')
+    tprint('Client', me, ': sending write request...')
     socket.send(msg)
-
+    
     while True:
         msg = socket.recv()
-        #print('Client', me, ': Received reply: %i bytes' % len(msg))
-        # print('Message:', repr(msg))
+        #tprint('Client', me, ': Received reply: %i bytes' % len(msg))
+        # tprint('Message:', repr(msg))
         rep = msgpack.unpackb(msg)
-        print('Client', me, ': got reply:', rep)
+        tprint('Client', me, ': got reply:', rep)
     socket.close()
 
 if __name__ == '__main__':
@@ -54,7 +65,7 @@ if __name__ == '__main__':
     from time import sleep
     sleep(10)
     import sys
-    print('Quitting')
+    tprint('Quitting')
     sys.exit(0)
     
     t1.join()

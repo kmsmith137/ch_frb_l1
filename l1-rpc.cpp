@@ -356,6 +356,9 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         _get_chunks(req.beams, req.min_fpga, req.max_fpga, chunks);
         //cout << "get_chunks: got " << chunks.size() << " chunks" << endl;
 
+        // Reply immediately with a list of the chunks to be written.
+        vector<WriteChunks_Reply> reply;
+
         for (auto chunk = chunks.begin(); chunk != chunks.end(); chunk++) {
             write_chunk_request w;
             // Format the filename the chunk will be written to.
@@ -379,7 +382,25 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             w.priority = req.priority;
             w.chunk = *chunk;
             _add_write_request(w);
+
+            WriteChunks_Reply rep;
+            rep.beam = (*chunk)->beam_id;
+            rep.fpga0 = (*chunk)->fpgacounts_begin();
+            rep.fpgaN = (*chunk)->fpgacounts_end() - rep.fpga0;
+            rep.filename = w.filename;
+            rep.success = true; // ?
+            reply.push_back(rep);
         }
+
+        msgpack::pack(buffer, reply);
+        zmq::message_t* replymsg = sbuffer_to_message(buffer);
+
+        if (!(_frontend.send(*client, ZMQ_SNDMORE) &&
+              _frontend.send(*replymsg))) {
+            cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
+            return -1;
+        }
+
         return 0;
     } else {
         // Silent failure?
