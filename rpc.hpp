@@ -6,9 +6,6 @@
 #include <ch_frb_io.hpp>
 #include <assembled_chunk_msgpack.hpp>
 
-using namespace std;
-using namespace ch_frb_io;
-
 /*
  This header contains code for both RPC clients (if in C++) and servers.
 
@@ -108,12 +105,19 @@ public:
 };
  */
 
+class Rpc_Request {
+public:
+    std::string function;
+    uint32_t token;
+    MSGPACK_DEFINE(function, token);
+};
+
 class WriteChunks_Request {
 public:
-    vector<uint64_t> beams;
+    std::vector<uint64_t> beams;
     uint64_t min_fpga;    // or 0 for no limit
     uint64_t max_fpga;    // or 0 for no limit
-    string filename_pattern; // filename printf pattern; file = sprintf(pattern, int beam, uint64_t fpgacounts_start, uint64_t fpgacounts_N)
+    std::string filename_pattern; // filename printf pattern; file = sprintf(pattern, int beam, uint64_t fpgacounts_start, uint64_t fpgacounts_N)
     int priority;
     MSGPACK_DEFINE(beams, min_fpga, max_fpga, filename_pattern, priority);
 };
@@ -123,9 +127,9 @@ public:
     uint64_t beam;
     uint64_t fpga0;
     uint64_t fpgaN;
-    string filename;
+    std::string filename;
     bool success;
-    string error_message;
+    std::string error_message;
     MSGPACK_DEFINE(beam, fpga0, fpgaN, filename, success, error_message);
 };
 

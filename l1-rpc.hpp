@@ -18,7 +18,7 @@ pthread_t* l1_rpc_server_start(std::shared_ptr<ch_frb_io::intensity_network_stre
 // implementation detail: a struct used to communicate between threads
 // of the RPC server.
 struct write_chunk_request {
-    std::vector<zmq::message_t*> clients;
+    std::vector<std::pair<zmq::message_t*, uint32_t> > clients;
     std::string filename;
     int priority;
     std::shared_ptr<ch_frb_io::assembled_chunk> chunk;

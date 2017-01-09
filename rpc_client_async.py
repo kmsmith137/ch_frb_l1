@@ -14,14 +14,16 @@ def client_thread(context, me):
     socket.set(zmq.IDENTITY, "client%i" % me)
     socket.connect('tcp://localhost:5555')
 
-    msg = msgpack.packb('get_statistics')
+    token = me*1000 + 1
+    msg = msgpack.packb(['get_statistics', token])
     tprint('Client', me, ': sending stats request...')
     socket.send(msg)
-
+    
     # Wait for a reply...
-    msg = socket.recv()
+    [hdr,msg] = socket.recv_multipart()
+    hdr = msgpack.unpackb(hdr)
     rep = msgpack.unpackb(msg)
-    tprint('Client', me, ': got reply:', rep)
+    tprint('Client', me, ': got reply:', hdr, rep)
     
     beams = [76,77,78]
     #minfpga = 0
@@ -31,7 +33,8 @@ def client_thread(context, me):
     maxfpga = 38600000
     priority = 10
     filename_pat = 'chunk-beam%02u-fpga%012llu+%08llu-py.msgpack'
-    msg = (msgpack.packb('write_chunks') +
+    token += 1
+    msg = (msgpack.packb(['write_chunks', token]) +
            msgpack.packb([beams, minfpga, maxfpga, filename_pat, priority]))
     tprint('Client', me, ': sending write request...')
     socket.send(msg)
@@ -39,17 +42,19 @@ def client_thread(context, me):
     beams = [77]
     priority = 20
     #filename_pat = 'chunk-%02llu-chunk%08llu-py.msgpack'
-    msg = (msgpack.packb('write_chunks') +
+    token += 1
+    msg = (msgpack.packb(['write_chunks', token]) +
            msgpack.packb([beams, minfpga, maxfpga, filename_pat, priority]))
     tprint('Client', me, ': sending write request...')
     socket.send(msg)
     
     while True:
-        msg = socket.recv()
+        [hdr,msg] = socket.recv_multipart()
         #tprint('Client', me, ': Received reply: %i bytes' % len(msg))
         # tprint('Message:', repr(msg))
-        rep = msgpack.unpackb(msg)
-        tprint('Client', me, ': got reply:', rep)
+        hdr = msgpack.unpackb(hdr)
+        msg = msgpack.unpackb(msg)
+        tprint('Client', me, ': got reply:', hdr, msg)
     socket.close()
 
 if __name__ == '__main__':

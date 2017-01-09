@@ -26,10 +26,11 @@ int main() {
 
         // RPC request buffer.
         msgpack::sbuffer buffer;
-        string funcname = "get_statistics";
-        //tuple<string, bool> call(funcname, false);
-        //msgpack::pack(buffer, call);
-        msgpack::pack(buffer, funcname);
+        Rpc_Request rpc;
+        rpc.function = "get_statistics";
+        rpc.token = 42;
+
+        msgpack::pack(buffer, rpc);
         cout << "Buffer size: " << buffer.size() << endl;
 
         // no copy
@@ -38,10 +39,17 @@ int main() {
         cout << "Sending stats request " << request_nbr << endl;
         socket.send(request);
 
-        //  Get the reply
+        //  Get the reply: token followed by data
         zmq::message_t reply;
+        zmq::message_t reply_token;
+        socket.recv(&reply_token);
         socket.recv(&reply);
         cout << "Received result " << request_nbr << endl;
+
+        const char* token_data = reinterpret_cast<const char *>(reply_token.data());
+        msgpack::object_handle toh = msgpack::unpack(token_data, reply_token.size());
+        uint32_t token = toh.get().as<uint32_t>();
+        cout << "Token: " << token << endl;
 
         cout << "Reply has size " << reply.size() << endl;
         const char* reply_data = reinterpret_cast<const char *>(reply.data());

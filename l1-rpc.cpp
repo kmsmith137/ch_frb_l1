@@ -71,6 +71,13 @@ static zmq::message_t* sbuffer_to_message(msgpack::sbuffer &buffer) {
     return msg;
 }
 
+static zmq::message_t* token_to_message(uint32_t token) {
+    msgpack::sbuffer buffer;
+    msgpack::pack(buffer, token);
+    zmq::message_t* replymsg = sbuffer_to_message(buffer);
+    return replymsg;
+}
+
 /*
  A class for the RPC worker thread that writes assembled_chunks to
  disk as requested by clients.
@@ -123,7 +130,8 @@ public:
 
             // Send reply to each client waiting for this chunk.
             for (size_t i = 0; i < w.clients.size(); i++) {
-                zmq::message_t* client = w.clients[i];
+                zmq::message_t* client = w.clients[i].first;
+                uint32_t token = w.clients[i].second;
                 zmq::message_t* thisreply = reply;
                 if ((w.clients.size() > 1) && (i < (w.clients.size()-1))) {
                     // make a copy for all but last client.
@@ -131,6 +139,7 @@ public:
                     thisreply->copy(reply);
                 }
                 if (!(_socket.send(*client, ZMQ_SNDMORE) &&
+                      _socket.send(*token_to_message(token), ZMQ_SNDMORE) &&
                       _socket.send(*thisreply))) {
                     cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
                 }
@@ -243,27 +252,37 @@ void L1RpcServer::run() {
             _frontend.recv(&client);
             //cout << "Client: " << msg_string(client) << endl;
             _frontend.recv(&msg);
-            _handle_request(&client, &msg);
+            try {
+                _handle_request(&client, &msg);
+            } catch (const std::exception& e) {
+                cout << "Warning: Failed to handle RPC request... ignoring!" << endl;
+                cout << e.what() << endl;
+            }
         }
         if (pollitems[1].revents & ZMQ_POLLIN) {
             // Received a reply from a worker thread.
             //cout << "Received reply from worker" << endl;
-            // Check for exactly two message parts: client and reply.
+
+            // Assert exactly three message parts: client, token, and
+            // reply.  This is strictly within-process communication,
+            // so wrong message formats mean an error in the code.
             int more;
-            if (_backend.recv(&client) == 0) {
-                //cout << "Received zero bytes!" << endl;
-                continue;
-            }
-            //cout << "  client: " << msg_string(client) << endl;
+            bool ok;
+            zmq::message_t token;
+            ok = _backend.recv(&client);
+            assert(ok);
             more = _backend.getsockopt<int>(ZMQ_RCVMORE);
             assert(more);
-            if (_backend.recv(&msg) == 0) {
-                //cout << "Received zero bytes!" << endl;
-                continue;
-            }
-            //cout << "message: " << msg.size() << " bytes" << endl;
+            ok = _backend.recv(&token);
+            assert(ok);
+            more = _backend.getsockopt<int>(ZMQ_RCVMORE);
+            assert(more);
+            ok = _backend.recv(&msg);
+            assert(ok);
             more = _backend.getsockopt<int>(ZMQ_RCVMORE);
             assert(!more);
+            //cout << "  client: " << msg_string(client) << endl;
+            //cout << "message: " << msg.size() << " bytes" << endl;
 
             // Don't need to unpack the message -- just pass it on to the client
             /*
@@ -273,6 +292,7 @@ void L1RpcServer::run() {
              cout << "  message: " << obj << endl;
              */
             if (!(_frontend.send(client, ZMQ_SNDMORE) &&
+                  _frontend.send(token, ZMQ_SNDMORE) &&
                   _frontend.send(msg))) {
                 cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
             }
@@ -291,10 +311,9 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
     // Unpack the function name (string)
     msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
-    string funcname = oh.get().as<string>();
-
-    // RPC reply
-    msgpack::sbuffer buffer;
+    Rpc_Request rpcreq = oh.get().as<Rpc_Request>();
+    string funcname = rpcreq.function;
+    uint32_t token = rpcreq.token;
 
     if (funcname == "get_statistics") {
         //cout << "RPC get_statistics() called" << endl;
@@ -302,14 +321,15 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
         // Gather stats...
         vector<unordered_map<string, uint64_t> > stats = _stream->get_statistics();
+        msgpack::sbuffer buffer;
         msgpack::pack(buffer, stats);
-
         //  Send reply back to client.
         //cout << "Sending RPC reply of size " << buffer.size() << endl;
         zmq::message_t* reply = sbuffer_to_message(buffer);
         //cout << "  client: " << msg_string(*client) << endl;
 
         if (!(_frontend.send(*client, ZMQ_SNDMORE) &&
+              _frontend.send(*token_to_message(token), ZMQ_SNDMORE) &&
               _frontend.send(*reply))) {
             cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
             return -1;
@@ -356,7 +376,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         _get_chunks(req.beams, req.min_fpga, req.max_fpga, chunks);
         //cout << "get_chunks: got " << chunks.size() << " chunks" << endl;
 
-        // Reply immediately with a list of the chunks to be written.
+        // Keep a list of the chunks to be written; we'll reply right away with this list.
         vector<WriteChunks_Reply> reply;
 
         for (auto chunk = chunks.begin(); chunk != chunks.end(); chunk++) {
@@ -378,7 +398,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             client_copy->copy(client);
 
             // Create and enqueue a write_chunk_request for each chunk.
-            w.clients.push_back(client_copy);
+            w.clients.push_back(std::make_pair(client_copy, token));
             w.priority = req.priority;
             w.chunk = *chunk;
             _add_write_request(w);
@@ -392,10 +412,12 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             reply.push_back(rep);
         }
 
+        msgpack::sbuffer buffer;
         msgpack::pack(buffer, reply);
         zmq::message_t* replymsg = sbuffer_to_message(buffer);
 
         if (!(_frontend.send(*client, ZMQ_SNDMORE) &&
+              _frontend.send(*token_to_message(token), ZMQ_SNDMORE) &&
               _frontend.send(*replymsg))) {
             cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
             return -1;

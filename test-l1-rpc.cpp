@@ -52,12 +52,12 @@ int main() {
         }
     }
 
-    cout << "End state:" << endl;
+    //cout << "End state:" << endl;
     //rb->print();
     //cout << endl;
 
     vector<vector<shared_ptr<assembled_chunk> > > chunks;
-    cout << "Retrieving chunks..." << endl;
+    cout << "Test retrieving chunks..." << endl;
     //rb->retrieve(30000000, 50000000, chunks);
     vector<uint64_t> beams;
     beams.push_back(beam);
