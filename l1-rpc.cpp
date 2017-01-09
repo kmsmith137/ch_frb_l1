@@ -25,11 +25,11 @@ struct write_chunk_request {
     shared_ptr<assembled_chunk> chunk;
 };
 
-class RpcServer {
+class L1RpcServer {
 public:
-    RpcServer(zmq::context_t &ctx, string port,
+    L1RpcServer(zmq::context_t &ctx, string port,
               shared_ptr<ch_frb_io::intensity_network_stream> stream);
-    ~RpcServer();
+    ~L1RpcServer();
     write_chunk_request pop_write_request();
     void run();
 
@@ -65,7 +65,7 @@ static zmq::message_t* sbuffer_to_message(msgpack::sbuffer &buffer) {
 
 class RpcWorker {
 public:
-    RpcWorker(zmq::context_t* ctx, RpcServer* server) :
+    RpcWorker(zmq::context_t* ctx, L1RpcServer* server) :
         _socket(*ctx, ZMQ_DEALER),
         _server(server) {
     }
@@ -76,7 +76,7 @@ public:
         while (true) {
             zmq::message_t msg;
             _socket.recv(&msg);
-            // Expect empty message from RpcServer
+            // Expect empty message from L1RpcServer
 
             // Pull a write_chunk_request off the queue!
             write_chunk_request w = _server->pop_write_request();
@@ -134,18 +134,18 @@ public:
 
 private:
     zmq::socket_t _socket;
-    RpcServer* _server;
+    L1RpcServer* _server;
 };
 
 struct rpc_worker_thread_context {
     zmq::context_t* ctx;
-    RpcServer* server;
+    L1RpcServer* server;
 };
 
 static void* rpc_worker_thread_main(void *opaque_arg) {
     rpc_worker_thread_context *context = reinterpret_cast<rpc_worker_thread_context *>(opaque_arg);
     zmq::context_t* ctx = context->ctx;
-    RpcServer* server = context->server;
+    L1RpcServer* server = context->server;
     delete context;
 
     RpcWorker rpc(ctx, server);
@@ -153,7 +153,7 @@ static void* rpc_worker_thread_main(void *opaque_arg) {
     return NULL;
 }
 
-RpcServer::RpcServer(zmq::context_t &ctx, string port,
+L1RpcServer::L1RpcServer(zmq::context_t &ctx, string port,
                      shared_ptr<ch_frb_io::intensity_network_stream> stream) :
     _ctx(ctx),
     _frontend(_ctx, ZMQ_ROUTER),
@@ -167,11 +167,11 @@ RpcServer::RpcServer(zmq::context_t &ctx, string port,
     pthread_mutex_init(&this->_q_lock, NULL);
 }
 
-RpcServer::~RpcServer() {
+L1RpcServer::~L1RpcServer() {
     pthread_mutex_destroy(&this->_q_lock);
 }
 
-write_chunk_request RpcServer::pop_write_request() {
+write_chunk_request L1RpcServer::pop_write_request() {
     write_chunk_request wreq;
     pthread_mutex_lock(&this->_q_lock);
     if (_write_reqs.empty())
@@ -182,8 +182,8 @@ write_chunk_request RpcServer::pop_write_request() {
     return wreq;
 }
 
-void RpcServer::run() {
-    cout << "RpcServer::run()" << endl;
+void L1RpcServer::run() {
+    cout << "L1RpcServer::run()" << endl;
     _frontend.bind(_port);
     _backend.bind("inproc://rpc-backend");
 
@@ -211,7 +211,7 @@ void RpcServer::run() {
         size_t n = _write_reqs.size();
         pthread_mutex_unlock(&this->_q_lock);
 
-        cout << "RpcServer: polling.  Queued chunks to write: " << n << endl;
+        cout << "L1RpcServer: polling.  Queued chunks to write: " << n << endl;
 
         //int r = zmq::poll(pollitems, 2, -1);
         int r = zmq::poll(pollitems, 2, 5000);
@@ -268,7 +268,7 @@ void RpcServer::run() {
     }
 }
 
-int RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) {
+int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) {
     const char* req_data = reinterpret_cast<const char *>(request->data());
     std::size_t offset = 0;
 
@@ -360,7 +360,7 @@ int RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) 
     }
 }
         
-void RpcServer::_add_write_request(write_chunk_request &req) {
+void L1RpcServer::_add_write_request(write_chunk_request &req) {
     pthread_mutex_lock(&this->_q_lock);
     // FIXME -- priority queue; merge requests for same chunk.
 
@@ -420,7 +420,7 @@ void RpcServer::_add_write_request(write_chunk_request &req) {
         _backend.send(NULL, 0);
 }
 
-void RpcServer::_get_chunks(vector<uint64_t> &beams,
+void L1RpcServer::_get_chunks(vector<uint64_t> &beams,
                             uint64_t min_fpga, uint64_t max_fpga,
                             vector<shared_ptr<assembled_chunk> > &chunks) {
     vector<vector<shared_ptr<assembled_chunk> > > ch;
@@ -444,7 +444,7 @@ static void *rpc_thread_main(void *opaque_arg) {
     delete context;
 
     zmq::context_t ctx;
-    RpcServer rpc(ctx, port, stream);
+    L1RpcServer rpc(ctx, port, stream);
     rpc.run();
     return NULL;
 }
