@@ -54,9 +54,11 @@ using namespace ch_frb_io;
 
 
 // For debugging, convert a zmq message to a string
+/*
 static string msg_string(zmq::message_t &msg) {
     return string(static_cast<const char*>(msg.data()), msg.size());
 }
+ */
 
 // helper for the next function
 static void myfree(void* p, void*) {
@@ -98,7 +100,8 @@ public:
 
             WriteChunks_Reply rep;
             rep.beam = w.chunk->beam_id;
-            rep.chunk = w.chunk->ichunk;
+            rep.fpga0 = w.chunk->fpgacounts_begin();
+            rep.fpgaN = w.chunk->fpgacounts_end() - rep.fpga0;
             rep.success = false;
             rep.filename = w.filename;
 
@@ -134,7 +137,6 @@ public:
                 delete client;
                 delete thisreply;
             }
-            delete reply;
         }
     }
 
@@ -358,7 +360,9 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             write_chunk_request w;
             // Format the filename the chunk will be written to.
             char* strp = NULL;
-            int r = asprintf(&strp, req.filename_pattern.c_str(), (*chunk)->beam_id, (*chunk)->ichunk);
+            uint64_t fpga0 = (*chunk)->fpgacounts_begin();
+            uint64_t fpgaN = (*chunk)->fpgacounts_end() - fpga0;
+            int r = asprintf(&strp, req.filename_pattern.c_str(), (*chunk)->beam_id, fpga0, fpgaN);
             if (r == -1) {
                 cout << "Failed to format filename: " << req.filename_pattern << endl;
                 continue;
@@ -482,8 +486,12 @@ static void *rpc_thread_main(void *opaque_arg) {
     return NULL;
 }
 
-pthread_t* l1_rpc_server_start(string port,
-                               shared_ptr<ch_frb_io::intensity_network_stream> stream) {
+pthread_t* l1_rpc_server_start(shared_ptr<ch_frb_io::intensity_network_stream> stream,
+                               string port) {
+
+    if (port.length() == 0)
+        port = "tcp://*:" + std::to_string(default_port_l1_rpc);
+
     //cout << "Starting RPC server on " << port << endl;
     rpc_thread_context *context = new rpc_thread_context;
     context->stream = stream;

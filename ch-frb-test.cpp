@@ -10,12 +10,13 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <sys/time.h>
-#include <ch_frb_io.hpp>
-#include <ch_frb_rpc.hpp>
-#include <rpc.hpp>
 
 #include <msgpack.hpp>
 #include <zmq.hpp>
+
+#include <ch_frb_io.hpp>
+#include <l1-rpc.hpp>
+#include <rpc.hpp>
 
 #if defined(__AVX2__)
 const static bool HAVE_AVX2 = true;
@@ -190,7 +191,8 @@ int main(int argc, char** argv) {
     vector<shared_ptr<intensity_network_stream> > l1streams;
     // Spawn one processing thread per beam
     pthread_t processing_threads[n_l1_nodes * n_beams_per_l1_node];
-    vector<shared_ptr<frb_rpc_server> > rpcs;
+
+    //vector<shared_ptr<frb_rpc_server> > rpcs;
     vector<string> rpc_ports;
 
     vector<vector<shared_ptr<leaky_intensity_network_ostream> > > l0streams;
@@ -221,9 +223,10 @@ int main(int argc, char** argv) {
         string port = "tcp://127.0.0.1:" + to_string(rpc_port_l1_base + i);
         rpc_ports.push_back(port);
 
-        shared_ptr<frb_rpc_server> rpc(new frb_rpc_server(stream));
-        rpc->start(port);
-        rpcs.push_back(rpc);
+        //shared_ptr<frb_rpc_server> rpc(new frb_rpc_server(stream));
+        //rpc->start(port);
+        //rpcs.push_back(rpc);
+        l1_rpc_server_start(stream, port);
 
         // Just give some time for thread startup & logging
         usleep(10000);
@@ -385,7 +388,7 @@ int main(int argc, char** argv) {
     vector<shared_ptr<zmq::socket_t> > sockets;
     // Connect RPC sockets...
     for (int i=0; i<n_l1_nodes; i++) {
-        shared_ptr<zmq::socket_t> socket(new zmq::socket_t(context, ZMQ_REQ));
+        shared_ptr<zmq::socket_t> socket(new zmq::socket_t(context, ZMQ_DEALER));
         socket->connect(rpc_ports[i]);
         sockets.push_back(socket);
     }
@@ -394,9 +397,8 @@ int main(int argc, char** argv) {
     for (int i=0; i<n_l1_nodes; i++) {
         // RPC request buffer.
         msgpack::sbuffer buffer;
-        string funcname = "get_beam_metadata";
+        string funcname = "get_statistics";
         msgpack::pack(buffer, funcname);
-        //zmq::message_t request(buffer.data(), buffer.size(), NULL);
         // copy
         zmq::message_t request(buffer.data(), buffer.size());
         cout << "Sending RPC request to L1 node " << i << endl;
@@ -493,9 +495,9 @@ int main(int argc, char** argv) {
             if (j)
                 req.beams.push_back(j * n_beams_per_l1_node + (i % n_beams_per_l1_node));
         }
-        req.min_chunk = 1;
-        req.max_chunk = 1000;
-        req.filename_pattern = "chunk-beam%02llu-chunk%08lli.msgpack";
+        req.min_fpga = 0;
+        req.max_fpga = 1000;
+        req.filename_pattern = "chunk-beam%02u-fpga%012llu+%08llu.msgpack";
         msgpack::pack(buffer, req);
         
         // copy
@@ -506,6 +508,9 @@ int main(int argc, char** argv) {
 
     cout << "Receiving replies from L1 nodes..." << endl;
     vector<WriteChunks_Reply> wrotechunks;
+
+    // FIXME -- multiple async replies...
+
     for (int i=0; i<n_l1_nodes; i++) {
         //  Get the reply.
         usleep(100000);
@@ -528,7 +533,7 @@ int main(int argc, char** argv) {
 
     cout << "Wrote chunks:" << wrotechunks.size() << endl;
     for (auto it = wrotechunks.begin(); it != wrotechunks.end(); it++) {
-        cout << "  beam " << it->beam << ", chunk " << it->chunk;
+        cout << "  beam " << it->beam << ", FPGA " << it->fpga0  << " + " << it->fpgaN;
         if (!it->success) {
             cout << "Failed: " << it->error_message << endl;
         } else {

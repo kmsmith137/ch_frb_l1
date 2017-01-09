@@ -16,9 +16,9 @@ using namespace std;
 int main() {
     //  Prepare our context and socket
     zmq::context_t context(1);
-    zmq::socket_t socket(context, ZMQ_REQ);
+    zmq::socket_t socket(context, ZMQ_DEALER);
     
-    cout << "Connecting to hello world server…" << endl;
+    cout << "Connecting to L1 RPC server..." << endl;
     socket.connect("tcp://localhost:5555");
     
     //  Do 10 requests, waiting each time for a response
@@ -26,34 +26,30 @@ int main() {
 
         // RPC request buffer.
         msgpack::sbuffer buffer;
-        string funcname = "get_beam_metadata";
+        string funcname = "get_statistics";
         //tuple<string, bool> call(funcname, false);
         //msgpack::pack(buffer, call);
         msgpack::pack(buffer, funcname);
-
         cout << "Buffer size: " << buffer.size() << endl;
 
         // no copy
         zmq::message_t request(buffer.data(), buffer.size(), NULL);
 
-        cout << "Sending metadata request " << request_nbr << endl;
+        cout << "Sending stats request " << request_nbr << endl;
         socket.send(request);
 
-        //  Get the reply.
+        //  Get the reply
         zmq::message_t reply;
         socket.recv(&reply);
         cout << "Received result " << request_nbr << endl;
 
         cout << "Reply has size " << reply.size() << endl;
-
         const char* reply_data = reinterpret_cast<const char *>(reply.data());
-
-        msgpack::object_handle oh =
-            msgpack::unpack(reply_data, reply.size());
+        msgpack::object_handle oh = msgpack::unpack(reply_data, reply.size());
         msgpack::object obj = oh.get();
         cout << obj << endl;
 
-
+        /*
         // Send chunk request
         buffer = msgpack::sbuffer();
         
@@ -62,8 +58,8 @@ int main() {
 
         GetChunks_Request req;
         req.beams.push_back(2);
-        req.min_chunk = 1;
-        req.max_chunk = 1000;
+        req.min_fpga = 0;
+        req.max_fpga = 1000*400*1000;
         msgpack::pack(buffer, req);
 
         cout << "Buffer size: " << buffer.size() << endl;
@@ -90,6 +86,7 @@ int main() {
                 cout << "  chunk: " << (*it2)->ndata << " data" << endl;
             }
         }
+         */
 
         break;
 

@@ -69,7 +69,7 @@ using namespace ch_frb_io;
       ]
 
 
- * get_chunks(GetChunks_Request)
+ ** NOT IMPLEMENTED ** get_chunks(GetChunks_Request)
      
      Retrieves assembled_chunk data from the L1 ring buffer.
 
@@ -92,9 +92,12 @@ using namespace ch_frb_io;
 
      Returns a list of WriteChunk_Reply objects, one per beam*chunk.
 
+     FIXME -- document multiple async replies.
+
  */
 
 
+/*
 class GetChunks_Request {
 public:
     vector<uint64_t> beams;
@@ -103,13 +106,14 @@ public:
     bool compress;
     MSGPACK_DEFINE(beams, min_chunk, max_chunk, compress);
 };
+ */
 
 class WriteChunks_Request {
 public:
     vector<uint64_t> beams;
     uint64_t min_fpga;    // or 0 for no limit
     uint64_t max_fpga;    // or 0 for no limit
-    string filename_pattern; // filename printf pattern; file = sprintf(pattern, beam, ichunk)
+    string filename_pattern; // filename printf pattern; file = sprintf(pattern, int beam, uint64_t fpgacounts_start, uint64_t fpgacounts_N)
     int priority;
     MSGPACK_DEFINE(beams, min_fpga, max_fpga, filename_pattern, priority);
 };
@@ -117,10 +121,11 @@ public:
 class WriteChunks_Reply {
 public:
     uint64_t beam;
-    uint64_t chunk;
+    uint64_t fpga0;
+    uint64_t fpgaN;
     string filename;
     bool success;
     string error_message;
-    MSGPACK_DEFINE(beam, chunk, filename, success, error_message);
+    MSGPACK_DEFINE(beam, fpga0, fpgaN, filename, success, error_message);
 };
 

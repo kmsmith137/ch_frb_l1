@@ -16,7 +16,10 @@ int main() {
     shared_ptr<intensity_network_stream> stream = intensity_network_stream::make(ini);
     stream->start_stream();
 
-    l1_rpc_server_start("tcp://127.0.0.1:5555", stream);
+    // listen on localhost only, for local-machine testing (trying to
+    // listen on other ports triggers GUI window popup warnings on Mac
+    // OSX)
+    l1_rpc_server_start(stream, "tcp://127.0.0.1:5555");
 
     int nupfreq = 4;
     int nt_per = 16;

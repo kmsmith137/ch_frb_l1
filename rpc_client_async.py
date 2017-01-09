@@ -19,7 +19,7 @@ def client_thread(context, me):
     minfpga = 38600000
     maxfpga = 38600000
     priority = 10
-    filename_pat = 'chunk-%02llu-chunk%08llu-py.msgpack'
+    filename_pat = 'chunk-beam%02u-fpga%012llu+%08llu-py.msgpack'
     msg = (msgpack.packb('write_chunks') +
            msgpack.packb([beams, minfpga, maxfpga, filename_pat, priority]))
     print('Client', me, ': sending write request...')
@@ -27,7 +27,7 @@ def client_thread(context, me):
 
     beams = [77]
     priority = 20
-    filename_pat = 'chunk-%02llu-chunk%08llu-py.msgpack'
+    #filename_pat = 'chunk-%02llu-chunk%08llu-py.msgpack'
     msg = (msgpack.packb('write_chunks') +
            msgpack.packb([beams, minfpga, maxfpga, filename_pat, priority]))
     print('Client', me, ': sending write request...')
