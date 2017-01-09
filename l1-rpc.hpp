@@ -2,16 +2,15 @@
 #define L1_RPC_H_
 
 #include <vector>
+#include <deque>
 #include <pthread.h>
 #include <zmq.hpp>
 #include <ch_frb_io.hpp>
 
-/*
- // forward-decl
- namespace zmq {
- class message_t;
- };
- */
+// High-level API: start the RPC server.
+pthread_t* l1_rpc_server_start(std::string port,
+                               std::shared_ptr<ch_frb_io::intensity_network_stream> stream);
+
 
 // implementation detail: a struct used to communicate between threads
 // of the RPC server.
@@ -21,7 +20,6 @@ struct write_chunk_request {
     int priority;
     std::shared_ptr<ch_frb_io::assembled_chunk> chunk;
 };
-
 
 // The main L1 RPC server object.
 class L1RpcServer {
@@ -52,7 +50,7 @@ protected:
     // FPGA-count values from the ring buffers for the given beam IDs.
     void _get_chunks(std::vector<uint64_t> &beams,
                      uint64_t min_fpga, uint64_t max_fpga,
-                     std::vector<std::shared_ptr<assembled_chunk> > &chunks);
+                     std::vector<std::shared_ptr<ch_frb_io::assembled_chunk> > &chunks);
 
 private:
     zmq::context_t &_ctx;

@@ -30,16 +30,16 @@ endif
 #
 #
 
-BINARIES=ch-frb-l1 ch-frb-simulate-l0 rpc-client
+BINARIES := ch-frb-l1 ch-frb-simulate-l0 rpc-client
 
 all: $(BINARIES)
 
-INCFILES = ch_frb_rpc.hpp rpc.hpp
+INCFILES := l1-rpc.hpp rpc.hpp
 
-L1_OBJS = ch-frb-l1.o ch_frb_rpc.o
+L1_OBJS := ch-frb-l1.o l1-rpc.o
 
 # DEBUG -- objects from ch_frb_io
-IO_OBJS = \
+IO_OBJS := \
 	../ch_frb_io/assembled_chunk.o \
 	../ch_frb_io/assembled_chunk_ringbuf.o \
 	../ch_frb_io/l1-ringbuf.o \
@@ -83,7 +83,7 @@ ch-frb-test: ch-frb-test.cpp ch_frb_rpc.o
 ch-frb-test-debug: ch-frb-test.cpp ch_frb_rpc.o $(IO_OBJS)
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lzmq -lhdf5
 
-ringbuf: l1-rpc.cpp $(IO_OBJS)
+test-l1-rpc: test-l1-rpc.cpp l1-rpc.o $(IO_OBJS)
 	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lzmq -lhdf5 -llz4
 
 clean:
@@ -91,3 +91,17 @@ clean:
 
 install:
 	echo 'Nothing to install here!'
+
+
+# These are files; don't apply implicit make rules
+Makefile.local: ;
+Makefile: ;
+%.cpp: ;
+%.hpp: ;
+
+# Cancel stupid implicit rules.
+%: %,v
+%: RCS/%,v
+%: RCS/%
+%: s.%
+%: SCCS/s.%
