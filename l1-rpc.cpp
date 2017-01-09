@@ -8,6 +8,8 @@
 
 #include "rpc.hpp"
 
+#include "ch_frb_rpc.hpp"
+
 using namespace std;
 using namespace ch_frb_io;
 
@@ -17,41 +19,6 @@ static string msg_string(zmq::message_t &msg) {
 
 // RPC multi-threaded server, structure from
 // http://zguide.zeromq.org/cpp:asyncsrv
-
-struct write_chunk_request {
-    vector<zmq::message_t*> clients;
-    string filename;
-    int priority;
-    shared_ptr<assembled_chunk> chunk;
-};
-
-class L1RpcServer {
-public:
-    L1RpcServer(zmq::context_t &ctx, string port,
-              shared_ptr<ch_frb_io::intensity_network_stream> stream);
-    ~L1RpcServer();
-    write_chunk_request pop_write_request();
-    void run();
-
-protected:
-    int _handle_request(zmq::message_t* client, zmq::message_t* request);
-    void _add_write_request(write_chunk_request &req);
-    void _get_chunks(vector<uint64_t> &beams,
-                     uint64_t min_fpga, uint64_t max_fpga,
-                     vector<shared_ptr<assembled_chunk> > &chunks);
-private:
-    zmq::context_t &_ctx;
-    zmq::socket_t _frontend;
-    zmq::socket_t _backend;
-    string _port;
-
-    // the queue of write requests to be run by the RpcWorker(s)
-    deque<write_chunk_request> _write_reqs;
-    // (and the mutex for it)
-    pthread_mutex_t _q_lock;
-
-    shared_ptr<ch_frb_io::intensity_network_stream> _stream;
-};
 
 static void myfree(void* p, void*) {
     ::free(p);
