@@ -3,6 +3,11 @@ import zmq
 import msgpack
 import threading
 
+'''
+This python RPC client can be run against the ch-frb-l1 or test-l1-rpc
+programs.  It queries the L1 RPC from two different client threads.
+'''
+
 print_lock = threading.Lock()
 
 def tprint(*args):
