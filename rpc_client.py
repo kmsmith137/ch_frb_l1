@@ -111,7 +111,7 @@ class RpcClient(object):
             hdr = msgpack.packb(['write_chunks', self.token])
             req = msgpack.packb([beams, min_fpga, max_fpga, filename_pattern, priority])
             tokens.append(self.token)
-            self.sockets[k].send_multipart([hdr + req])
+            self.sockets[k].send(hdr + req)
         if not wait:
             return tokens
         # This will wait for the initial replies from servers, listing
@@ -119,19 +119,17 @@ class RpcClient(object):
         parts = self.wait_for_tokens(tokens, timeout=timeout)
         # We expect one message part for each token.
         chunklists = [msgpack.unpackb(p[0]) for p in parts]
-        print('Lists of chunks expected:', chunklists)
+        #print('Lists of chunks expected:', chunklists)
         if not waitAll:
             return chunklists
 
         ## Wait for notification that all writes have completed.
         results = []
-
+        Nchunks = [len(c) for c in chunklists]
         if timeout > 0:
             t0 = time.time()
-        
-        Nchunks = [len(c) for c in chunklists]
         for k,N,token in zip(servers, Nchunks, tokens):
-            print('Waiting for', N, 'chunks from', k, ', token', token)
+            #print('Waiting for', N, 'chunks from', k, ', token', token)
             n = 0
             while n < N:
                 #print('Waiting for', n, 'chunks from', k, ', token', token, 'got', len(rr))
@@ -145,7 +143,7 @@ class RpcClient(object):
                     # timed out
                     break
                 chunk = msgpack.unpackb(p[0])
-                print('got chunk', chunk)
+                #print('got chunk', chunk)
                 n += 1
                 # unpack the reply
                 [beam, fpga0, fpgaN, filename, success, err] = chunk
@@ -155,6 +153,9 @@ class RpcClient(object):
         return results
 
     def shutdown(self, servers=None):
+        '''
+        Sends a shutdown request to each RPC server.
+        '''
         if servers is None:
             servers = self.servers.keys()
         # Send RPC requests
@@ -165,14 +166,18 @@ class RpcClient(object):
             tokens.append(self.token)
             self.sockets[k].send(hdr)
         
-    def _pop_token(self, k, d=None):
+    def _pop_token(self, t, d=None):
+        '''
+        Pops a message for the given token number *t*, or returns *d*
+        if one does not exist.
+        '''
         try:
-            msgs = self.received[k]
+            msgs = self.received[t]
         except KeyError:
             return d
         msg = msgs.pop(0)
         if len(msgs) == 0:
-            del self.received[k]
+            del self.received[t]
         return msg
 
     def _receive(self, timeout=-1):
@@ -208,7 +213,7 @@ class RpcClient(object):
                 break
             for s,e in events:
                 #print('Receive()')
-                parts = s.recv_multipart() #flags=zmq.NOBLOCK
+                parts = s.recv_multipart()
                 _handle_parts(parts)
                 received = True
         if received:
@@ -236,19 +241,19 @@ class RpcClient(object):
         Returns a list of result messages, one for each *token*.
         '''
         results = {}
-        todo = [k for k in tokens]
+        todo = [token for token in tokens]
         if timeout > 0:
             t0 = time.time()
         while len(todo):
             #print('Still waiting for tokens:', todo)
             done = []
-            for k in todo:
-                r = self._pop_token(k)
+            for token in todo:
+                r = self._pop_token(token)
                 if r is not None:
-                    done.append(k)
-                    results[k] = r
-            for k in done:
-                todo.remove(k)
+                    done.append(token)
+                    results[token] = r
+            for token in done:
+                todo.remove(token)
             if len(todo):
                 if not self._receive(timeout=timeout):
                     # timed out
@@ -258,7 +263,7 @@ class RpcClient(object):
                     tnow = time.time()
                     timeout = max(0, t0 + timeout - tnow)
                     t0 = tnow
-        return [results.get(k, None) for k in tokens]
+        return [results.get(token, None) for token in tokens]
 
 if __name__ == '__main__':
 
@@ -281,24 +286,5 @@ if __name__ == '__main__':
     R = client.write_chunks([77,78], minfpga, maxfpga, 'chunk-beam%04i-fpga%012i+%08i.msgpack')
     print('Got:', R)
 
-    client.shutdown()
-
-    time.sleep(2)
-    
-    # server = 'tcp://127.0.0.1:5555'
-    # client = RpcClient(server)
-    # 
-    # import time
-    # #time.sleep(1)
-    # while True:
-    #     print('Try send...')
-    #     try:
-    #         client.socket.send_multipart([server, 'Hello'])
-    #         break
-    #     except zmq.error.ZMQError:
-    #         pass
-    #     time.sleep(0.1)
-    #     
-    # while True:
-    #     msg = client.socket.recv_multipart()
-    #     print('Received:', msg)
+    #client.shutdown()
+    #time.sleep(2)
