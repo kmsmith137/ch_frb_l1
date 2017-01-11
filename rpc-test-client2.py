@@ -1,12 +1,14 @@
 from __future__ import print_function
 import zmq
-#import umsgpack as msgpack
 import msgpack
-
 import numpy as np
-
-#import matplotlib
 import pylab as plt
+
+'''
+This python RPC client can be run against the ch-frb-test program
+which runs multiple L1 nodes in a single process.  It queries all
+nodes and generates plots.
+'''
 
 if __name__ == '__main__':
     context = zmq.Context()

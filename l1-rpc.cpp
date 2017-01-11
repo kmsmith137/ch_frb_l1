@@ -188,6 +188,8 @@ L1RpcServer::L1RpcServer(zmq::context_t &ctx, string port,
     _shutdown(false),
     _stream(stream)
 {
+    // Set my identity
+    _frontend.setsockopt(ZMQ_IDENTITY, _port);
     // Require messages sent on the frontend socket to have valid addresses.
     _frontend.setsockopt(ZMQ_ROUTER_MANDATORY, 1);
 
@@ -222,6 +224,7 @@ write_chunk_request* L1RpcServer::pop_write_request() {
 
 // Main thread for L1 RPC server.
 void L1RpcServer::run() {
+    cout << "bind(" << _port << ")" << endl;
     _frontend.bind(_port);
     _backend.bind("inproc://rpc-backend");
 
@@ -268,11 +271,40 @@ void L1RpcServer::run() {
         zmq::message_t msg;
         
         if (pollitems[0].revents & ZMQ_POLLIN) {
-            // New request from a client.
-            //cout << "Received message from client" << endl;
-            _frontend.recv(&client);
-            //cout << "Client: " << msg_string(client) << endl;
-            _frontend.recv(&msg);
+            // New request.  Should be exactly two message parts.
+            int more;
+            bool ok;
+            cout << "Receiving message on frontend socket" << endl;
+            ok = _frontend.recv(&client);
+            if (!ok) {
+                cout << "Failed to receive message on frontend socket!" << endl;
+                continue;
+            }
+            more = _frontend.getsockopt<int>(ZMQ_RCVMORE);
+            if (!more) {
+                cout << "Expected two message parts on frontend socket!" << endl;
+                continue;
+            }
+            ok = _frontend.recv(&msg);
+            if (!ok) {
+                cout << "Failed to receive second message on frontend socket!" << endl;
+                continue;
+            }
+            more = _frontend.getsockopt<int>(ZMQ_RCVMORE);
+            if (more) {
+                cout << "Expected only two message parts on frontend socket!" << endl;
+                // recv until !more?
+                while (more) {
+                    ok = _frontend.recv(&msg);
+                    if (!ok) {
+                        cout << "Failed to recv() while dumping bad message on frontend socket!" << endl;
+                        break;
+                    }
+                    more = _frontend.getsockopt<int>(ZMQ_RCVMORE);
+                }
+                continue;
+            }
+
             try {
                 _handle_request(&client, &msg);
             } catch (const std::exception& e) {

@@ -6,12 +6,61 @@
 using namespace std;
 using namespace ch_frb_io;
 
-int main() {
+int main(int argc, char** argv) {
     int beam = 77;
+    string port = "";
+    int portnum = 0;
+    int udpport = 0;
+    int wait = 0;
+
+    int c;
+    while ((c = getopt(argc, argv, "a:p:b:u:wh")) != -1) {
+        switch (c) {
+        case 'a':
+            port = string(optarg);
+            break;
+
+        case 'p':
+            portnum = atoi(optarg);
+            break;
+
+        case 'b':
+            beam = atoi(optarg);
+            break;
+
+        case 'u':
+            udpport = atoi(optarg);
+            break;
+
+        case 'w':
+            wait = 1;
+            break;
+
+        case 'h':
+        case '?':
+        default:
+            cout << string(argv[0]) << ": [-a <address>] [-p <port number>] [-b <beam id>] [-u <L1 udp-port>] [-w to wait indef] [-h for help]" << endl;
+            cout << "eg,  -a tcp://127.0.0.1:5555" << endl;
+            cout << "     -p 5555" << endl;
+            cout << "     -b 78" << endl;
+            return 0;
+        }
+    }
+    argc -= optind;
+    argv += optind;
+
+
+    if ((port.length() == 0) && (portnum == 0))
+        port = "tcp://127.0.0.1:5555";
+    else if (portnum)
+        port = "tcp://127.0.0.1:" + to_string(portnum);
 
     intensity_network_stream::initializer ini;
     ini.beam_ids.push_back(beam);
     //ini.mandate_fast_kernels = HAVE_AVX2;
+
+    if (udpport)
+        ini.udp_port = udpport;
 
     shared_ptr<intensity_network_stream> stream = intensity_network_stream::make(ini);
     stream->start_stream();
@@ -19,7 +68,8 @@ int main() {
     // listen on localhost only, for local-machine testing (trying to
     // listen on other ports triggers GUI window popup warnings on Mac
     // OSX)
-    l1_rpc_server_start(stream, "tcp://127.0.0.1:5555");
+    cout << "Starting RPC server on port " << port << endl;
+    l1_rpc_server_start(stream, port);
 
     int nupfreq = 4;
     int nt_per = 16;
@@ -68,7 +118,12 @@ int main() {
     }
     cout << endl;
 
-    usleep(30 * 1000000);
+    for (;;) {
+        usleep(30 * 1000000);
+        if (!wait)
+            break;
+    }
+
 }
 
 
