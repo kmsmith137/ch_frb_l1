@@ -145,10 +145,14 @@ public:
                     thisreply = new zmq::message_t();
                     thisreply->copy(reply);
                 }
-                if (!(_socket.send(*client, ZMQ_SNDMORE) &&
-                      _socket.send(*token_to_message(token), ZMQ_SNDMORE) &&
-                      _socket.send(*thisreply))) {
-                    cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
+                try {
+                    if (!(_socket.send(*client, ZMQ_SNDMORE) &&
+                          _socket.send(*token_to_message(token), ZMQ_SNDMORE) &&
+                          _socket.send(*thisreply))) {
+                        cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
+                    }
+                } catch (const zmq::error_t& e) {
+                    cout << "ERROR sending RPC reply: " << e.what() << endl;
                 }
                 delete client;
                 delete thisreply;
@@ -274,7 +278,7 @@ void L1RpcServer::run() {
             // New request.  Should be exactly two message parts.
             int more;
             bool ok;
-            cout << "Receiving message on frontend socket" << endl;
+            //cout << "Receiving message on frontend socket" << endl;
             ok = _frontend.recv(&client);
             if (!ok) {
                 cout << "Failed to receive message on frontend socket!" << endl;
