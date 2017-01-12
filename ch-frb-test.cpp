@@ -421,13 +421,13 @@ int main(int argc, char** argv) {
 
         vector<unordered_map<string, uint64_t> > R;
         try {
-            obj.convert(&R);
+            obj.convert(R);
         } catch (...) {
             cout << "Failed to parse RPC reply into list of dictionaries" << endl;
             cout << "Reply: " << obj << endl;
         }
         
-        for (int j=0; j<R.size(); j++) {
+        for (size_t j=0; j<R.size(); j++) {
             unordered_map<string, uint64_t> m = R[j];
             if (j == 0) {
                 cout << "Node " << i << " status:" << endl << "  ";
@@ -440,7 +440,7 @@ int main(int argc, char** argv) {
             int k=0;
             for (auto it = m.begin(); it != m.end(); it++, k++) {
                 cout << "  " << it->first << " = " << it->second;
-                if (k != m.size()-1) {
+                if (k != (int)m.size()-1) {
                     cout << ", ";
                     if (k % 4 == 3)
                         cout << endl << "  ";
@@ -526,7 +526,7 @@ int main(int argc, char** argv) {
         cout << "Reply: " << obj << endl;
 
         vector<WriteChunks_Reply> rep;
-        obj.convert(&rep);
+        obj.convert(rep);
         cout << "Parsed " << rep.size() << " WriteChunks_Reply objects" << endl;
         for (auto it = rep.begin(); it != rep.end(); it++)
             wrotechunks.push_back(*it);
