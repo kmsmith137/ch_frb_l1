@@ -430,6 +430,39 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         //cout << "Sent stats reply!" << endl;
         return 0;
 
+    } else if (funcname == "list_chunks") {
+       // No input arguments, so don't unpack anything more.
+
+        // Grab snapshot of all ringbufs...
+        vector<tuple<uint64_t, uint64_t, uint64_t> > allchunks;
+
+        intensity_network_stream::initializer ini = _stream->get_initializer();
+        for (auto beamit = ini.beam_ids.begin(); beamit != ini.beam_ids.end(); beamit++) {
+            // yuck, convert vector<int> to vector<uint64_t>...
+            int beam = *beamit;
+            vector<uint64_t> beams;
+            beams.push_back(beam);
+            vector<vector<shared_ptr<assembled_chunk> > > chunks = _stream->get_ringbuf_snapshots(beams);
+            // iterate over beams (we only requested one)
+            for (auto it1 = chunks.begin(); it1 != chunks.end(); it1++) {
+                // iterate over chunks
+                for (auto it2 = (*it1).begin(); it2 != (*it1).end(); it2++) {
+                    allchunks.push_back(tuple<uint64_t, uint64_t, uint64_t>((*it2)->beam_id, (*it2)->fpgacounts_begin(), (*it2)->fpgacounts_end()));
+                }
+            }
+        }
+        msgpack::sbuffer buffer;
+        msgpack::pack(buffer, allchunks);
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        //  Send reply back to client.
+        if (!(_frontend.send(*client, ZMQ_SNDMORE) &&
+              _frontend.send(*token_to_message(token), ZMQ_SNDMORE) &&
+              _frontend.send(*reply))) {
+            cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
+            return -1;
+        }
+        return 0;
+
         /*
          The get_chunks() RPC is disabled for now.
     } else if (funcname == "get_chunks") {

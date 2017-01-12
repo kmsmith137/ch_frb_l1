@@ -40,8 +40,8 @@ int main() {
         socket.send(request);
 
         //  Get the reply: token followed by data
-        zmq::message_t reply;
         zmq::message_t reply_token;
+        zmq::message_t reply;
         socket.recv(&reply_token);
         socket.recv(&reply);
         cout << "Received result " << request_nbr << endl;
