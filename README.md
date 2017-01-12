@@ -22,6 +22,7 @@ The CHIMEFRB pipeline currently consists of the following external dependencies:
 plus the following components:
 
   - bitshuffle (https://github.com/kiyo-masui/bitshuffle)
+  - simd_helpers (https://github.com/kmsmith137/simd_helpers)
   - simpulse (https://github.com/kmsmith137/simpulse)
   - ch_frb_io (https://github.com/CHIMEFRB/ch_frb_io)
   - bonsai (https://github.com/CHIMEFRB/bonsai)

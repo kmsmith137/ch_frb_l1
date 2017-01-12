@@ -1,4 +1,4 @@
-# Makefile.local for frb1.physics.mcgill.ca
+# Makefile.local for chimpanzee.perimeterinstitute.ca
 
 # Directory where executables will be installed
 BINDIR=$(HOME)/bin

@@ -105,7 +105,11 @@ int main(int argc, char **argv)
 
     ch_frb_io::intensity_network_stream::initializer ini_params;
     ini_params.beam_ids = { 0, 1, 2, 3, 4, 5, 6, 7 };
-    ini_params.mandate_fast_kernels = HAVE_AVX2;
+#ifdef __AVX2__
+    ini_params.mandate_fast_kernels = true;
+#else
+    cerr << "Warning: this machine does not appear to have the AVX2 instruction set, fast kernels will be disabled\n";
+#endif
 
     for (int i = 1; i < argc; i++) {
 	if (strcmp(argv[i], "-r"))

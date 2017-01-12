@@ -77,6 +77,7 @@ If you run into problems or have suggestions, let me know!
 
 These instructions apply to the following github repos:
 
+   - https://github.com/kmsmith137/simd_helpers
    - https://github.com/kmsmith137/simpulse
    - https://github.com/CHIMEFRB/ch_frb_io
    - https://github.com/CHIMEFRB/bonsai
