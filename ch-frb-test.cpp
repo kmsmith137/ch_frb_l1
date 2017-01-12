@@ -398,8 +398,10 @@ int main(int argc, char** argv) {
     for (int i=0; i<n_l1_nodes; i++) {
         // RPC request buffer.
         msgpack::sbuffer buffer;
-        string funcname = "get_statistics";
-        msgpack::pack(buffer, funcname);
+        Rpc_Request req;
+        req.function = "get_statistics";
+        req.token = 42;
+        msgpack::pack(buffer, req);
         // copy
         zmq::message_t request(buffer.data(), buffer.size());
         cout << "Sending RPC request to L1 node " << i << endl;
@@ -412,12 +414,21 @@ int main(int argc, char** argv) {
         usleep(100000);
         
         cout << "Receiving reply from L1 node " << i << endl;
+        //  token followed by data
+        zmq::message_t reply_token;
         zmq::message_t reply;
+        sockets[i]->recv(&reply_token);
         sockets[i]->recv(&reply);
+        const char* token_data = reinterpret_cast<const char *>(reply_token.data());
+        msgpack::object_handle toh = msgpack::unpack(token_data, reply_token.size());
+        uint32_t token = toh.get().as<uint32_t>();
+        cout << "Token: " << token << endl;
+
+        cout << "Reply has size " << reply.size() << endl;
         const char* reply_data = reinterpret_cast<const char *>(reply.data());
         msgpack::object_handle oh = msgpack::unpack(reply_data, reply.size());
         msgpack::object obj = oh.get();
-        //cout << "Reply: " << obj << endl;
+        cout << obj << endl;
 
         vector<unordered_map<string, uint64_t> > R;
         try {
@@ -450,46 +461,14 @@ int main(int argc, char** argv) {
         cout << endl;
     }
 
-    // DEBUG: make RPC calls in series.
-    /*
     cout << "Sending write_chunks requests to L1 nodes..." << endl;
     for (int i=0; i<n_l1_nodes; i++) {
         // RPC request buffer.
         msgpack::sbuffer buffer;
-        string funcname = "write_chunks";
-        msgpack::pack(buffer, funcname);
-        WriteChunks_Request req;
-
-        for (int j=0; j<n_l1_nodes; j++) {
-            if (j)
-                req.beams.push_back(j * n_beams_per_l1_node + (i % n_beams_per_l1_node));
-        }
-        req.min_chunk = 1;
-        req.max_chunk = 1000;
-        req.filename_pattern = "chunk-beam%02llu-chunk%08lli.msgpack";
-        msgpack::pack(buffer, req);
-        
-        // copy
-        zmq::message_t request(buffer.data(), buffer.size());
-        cout << "Sending RPC request to L1 node " << i << endl;
-        sockets[i]->send(request);
-
-        cout << "Receiving reply from L1 node " << i << endl;
-        zmq::message_t reply;
-        sockets[i]->recv(&reply);
-        const char* reply_data = reinterpret_cast<const char *>(reply.data());
-        msgpack::object_handle oh = msgpack::unpack(reply_data, reply.size());
-        msgpack::object obj = oh.get();
-        cout << "Reply: " << obj << endl << endl;
-    }
-     */
-
-    cout << "Sending write_chunks requests to L1 nodes..." << endl;
-    for (int i=0; i<n_l1_nodes; i++) {
-        // RPC request buffer.
-        msgpack::sbuffer buffer;
-        string funcname = "write_chunks";
-        msgpack::pack(buffer, funcname);
+        Rpc_Request rpc;
+        rpc.function = "write_chunks";
+        rpc.token = 43;
+        msgpack::pack(buffer, rpc);
         WriteChunks_Request req;
 
         for (int j=0; j<n_l1_nodes; j++) {
@@ -498,7 +477,7 @@ int main(int argc, char** argv) {
         }
         req.min_fpga = 0;
         req.max_fpga = 1000;
-        req.filename_pattern = "chunk-beam%02u-fpga%012llu+%08llu.msgpack";
+        req.filename_pattern = "chunk-beam(BEAM)-fpga(FPGA0)+(FPGAN).msgpack";
         msgpack::pack(buffer, req);
         
         // copy
@@ -517,11 +496,19 @@ int main(int argc, char** argv) {
         usleep(100000);
         
         cout << "Receiving reply from L1 node " << i << endl;
+
+        //  token followed by data
+        zmq::message_t reply_token;
         zmq::message_t reply;
+        sockets[i]->recv(&reply_token);
         sockets[i]->recv(&reply);
+        const char* token_data = reinterpret_cast<const char *>(reply_token.data());
+        msgpack::object_handle toh = msgpack::unpack(token_data, reply_token.size());
+        uint32_t token = toh.get().as<uint32_t>();
+        cout << "Token: " << token << endl;
+
         const char* reply_data = reinterpret_cast<const char *>(reply.data());
-        msgpack::object_handle oh =
-            msgpack::unpack(reply_data, reply.size());
+        msgpack::object_handle oh = msgpack::unpack(reply_data, reply.size());
         msgpack::object obj = oh.get();
         cout << "Reply: " << obj << endl;
 

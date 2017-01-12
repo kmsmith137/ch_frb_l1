@@ -100,6 +100,16 @@
      request a list of beam ids and a range of FPGA-count times, and
      specify the filenames to which they are to be written.
 
+     The filename pattern is not a printf-like pattern, instead it
+     supports the following replacements:
+         (BEAM)    -> %04i beam_id
+         (CHUNK)   -> %08i ichunk
+         (NCHUNK)  -> %02i  size in chunks
+         (BINNING) -> %02i  size in chunks
+         (FPGA0)   -> %012i start FPGA-counts
+         (FPGAN)   -> %08i  FPGA-counts size
+     (see ch_frb_io : assembled_chunk : format_filename)
+
 
  * shutdown()
 
@@ -134,7 +144,7 @@ public:
     std::vector<uint64_t> beams;
     uint64_t min_fpga;    // or 0 for no limit
     uint64_t max_fpga;    // or 0 for no limit
-    std::string filename_pattern; // filename printf pattern; file = sprintf(pattern, int beam, uint64_t fpgacounts_start, uint64_t fpgacounts_N)
+    std::string filename_pattern; // filename pattern
     int priority;
     MSGPACK_DEFINE(beams, min_fpga, max_fpga, filename_pattern, priority);
 };

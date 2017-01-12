@@ -37,7 +37,7 @@ def client_thread(context, me):
     minfpga = 38600000
     maxfpga = 38600000
     priority = 10
-    filename_pat = 'chunk-beam%02u-fpga%012llu+%08llu-py.msgpack'
+    filename_pat = 'chunk-beam(BEAM)-fpga(FPGA0)+(FPGAN)-py.msgpack'
     token += 1
     msg = (msgpack.packb(['write_chunks', token]) +
            msgpack.packb([beams, minfpga, maxfpga, filename_pat, priority]))

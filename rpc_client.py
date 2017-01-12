@@ -303,7 +303,7 @@ if __name__ == '__main__':
     #maxfpga = 38600000
     maxfpga = 48600000
 
-    R = client.write_chunks([77,78], minfpga, maxfpga, 'chunk-beam%04i-fpga%012i+%08i.msgpack', timeout=3000)
+    R = client.write_chunks([77,78], minfpga, maxfpga, 'chunk-beam(BEAM)-chunk(CHUNK)+(NCHUNK).msgpack', timeout=3000)
     print('Got:', R)
 
     #client.shutdown()
