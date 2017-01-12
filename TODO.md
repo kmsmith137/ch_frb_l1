@@ -37,6 +37,8 @@
     
   - Touch base with L2 group on division of web-based code.
 
+  - Test IPMI on the compute node.
+
   - Vaguely defined: develop rf_weblines a little bit more, as needed
     for tuning our RFI excision.
 
