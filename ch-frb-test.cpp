@@ -26,6 +26,7 @@ const static bool HAVE_AVX2 = false;
 #endif
 
 using namespace std;
+using namespace ch_frb_io;
 
 struct processing_thread_context {
     shared_ptr<ch_frb_io::intensity_network_stream> stream;

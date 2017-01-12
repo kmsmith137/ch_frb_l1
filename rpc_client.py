@@ -86,7 +86,8 @@ class RpcClient(object):
             return tokens
         parts = self.wait_for_tokens(tokens, timeout=timeout)
         # We expect one message part for each token.
-        return [msgpack.unpackb(p[0]) for p in parts]
+        return [msgpack.unpackb(p[0]) if p is not None else None
+                for p in parts]
 
     def write_chunks(self, beams, min_fpga, max_fpga, filename_pattern,
                      priority=0,
@@ -118,18 +119,22 @@ class RpcClient(object):
         # the chunks to be written out.
         parts = self.wait_for_tokens(tokens, timeout=timeout)
         # We expect one message part for each token.
-        chunklists = [msgpack.unpackb(p[0]) for p in parts]
+        chunklists = [msgpack.unpackb(p[0]) if p is not None else None
+                      for p in parts]
         #print('Lists of chunks expected:', chunklists)
         if not waitAll:
             return chunklists
 
         ## Wait for notification that all writes have completed.
         results = []
-        Nchunks = [len(c) for c in chunklists]
         if timeout > 0:
             t0 = time.time()
-        for k,N,token in zip(servers, Nchunks, tokens):
+        for k,token,chunklist in zip(servers, tokens, chunklists):
             #print('Waiting for', N, 'chunks from', k, ', token', token)
+            if chunklist is None:
+                # Did not receive a reply from this server.
+                continue
+            N = len(chunklist)
             n = 0
             while n < N:
                 #print('Waiting for', n, 'chunks from', k, ', token', token, 'got', len(rr))
@@ -267,13 +272,28 @@ class RpcClient(object):
 
 if __name__ == '__main__':
 
-    servers = dict(a='tcp://127.0.0.1:5555',
-                   b='tcp://127.0.0.1:5556')
+    import sys
+    args = sys.argv[1:]
+
+    if len(args):
+        servers = {}
+        for i,a in enumerate(args):
+            port = None
+            try:
+                port = int(a)
+                port = 'tcp://127.0.0.1:%i' % port
+            except:
+                port = a
+
+            servers[chr(ord('a')+i)] = port
+    else:
+        servers = dict(a='tcp://127.0.0.1:5555',
+                       b='tcp://127.0.0.1:5556')
 
     client = RpcClient(servers, identity='client')
 
     print('get_statistics()...')
-    stats = client.get_statistics()
+    stats = client.get_statistics(timeout=3000)
     print('Got stats:', stats)
 
     print()
@@ -283,7 +303,7 @@ if __name__ == '__main__':
     #maxfpga = 38600000
     maxfpga = 48600000
 
-    R = client.write_chunks([77,78], minfpga, maxfpga, 'chunk-beam%04i-fpga%012i+%08i.msgpack')
+    R = client.write_chunks([77,78], minfpga, maxfpga, 'chunk-beam%04i-fpga%012i+%08i.msgpack', timeout=3000)
     print('Got:', R)
 
     #client.shutdown()
