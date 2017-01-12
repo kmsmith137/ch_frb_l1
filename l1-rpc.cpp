@@ -4,7 +4,6 @@
 #include <zmq.hpp>
 #include <msgpack.hpp>
 
-//#include "l1-ringbuf.hpp"
 #include "ch_frb_io.hpp"
 
 #include "l1-rpc.hpp"
@@ -15,12 +14,8 @@ using namespace ch_frb_io;
 
 /*
  The L1 RPC server is structured as a typical ZeroMQ multi-threaded
- server (eg, http://zguide.zeromq.org/cpp:asyncsrv).
-
-
- FIXME: does this load-balance correctly?  Or does the server process
- DEALER socket round-robin messages to the workers?
-
+ server (eg, http://zguide.zeromq.org/cpp:asyncsrv), with some tweaks
+ as described below.
 
  There is a client-facing ZeroMQ socket, _frontend, listening on a TCP
  port.  The main server thread (run()) pulls requests off this socket.
@@ -32,23 +27,36 @@ using namespace ch_frb_io;
 
  write_chunks requests are represented as write_chunk_request structs
  and placed in a priority queue.  (We manage the priority-queue aspect
- ourselves, because there are some complexities.)  Each time a new
- request is enqueued, the server sends an empty message to the worker
- threads.  This signals them to pull a write_chunk_request off the
- queue.
+ ourselves, because there are some complexities.)
 
  The main RPC server communicates with the RPC worker thread(s) using
  the in-memory _backend ZeroMQ socket.
 
+ In the typical ZeroMQ multi-threaded server, the main server process
+ communicates with the worker processes by sending messages on the
+ _backend socket, but instead we use our work queue and a condition
+ variable.  This provides for load-balancing the worker threads.
 
- FIXME: why don't we just use a mutex & condition variable?  Don't
- really need to have the RPC worker read from the ZMQ socket to get a
- signal that work is available.
+ The RPC calls are fully asynchronous; a single request may generate
+ zero or more replies.  To keep things organized, each request has a
+ header with the function name, and an integer "token".  Each reply to
+ that request includes that token.
 
 
- FIXME: should the RPC Server reply to a write_chunks request with a
- quick reply saying how many chunks the client should expect?
-
+ Additional notes:
+ 
+ - I originally wanted the client to use a single ROUTER socket to
+ talk to multiple servers (each with ROUTER sockets), but it turns out
+ that ROUTER-to-ROUTER is tricky to get working correctly... in fact,
+ I got a python implementation working but never did get the C++
+ server (which I thought was the same code) working; the issue is that
+ ROUTER sockets don't want to send a message to a peer until they have
+ exchanged a handshake with the peer; this happens *asynchronously*
+ after a connect() call, and there does not appear to be a way to find
+ out when that process is finished.  So instead the rpc_client.py uses
+ one DEALER socket to talk to each server, and uses poll() to listen
+ for messages from any of them.  This polling is not a busy-loop, and
+ it uses only one or two ZeroMQ threads per context.
 
  */
 
@@ -78,6 +86,7 @@ static zmq::message_t* sbuffer_to_message(msgpack::sbuffer &buffer) {
     return msg;
 }
 
+// Create a tiny ZeroMQ message containing the given integer, msgpacked.
 static zmq::message_t* token_to_message(uint32_t token) {
     msgpack::sbuffer buffer;
     msgpack::pack(buffer, token);

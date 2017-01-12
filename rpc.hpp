@@ -11,6 +11,13 @@
 
  RPC calls:
 
+ Each RPC call contains a header, of type Rpc_Request, with the name
+ of the function to be called, and a token.  This token is included in
+ each reply message (replies are multi-part messages; the first part
+ is the token).
+
+ The RPC functions are:
+
  * get_statistics(void)
 
      Retrieves status and statistics from an L1 node.
@@ -83,13 +90,15 @@
      them to as files to the L1 node's filesystem, in a custom msgpack
      format.
 
+     The server replies immediately with a list of the chunks to be
+     written out, as a list of WriteChunk_Reply objects.  Then, as the
+     chunks are actually written to disk, it sends a series of
+     WriteChunk_Reply objects.  The initial reply indicates to the
+     client how many additional chunk replies it should expect.
+
      See below for the contents of WriteChunks_Request; in short,
-     request a list of beam ids and a range of chunks, and specify the
-     filenames to which they are to be written.
-
-     Returns a list of WriteChunk_Reply objects, one per beam*chunk.
-
-     FIXME -- document multiple async replies.
+     request a list of beam ids and a range of FPGA-count times, and
+     specify the filenames to which they are to be written.
 
 
  * shutdown()
@@ -100,6 +109,7 @@
 
  */
 
+// See l1-rpc.cpp for some implementation details.
 
 /*
 class GetChunks_Request {
