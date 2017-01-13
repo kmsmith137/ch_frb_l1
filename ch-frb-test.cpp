@@ -9,6 +9,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <sched.h>
 #include <sys/time.h>
 
 #include <msgpack.hpp>
@@ -51,16 +52,16 @@ static void *processing_thread_main(void *opaque_arg)
 	// Get assembled data from netwrok
 	auto chunk = stream->get_assembled_chunk(ithread);
 	if (!chunk) {
-        cout << "Processing thread: found end-of-stream" << endl;
+            cout << "Processing thread: found end-of-stream" << endl;
 	    break;  // End-of-stream reached
-    }
+        }
 
 	assert(chunk->nupfreq == nupfreq);
 
 	// We call assembled_chunk::decode(), which extracts the data from its low-level 8-bit
 	// representation to a floating-point array, but our processing currently stops there!
 	chunk->decode(&intensity[0], &weights[0], ch_frb_io::constants::nt_per_assembled_chunk);
-    cout << "Decoded beam " << chunk->beam_id << ", chunk " << chunk->ichunk << endl;
+        cout << "Decoded beam " << chunk->beam_id << ", chunk " << chunk->ichunk << endl;
     }
     return NULL;
 }
@@ -160,177 +161,12 @@ protected:
 };
 
 
-/*
- * 
- */
-int main(int argc, char** argv) {
-
-    const int n_l1_nodes = 4;
-    const int n_beams_per_l1_node = 4;
-    const int n_l0_nodes = 8;
-
-    /*
-     const int n_l1_nodes = 1;
-     const int n_beams_per_l1_node = 1;
-     const int n_l0_nodes = 1;
-     */
-
-    const int n_coarse_freq_per_l0 = constants::nfreq_coarse_tot / n_l0_nodes;
-
-    //int nchunks = int(gb_to_simulate * 1.0e9 / ostream->nbytes_per_chunk) + 1
-    //int nchunks = 5;
-    int nchunks = 3;
-
-    const int udp_port_l1_base = 10255;
-    const int rpc_port_l1_base = 5555;
-
-    // for debugging
-    const int udp_port_l0_base = 20000;
-
-    unordered_map<int, int> l0_port_map;
-
-    vector<shared_ptr<intensity_network_stream> > l1streams;
-    // Spawn one processing thread per beam
-    pthread_t processing_threads[n_l1_nodes * n_beams_per_l1_node];
-
-    //vector<shared_ptr<frb_rpc_server> > rpcs;
-    vector<string> rpc_ports;
-
-    vector<vector<shared_ptr<leaky_intensity_network_ostream> > > l0streams;
-
-    for (int i=0; i<n_l1_nodes; i++) {
-        ch_frb_io::intensity_network_stream::initializer ini_params;
-        for (int j=0; j<n_beams_per_l1_node; j++) {
-            ini_params.beam_ids.push_back(i*n_beams_per_l1_node + j);
-        }
-        ini_params.mandate_fast_kernels = HAVE_AVX2;
-        int udp_port = udp_port_l1_base + i;
-        ini_params.udp_port = udp_port;
-        cout << "Starting L1 node listening on UDP port " << udp_port << endl;
-
-        shared_ptr<intensity_network_stream> stream = 
-            ch_frb_io::intensity_network_stream::make(ini_params);
-
-        // Spawn one processing thread per beam
-        for (int j=0; j<n_beams_per_l1_node; j++) {
-            int ibeam = i*n_beams_per_l1_node + j;
-            spawn_processing_thread(processing_threads[ibeam], stream, j);
-        }
-        // Start listening for packets.
-        stream->start_stream();
-        l1streams.push_back(stream);
-
-        // Make RPC-serving object for each L1 node.
-        string port = "tcp://127.0.0.1:" + to_string(rpc_port_l1_base + i);
-        rpc_ports.push_back(port);
-
-        //shared_ptr<frb_rpc_server> rpc(new frb_rpc_server(stream));
-        //rpc->start(port);
-        //rpcs.push_back(rpc);
-        l1_rpc_server_start(stream, port);
-
-        // Just give some time for thread startup & logging
-        usleep(10000);
-    }
-
-    for (int i=0; i<n_l0_nodes; i++) {
-        // Create sim L0 nodes...
-
-        // Currently, we don't have a fake L0 node object, so
-        // just create streams for all L0 x L1 nodes
-
-        cout << "L0 node " << i << ": sending to L0 nodes:" << endl;
-
-        vector<shared_ptr<leaky_intensity_network_ostream> > nodestreams;
-        for (int j=0; j<n_l1_nodes; j++) {
-
-            ch_frb_io::intensity_network_ostream::initializer ini_params;
-
-            // debug: bind the L0 stream to a UDP port, and record the mapping
-            ini_params.bind_port = udp_port_l0_base + i * n_l1_nodes + j;
-            l0_port_map[ini_params.bind_port] = i;
-
-            for (int k=0; k<n_beams_per_l1_node; k++) {
-                int ibeam = j*n_beams_per_l1_node + k;
-                ini_params.beam_ids.push_back(ibeam);
-            }
-            for (int k=0; k<n_coarse_freq_per_l0; k++) {
-                // Coarse freqs are not guaranteed to be contiguous,
-                // but here they are.
-                ini_params.coarse_freq_ids.push_back(i * n_coarse_freq_per_l0 + k);
-            }
-            ini_params.nupfreq = 16;
-            ini_params.nfreq_coarse_per_packet = 4;
-            ini_params.nt_per_packet = 16;
-            //ini_params.nt_per_chunk = 16;
-            ini_params.nt_per_chunk = constants::nt_per_assembled_chunk;
-            ini_params.fpga_counts_per_sample = 400;   // FIXME double-check this number
-
-            //ini_params.target_gbps = 0.1;
-            ini_params.emit_warning_on_buffer_drop = true;
-            ini_params.throw_exception_on_buffer_drop = true;
-
-            int udp_port = udp_port_l1_base + j;
-            ini_params.dstname = "127.0.0.1:" + to_string(udp_port);
-            cout << "  " << j << ": " << ini_params.dstname;
-
-            shared_ptr<leaky_intensity_network_ostream> ostream = 
-                leaky_intensity_network_ostream::make(ini_params);
-            ostream->packet_drop_rate = 0.1;
-            nodestreams.push_back(ostream);
-        }
-        cout << endl;
-        l0streams.push_back(nodestreams);
-    }
-
-    shared_ptr<intensity_network_ostream> ostream = l0streams[0][0];
-
-    cout << "Packets per chunk: " << ostream->npackets_per_chunk << endl;
-    cout << "Bytes per chunk: " << ostream->nbytes_per_chunk << endl;
-    
-    vector<float> intensity(ostream->elts_per_chunk, 0.0);
-    vector<float> weights(ostream->elts_per_chunk, 1.0);
-    int stride = ostream->nt_per_packet;
-
-    // Send data.  The output stream object will automatically throttle packets to its target bandwidth.
-
-    for (int ichunk = 0; ichunk < nchunks; ichunk++) {
-        // To avoid the cost of simulating Gaussian noise, we use the following semi-arbitrary procedure.
-        for (unsigned int i = 0; i < intensity.size(); i++)
-            intensity[i] = ichunk + i;
-
-        int64_t fpga_count = int64_t(ichunk) * int64_t(ostream->fpga_counts_per_chunk);
-
-        cout << "Sending chunk " << ichunk << " (fpga_count " << fpga_count << ") L0/L1..." << endl;
-        for (int i=0; i<n_l0_nodes; i++) {
-            for (int j=0; j<n_l1_nodes; j++) {
-                cout << i << "/" << j << " ";
-                l0streams[i][j]->send_chunk(&intensity[0], &weights[0], stride, fpga_count);
-            }
-        }
-        cout << endl;
-    }
-
-    /*
-    cout << "Sending end-stream packets..." << endl;
-    for (int i=0; i<n_l0_nodes; i++) {
-        for (int j=0; j<n_l1_nodes; j++) {
-            cout << i << "/" << j << " ";
-            l0streams[i][j]->end_stream(true);
-        }
-    }
-
-    // HACK -- L0 end_stream() + L1 join_threads() seems to drop some
-    // packets
-    sleep(1);
-
-    cout << "Joining L1 network threads..." << endl;
-    for (int j=0; j<n_l1_nodes; j++) {
-        l1streams[j]->join_threads();
-    }
-     */
-    sleep(1);
-
+static void print_sent_received(int n_l0_nodes,
+                                vector<vector<shared_ptr<leaky_intensity_network_ostream> > > &l0streams,
+                                int n_l1_nodes,
+                                vector<shared_ptr<intensity_network_stream> > &l1streams,
+                                unordered_map<int, int> &l0_port_map
+) {
     cout << "L0 streams packets sent:" << endl;
     for (int i=0; i<n_l0_nodes; i++) {
         cout << "  L0 node " << i << ":  ";
@@ -381,6 +217,192 @@ int main(int argc, char** argv) {
         cout << endl;
     }
 
+}
+
+
+/*
+ * 
+ */
+int main(int argc, char** argv) {
+
+    /*
+    const int n_l1_nodes = 4;
+    const int n_beams_per_l1_node = 4;
+    const int n_l0_nodes = 8;
+     */
+
+    string stream_to_file = "stream-beam(BEAM)-chunk(CHUNK).msgpack";
+    // empty string = no streaming.
+    //string stream_to_file;
+
+     const int n_l1_nodes = 1;
+     const int n_beams_per_l1_node = 1;
+     const int n_l0_nodes = 1;
+
+    const int n_coarse_freq_per_l0 = constants::nfreq_coarse_tot / n_l0_nodes;
+
+    //int nchunks = int(gb_to_simulate * 1.0e9 / ostream->nbytes_per_chunk) + 1
+    //int nchunks = 5;
+    int nchunks = 3;
+
+    const int udp_port_l1_base = 10255;
+    const int rpc_port_l1_base = 5555;
+
+    // for debugging
+    const int udp_port_l0_base = 20000;
+
+    unordered_map<int, int> l0_port_map;
+
+    vector<shared_ptr<intensity_network_stream> > l1streams;
+    // Spawn one processing thread per beam
+    pthread_t processing_threads[n_l1_nodes * n_beams_per_l1_node];
+
+    //vector<shared_ptr<frb_rpc_server> > rpcs;
+    vector<string> rpc_ports;
+
+    vector<vector<shared_ptr<leaky_intensity_network_ostream> > > l0streams;
+
+    for (int i=0; i<n_l1_nodes; i++) {
+        ch_frb_io::intensity_network_stream::initializer ini_params;
+        for (int j=0; j<n_beams_per_l1_node; j++) {
+            ini_params.beam_ids.push_back(i*n_beams_per_l1_node + j);
+        }
+        ini_params.mandate_fast_kernels = HAVE_AVX2;
+        int udp_port = udp_port_l1_base + i;
+        ini_params.udp_port = udp_port;
+        cout << "Starting L1 node listening on UDP port " << udp_port << endl;
+
+        shared_ptr<intensity_network_stream> stream = 
+            ch_frb_io::intensity_network_stream::make(ini_params);
+
+        // Spawn one processing thread per beam
+        for (int j=0; j<n_beams_per_l1_node; j++) {
+            int ibeam = i*n_beams_per_l1_node + j;
+            spawn_processing_thread(processing_threads[ibeam], stream, j);
+        }
+        // Start listening for packets.
+        stream->start_stream();
+        stream->stream_to_files(stream_to_file);
+        l1streams.push_back(stream);
+
+        // Make RPC-serving object for each L1 node.
+        string port = "tcp://127.0.0.1:" + to_string(rpc_port_l1_base + i);
+        rpc_ports.push_back(port);
+
+        //shared_ptr<frb_rpc_server> rpc(new frb_rpc_server(stream));
+        //rpc->start(port);
+        //rpcs.push_back(rpc);
+        l1_rpc_server_start(stream, port);
+
+        // Just give some time for thread startup & logging
+        usleep(10000);
+    }
+
+    for (int i=0; i<n_l0_nodes; i++) {
+        // Create sim L0 nodes...
+
+        // Currently, we don't have a fake L0 node object, so
+        // just create streams for all L0 x L1 nodes
+
+        cout << "L0 node " << i << ": sending to L0 nodes:" << endl;
+
+        vector<shared_ptr<leaky_intensity_network_ostream> > nodestreams;
+        for (int j=0; j<n_l1_nodes; j++) {
+
+            ch_frb_io::intensity_network_ostream::initializer ini_params;
+
+            // debug: bind the L0 stream to a UDP port, and record the mapping
+            ini_params.bind_port = udp_port_l0_base + i * n_l1_nodes + j;
+            l0_port_map[ini_params.bind_port] = i;
+
+            for (int k=0; k<n_beams_per_l1_node; k++) {
+                int ibeam = j*n_beams_per_l1_node + k;
+                ini_params.beam_ids.push_back(ibeam);
+            }
+            for (int k=0; k<n_coarse_freq_per_l0; k++) {
+                // Coarse freqs are not guaranteed to be contiguous,
+                // but here they are.
+                ini_params.coarse_freq_ids.push_back(i * n_coarse_freq_per_l0 + k);
+            }
+            ini_params.nupfreq = 16;
+            ini_params.nfreq_coarse_per_packet = 4;
+            ini_params.nt_per_packet = 16;
+            //ini_params.nt_per_chunk = 16;
+            ini_params.nt_per_chunk = constants::nt_per_assembled_chunk;
+            ini_params.fpga_counts_per_sample = 400;   // FIXME double-check this number
+
+            //ini_params.target_gbps = 0.1;
+            ini_params.target_gbps = 0.5;
+            ini_params.emit_warning_on_buffer_drop = true;
+            ini_params.throw_exception_on_buffer_drop = true;
+
+            int udp_port = udp_port_l1_base + j;
+            ini_params.dstname = "127.0.0.1:" + to_string(udp_port);
+            cout << "  " << j << ": " << ini_params.dstname;
+
+            shared_ptr<leaky_intensity_network_ostream> ostream = 
+                leaky_intensity_network_ostream::make(ini_params);
+            ostream->packet_drop_rate = 0.1;
+            nodestreams.push_back(ostream);
+        }
+        cout << endl;
+        l0streams.push_back(nodestreams);
+    }
+
+    shared_ptr<intensity_network_ostream> ostream = l0streams[0][0];
+
+    cout << "Packets per chunk: " << ostream->npackets_per_chunk << endl;
+    cout << "Bytes per chunk: " << ostream->nbytes_per_chunk << endl;
+    
+    vector<float> intensity(ostream->elts_per_chunk, 0.0);
+    vector<float> weights(ostream->elts_per_chunk, 1.0);
+    int stride = ostream->nt_per_packet;
+
+    // Send data.  The output stream object will automatically throttle packets to its target bandwidth.
+
+    for (int ichunk = 0; ichunk < nchunks; ichunk++) {
+        // To avoid the cost of simulating Gaussian noise, we use the following semi-arbitrary procedure.
+        for (unsigned int i = 0; i < intensity.size(); i++)
+            intensity[i] = ichunk + i;
+
+        int64_t fpga_count = int64_t(ichunk) * int64_t(ostream->fpga_counts_per_chunk);
+
+        cout << "Sending chunk " << ichunk << " (fpga_count " << fpga_count << ") L0/L1..." << endl;
+        for (int i=0; i<n_l0_nodes; i++) {
+            for (int j=0; j<n_l1_nodes; j++) {
+                cout << i << "/" << j << " ";
+                l0streams[i][j]->send_chunk(&intensity[0], &weights[0], stride, fpga_count);
+                sched_yield();
+            }
+        }
+        cout << endl;
+
+        print_sent_received(n_l0_nodes, l0streams, n_l1_nodes, l1streams,
+                            l0_port_map);
+    }
+
+    /*
+    cout << "Sending end-stream packets..." << endl;
+    for (int i=0; i<n_l0_nodes; i++) {
+        for (int j=0; j<n_l1_nodes; j++) {
+            cout << i << "/" << j << " ";
+            l0streams[i][j]->end_stream(true);
+        }
+    }
+
+    // HACK -- L0 end_stream() + L1 join_threads() seems to drop some
+    // packets
+    sleep(1);
+
+    cout << "Joining L1 network threads..." << endl;
+    for (int j=0; j<n_l1_nodes; j++) {
+        l1streams[j]->join_threads();
+    }
+     */
+    sleep(1);
+
+    print_sent_received(n_l0_nodes, l0streams, n_l1_nodes, l1streams,
+                        l0_port_map);
 
     // Now send some RPC requests to the L1 nodes.
 
@@ -543,9 +565,14 @@ int main(int argc, char** argv) {
             for (int j=0; j<n_l1_nodes; j++) {
                 cout << i << "/" << j << " ";
                 l0streams[i][j]->send_chunk(&intensity[0], &weights[0], stride, fpga_count);
+                sched_yield();
             }
         }
         cout << endl;
+
+        print_sent_received(n_l0_nodes, l0streams, n_l1_nodes, l1streams,
+                            l0_port_map);
+
 
         sleep(15);
     }
