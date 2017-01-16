@@ -15,7 +15,7 @@ compiler:
   - clang
 
 before_script:
-    - pwd
+    - BUILD_DIR=$(pwd)
     - export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:~/chime/lib
     - cd
     - git clone https://github.com/dstndstn/ch_frb_io.git
@@ -27,7 +27,8 @@ before_script:
 
 script:
     - pwd
-    - export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:~/chime/lib
+    - cd $BUILD_DIR
+    - pwd
     - ln -s site/Makefile.local.travis Makefile.local
     - make
 
