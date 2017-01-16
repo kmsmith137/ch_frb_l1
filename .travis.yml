@@ -1,0 +1,38 @@
+# Travis-CI.org build script
+
+# "trusty" is Ubuntu 14.04.5 LTS
+# gcc 4.8.4
+
+dist: trusty
+
+# use containerized infrastructure (for faster startup; no sudo)
+sudo: false
+
+language: cpp
+
+compiler:
+  - gcc
+  - clang
+
+before_script:
+    - pwd
+    - export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:~/chime/lib
+    - cd
+    - git clone https://github.com/dstndstn/ch_frb_io.git
+    - cd ch_frb_io
+    - git checkout travis
+    - ln -s site/Makefile.local.travis Makefile.local
+    - make
+    - make install
+
+script:
+    - pwd
+    - export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:~/chime/lib
+    - ln -s site/Makefile.local.travis Makefile.local
+    - make
+
+addons:
+  apt:
+    packages:
+      - libhdf5-serial-dev
+
