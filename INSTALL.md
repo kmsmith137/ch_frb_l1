@@ -32,6 +32,23 @@ If you run into problems or have suggestions, let me know!
   make install
   ```
 
+- lz4.  On CentOS this is a one-liner: `sudo yum install lz4-devel`.
+  (TODO: osx install instructions here.)
+
+- msgpack.  In CentOS this is a one-liner: `sudo yum install msgpack-devel.x86_64`.
+
+  In osx, this is also a one-liner: `brew install msgpack`.
+
+- zeromq and cppzmq.  In CentOS, both can be installed with `sudo yum install cppzmq-devel.x86_64`.
+
+  In osx, zeromq can be installed with `brew install zeromq`, but you'll need to install cppzmq by hand.
+  Since it's a header-only library with two source files, I just ignored the build system and did:
+  ```
+  git clone https://github.com/zeromq/cppzmq.git
+  cd cppzmq
+  cp zmq.hpp zmq_addon.hpp ~/include
+  ```
+
 - jsoncpp (https://github.com/open-source-parsers/jsoncpp)
 
   On osx, you can probably install with: `brew install jsoncpp`

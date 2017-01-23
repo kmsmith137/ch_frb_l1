@@ -8,7 +8,7 @@ Right now it's a placeholder which just contains:
 
 ### INSTALLATION
 
-The CHIMEFRB pipeline currently consists of the following external dependencies:
+The CHIMEFRB pipeline currently consists of the following external dependencies.
 
   - A gcc which is recent enough that C++11 and AVX2 are supported.  I know that gcc 4.8.1 works, and that 4.4.7 is too old.
   - A very recent cython.  I know that cython 0.24 works, and cython 0.20 is too old.
@@ -17,6 +17,10 @@ The CHIMEFRB pipeline currently consists of the following external dependencies:
   - h5py version 2.4.0 or later
   - FFTW3 (http://fftw.org)
   - The 'PIL' python imaging library.  If you need to install it, I recommend the Pillow variant ('pip install Pillow')
+  - lz4
+  - msgpack
+  - zeromq
+  - cppzmq (C++ bindings for zeromq, header-only, https://github.com/zeromq)
   - jsoncpp
 
 plus the following components:
