@@ -1,4 +1,5 @@
 - v2: from Dustin:
+  - Backward incompatible: lz4, msgpack, zeromq, and cppzmq are now dependencies
   - L1 server module
   - Full python client
   - Partial C++ client
