@@ -19,6 +19,8 @@ The CHIMEFRB pipeline currently consists of the following external dependencies.
   - The 'PIL' python imaging library.  If you need to install it, I recommend the Pillow variant ('pip install Pillow')
   - lz4
   - msgpack
+  - zeromq
+  - cppzmq (C++ bindings for zeromq, header-only, https://github.com/zeromq)
   - jsoncpp
 
 plus the following components:
