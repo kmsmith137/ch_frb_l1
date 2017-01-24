@@ -21,6 +21,19 @@ before_script:
     - wget https://github.com/msgpack/msgpack-c/releases/download/cpp-2.1.0/msgpack-2.1.0.tar.gz
     - tar xzf msgpack-2.1.0.tar.gz
     - export MSGPACK_INC_DIR=$(pwd)/msgpack-2.1.0/include
+    - wget https://github.com/zeromq/libzmq/releases/download/v4.2.0/zeromq-4.2.0.tar.gz
+    - tar xzf zeromq-4.2.0.tar.gz
+    - cd zeromq-4.2.0
+    #- cmake -D ZMQ_BUILD_TESTS=OFF -D WITH_PERF_TOOL=OFF
+    - ./configure --prefix=~/zeromq-4.2.0 --disable-perf --disable-curve -disable-curve-keygen --without-docs
+    - make
+    - make install
+    - export ZMQ_INC_DIR=~/zeromq-4.2.0/include
+    - export ZMQ_LIB_DIR=~/zeromq-4.2.0/lib
+    - export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${ZMQ_LIB_DIR}
+    - cd
+    - wget https://raw.githubusercontent.com/zeromq/cppzmq/master/zmq.hpp
+    - cp zmq.hpp $ZMQ_INC_DIR
     - git clone https://github.com/CHIMEFRB/ch_frb_io.git
     - cd ch_frb_io
     - ln -s site/Makefile.local.travis Makefile.local
@@ -43,6 +56,8 @@ addons:
     packages:
       - libhdf5-serial-dev
       - liblz4-dev
-      - libzmq-dev
+
+# Version in trusty is too old (2.1 vs current = 4.2.0)
+#      - libzmq-dev
 
 # see ch_frb_io re: libmsgpack-dev
