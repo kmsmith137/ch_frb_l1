@@ -18,10 +18,12 @@ before_script:
     - BUILD_DIR=$(pwd)
     - export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:~/chime/lib
     - cd
-    - git clone https://github.com/dstndstn/ch_frb_io.git
+    - git clone https://github.com/CHIMEFRB/ch_frb_io.git
     - cd ch_frb_io
-    - git checkout travis
     - ln -s site/Makefile.local.travis Makefile.local
+    - wget https://github.com/msgpack/msgpack-c/releases/download/cpp-2.1.0/msgpack-2.1.0.tar.gz
+    - tar xzf msgpack-2.1.0.tar.gz
+    - pwd
     - make
     - make install
 
@@ -32,8 +34,12 @@ script:
     - ln -s site/Makefile.local.travis Makefile.local
     - make
 
+after_success:
+  - coveralls --exclude lib --exclude tests --gcov-options '\-lp'
+
 addons:
   apt:
     packages:
       - libhdf5-serial-dev
+      - liblz4-dev
 
