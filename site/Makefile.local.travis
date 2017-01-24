@@ -1,16 +1,33 @@
 # Makefile.local for travis-ci.org continuous integration
 
+# Directory where C++ libraries will be installed
+LIBDIR=$(HOME)/chime/lib
+
+# Directory where C++ header files will be installed
+INCDIR=$(HOME)/chime/include
+
 # Directory where executables will be installed
 BINDIR=$(HOME)/chime/bin
 
-#
-# C++ command line
-# Don't forget -std=c++11 -pthread -fPIC
-# Don't forget -march=native, since __AVX2__ is tested
-#
-CPP=g++ -std=c++11 -pthread -fPIC -Wall -O3 -march=native -ffast-math -funroll-loops -I. -I$(HOME)/chime/include
+MSGPACK_INC_DIR ?= /home/travis/msgpack-2.1.0/include
 
-# Any C++ flags which should only be specified when linking 
-# Don't forget to put -L. and -L$(LIBDIR) on the command line (in this order)
-# Don't forget to add . and $(LIBDIR) in your LD_LIBRARY_PATH environment variable (in this order)
-CPP_LFLAGS=-L. -L$(HOME)/chime/lib
+
+CXX ?= g++
+
+OPTIMIZE ?= yes
+ifeq ($(OPTIMIZE), yes)
+    OPT_FLAGS := -O3 -funroll-loops
+else
+    OPT_FLAGS := -O0
+endif
+
+COVERAGE ?= no
+ifeq ($(COVERAGE), yes)
+    # Travis + Coverall: include coverage tracking code.  Also note that we turned off optimization!
+    OPT_FLAGS += -fprofile-arcs -ftest-coverage
+endif
+
+CPP := $(CXX) -std=c++11 -pthread -fPIC -Wall $(OPT_FLAGS) -march=native -ffast-math -I. -I$(INCDIR) -I$(MSGPACK_INC_DIR)
+
+CPP_LFLAGS := -L. -L$(LIBDIR)
+
