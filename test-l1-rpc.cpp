@@ -1,9 +1,6 @@
 #include <unistd.h>
 #include <iostream>
-
-//#define _GNU_SOURCE
 #include <pthread.h>
-
 #include <ch_frb_io.hpp>
 #include <l1-rpc.hpp>
 
@@ -128,16 +125,6 @@ int main(int argc, char** argv) {
         if (rpc_exited)
             break;
         usleep(1000000);
-        /* This is a GNU-only extension... pity
-         struct timespec t;
-         t.tv_sec = 1;
-         t.tv_nsec = 0;
-         int status = pthread_timedjoin_np(*rpc_thread, NULL, &t);
-         if (status == 0) {
-         // RPC thread finished.  Bye!
-         break;
-         }
-         */
         if (!wait && nwait >= 30)
             break;
     }
