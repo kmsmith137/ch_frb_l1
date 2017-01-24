@@ -25,7 +25,9 @@ before_script:
     - export MSGPACK_INC_DIR=$(pwd)/msgpack-2.1.0/include
 
     - cd
+    - ls
     #- git clone https://github.com/zeromq/libzmq.git
+    - if [ -d "libzmq" ]; then (cd libzmq && git pull) || rm -R libzmq; fi
     - if [ ! -d "libzmq" ]; then git clone https://github.com/zeromq/libzmq.git; fi
     - cd libzmq
     - git pull
