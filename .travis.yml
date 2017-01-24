@@ -15,6 +15,7 @@ compiler:
   - clang
 
 before_script:
+    - pip install --user cpp-coveralls
     - BUILD_DIR=$(pwd)
     - export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:~/chime/lib
     - cd
@@ -45,8 +46,11 @@ script:
     - cd $BUILD_DIR
     - pwd
     - ln -s site/Makefile.local.travis Makefile.local
-    - make
-
+    - make COVERAGE=yes OPTIMIZE=no
+    # run some, ahem, unit tests...
+    - ./test-l1-rpc &
+    - python rpc_client.py 5555
+    
 after_success:
   - coveralls --exclude lib --exclude tests --gcov-options '\-lp'
 
