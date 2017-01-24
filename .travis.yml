@@ -67,7 +67,7 @@ script:
     - make COVERAGE=yes OPTIMIZE=no
     # run some, ahem, unit tests...
     - ./test-l1-rpc &
-    - sleep 1
+    - sleep 3
     - python rpc_client.py --shutdown 5555
     - wait
     
