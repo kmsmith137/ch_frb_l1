@@ -32,7 +32,7 @@ before_script:
     - if [ -d "libzmq" ]; then (cd libzmq && git pull) || rm -R libzmq; fi
     - if [ ! -d "libzmq" ]; then (git clone https://github.com/zeromq/libzmq.git && cd libzmq && git checkout v4.2.1 && ./autogen.sh); fi
     - cd libzmq
-    - git pull
+    #- git pull
     # - wget https://github.com/zeromq/libzmq/releases/download/v4.2.0/zeromq-4.2.0.tar.gz
     # - tar xzf zeromq-4.2.0.tar.gz
     # - cd zeromq-4.2.0
