@@ -29,7 +29,7 @@ before_script:
     #- git clone https://github.com/zeromq/libzmq.git
     #- git checkout v4.2.1
     #- ./autogen.sh
-    - if [ -d "libzmq" ]; then (cd libzmq && git pull) || rm -R libzmq; fi
+    - if [ -d "libzmq" ]; then (cd libzmq && git describe) || rm -R libzmq; fi
     - if [ ! -d "libzmq" ]; then (git clone https://github.com/zeromq/libzmq.git && cd libzmq && git checkout v4.2.1 && ./autogen.sh); fi
     - cd libzmq
     #- git pull
