@@ -7,14 +7,23 @@
 
 #include <cassert>
 #include <iostream>
+#include <sstream>
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <ch_frb_io.hpp>
+#include <l1-rpc.hpp>
+
+#if defined(__AVX2__)
+const static bool HAVE_AVX2 = true;
+#else
+#warning "This machine does not have the AVX2 instruction set."
+const static bool HAVE_AVX2 = false;
+#endif
 
 using namespace std;
-
+using namespace ch_frb_io;
 
 // -------------------------------------------------------------------------------------------------
 //
@@ -52,6 +61,14 @@ static void *processing_thread_main(void *opaque_arg)
 	// We call assembled_chunk::decode(), which extracts the data from its low-level 8-bit
 	// representation to a floating-point array, but our processing currently stops there!
 	chunk->decode(&intensity[0], &weights[0], ch_frb_io::constants::nt_per_assembled_chunk);
+    cout << "Decoded beam " << chunk->beam_id << ", chunk " << chunk->ichunk << endl;
+
+    stringstream ss;
+    ss << "chunk-beam" << chunk->beam_id << "-ch" << chunk->ichunk << ".hdf5";
+    string fn = ss.str();
+
+    chunk->write_hdf5_file(fn);
+    cout << "Wrote " << fn << endl;
     }
 
     return NULL;
@@ -82,9 +99,12 @@ static void usage()
 
 int main(int argc, char **argv)
 {
+    // test assembled_chunk hdf5 output
+    shared_ptr<assembled_chunk> ch = assembled_chunk::make(42, 16, 16, 400, 100);
+    ch->write_hdf5_file("chunk.hdf5");
+
     ch_frb_io::intensity_network_stream::initializer ini_params;
     ini_params.beam_ids = { 0, 1, 2, 3, 4, 5, 6, 7 };
-
 #ifdef __AVX2__
     ini_params.mandate_fast_kernels = true;
 #else
@@ -106,6 +126,9 @@ int main(int argc, char **argv)
     for (int ibeam = 0; ibeam < 8; ibeam++)
 	spawn_processing_thread(processing_threads[ibeam], stream, ibeam);
 
+    // start RPC-serving object
+    l1_rpc_server_start(stream);
+
     // Start listening for packets.
     stream->start_stream();
 
@@ -114,6 +137,9 @@ int main(int argc, char **argv)
     // indicate there is no more data, which initiates the stream shutdown process on the
     // receive side.)
     stream->join_threads();
+
+    // FIXME -- reimplement
+    //rpc.stop();
 
     // Join processing threads
     for (int ibeam = 0; ibeam < 8; ibeam++) {
