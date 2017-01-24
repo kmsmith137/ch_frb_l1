@@ -399,6 +399,8 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
             pthread_cond_broadcast(&this->_q_cond);
             pthread_mutex_unlock(&this->_q_lock);
+
+            _stream->join_threads();
         }
         return 0;
 
@@ -604,22 +606,27 @@ struct rpc_thread_context {
     shared_ptr<ch_frb_io::intensity_network_stream> stream;
     // eg, "tcp://*:5555";
     string port;
+    bool* exited;
 };
 
 static void *rpc_thread_main(void *opaque_arg) {
     rpc_thread_context *context = reinterpret_cast<rpc_thread_context *> (opaque_arg);
     string port = context->port;
     shared_ptr<ch_frb_io::intensity_network_stream> stream = context->stream;
+    bool* exited = context->exited;
     delete context;
 
     zmq::context_t ctx;
     L1RpcServer rpc(ctx, port, stream);
     rpc.run();
+    if (exited)
+        *exited = true;
     return NULL;
 }
 
 pthread_t* l1_rpc_server_start(shared_ptr<ch_frb_io::intensity_network_stream> stream,
-                               string port) {
+                               string port,
+                               bool* exited) {
 
     if (port.length() == 0)
         port = "tcp://*:" + std::to_string(default_port_l1_rpc);
@@ -628,6 +635,7 @@ pthread_t* l1_rpc_server_start(shared_ptr<ch_frb_io::intensity_network_stream> s
     rpc_thread_context *context = new rpc_thread_context;
     context->stream = stream;
     context->port = port;
+    context->exited = exited;
 
     pthread_t* rpc_thread = new pthread_t;
     int err = pthread_create(rpc_thread, NULL, rpc_thread_main, context);

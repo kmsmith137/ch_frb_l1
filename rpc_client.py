@@ -277,7 +277,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--shutdown', action='store_true',
                         help='Send shutdown RPC message?')
-    parser.add_argument('ports', nargs='+',
+    parser.add_argument('ports', nargs='*',
                         help='Addresses or port numbers of RPC servers to contact')
     opt = parser.parse_args()
     args = opt.ports
