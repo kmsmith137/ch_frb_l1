@@ -109,7 +109,7 @@ if __name__ == '__main__':
         beams = [0,1,2]
         minchunk = 0
         maxchunk = 5
-        filename_pat = 'chunk-%02llu-chunk%08llu-py.msgpack'
+        filename_pat = 'chunk-beam(BEAM)-fpga(FPGA0)+(FPGAN)-py.msgpack'
         msg = (msgpack.packb(['write_chunks', token]) +
                msgpack.packb([beams, minchunk, maxchunk, filename_pat]))
         socket.send(msg)

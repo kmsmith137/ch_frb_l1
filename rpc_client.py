@@ -89,6 +89,26 @@ class RpcClient(object):
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
 
+    def list_chunks(self, servers=None, wait=True, timeout=-1):
+        '''
+        Retrieves lists of chunks held by each server.
+        Return value is one list per server, containing a list of [beam, fpga0, fpga1] entries.
+        '''
+        if servers is None:
+            servers = self.servers.keys()
+        tokens = []
+        for k in servers:
+            self.token += 1
+            req = msgpack.packb(['list_chunks', self.token])
+            tokens.append(self.token)
+            self.sockets[k].send(req)
+        if not wait:
+            return tokens
+        parts = self.wait_for_tokens(tokens, timeout=timeout)
+        # We expect one message part for each token.
+        return [msgpack.unpackb(p[0]) if p is not None else None
+                for p in parts]
+    
     def write_chunks(self, beams, min_fpga, max_fpga, filename_pattern,
                      priority=0,
                      servers=None, wait=True, timeout=-1, waitAll=True):
@@ -296,6 +316,10 @@ if __name__ == '__main__':
     stats = client.get_statistics(timeout=3000)
     print('Got stats:', stats)
 
+    print('list_chunks()...')
+    stats = client.list_chunks(timeout=3000)
+    print('Got chunks:', stats)
+    
     print()
     print('write_chunks()...')
 
@@ -303,7 +327,7 @@ if __name__ == '__main__':
     #maxfpga = 38600000
     maxfpga = 48600000
 
-    R = client.write_chunks([77,78], minfpga, maxfpga, 'chunk-beam%04i-fpga%012i+%08i.msgpack', timeout=3000)
+    R = client.write_chunks([77,78], minfpga, maxfpga, 'chunk-beam(BEAM)-chunk(CHUNK)+(NCHUNK).msgpack', timeout=3000)
     print('Got:', R)
 
     #client.shutdown()

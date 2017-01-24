@@ -124,7 +124,7 @@ public:
             WriteChunks_Reply rep;
             rep.beam = w->chunk->beam_id;
             rep.fpga0 = w->chunk->fpgacounts_begin();
-            rep.fpgaN = w->chunk->fpgacounts_end() - rep.fpga0;
+            rep.fpgaN = w->chunk->fpgacounts_N();
             rep.success = false;
             rep.filename = w->filename;
 
@@ -321,8 +321,14 @@ void L1RpcServer::run() {
             try {
                 _handle_request(&client, &msg);
             } catch (const std::exception& e) {
-                cout << "Warning: Failed to handle RPC request... ignoring!" << endl;
-                cout << e.what() << endl;
+                cout << "Warning: Failed to handle RPC request... ignoring!  Error: " << e.what() << endl;
+                try {
+                    msgpack::object_handle oh = msgpack::unpack(reinterpret_cast<const char *>(msg.data()), msg.size());
+                    msgpack::object obj = oh.get();
+                    cout << "  message: " << obj << endl;
+                } catch (...) {
+                    cout << "  failed to un-msgpack message" << endl;
+                }
             }
             if (_shutdown)
                 break;
@@ -424,6 +430,39 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         //cout << "Sent stats reply!" << endl;
         return 0;
 
+    } else if (funcname == "list_chunks") {
+       // No input arguments, so don't unpack anything more.
+
+        // Grab snapshot of all ringbufs...
+        vector<tuple<uint64_t, uint64_t, uint64_t> > allchunks;
+
+        intensity_network_stream::initializer ini = _stream->get_initializer();
+        for (auto beamit = ini.beam_ids.begin(); beamit != ini.beam_ids.end(); beamit++) {
+            // yuck, convert vector<int> to vector<uint64_t>...
+            int beam = *beamit;
+            vector<uint64_t> beams;
+            beams.push_back(beam);
+            vector<vector<shared_ptr<assembled_chunk> > > chunks = _stream->get_ringbuf_snapshots(beams);
+            // iterate over beams (we only requested one)
+            for (auto it1 = chunks.begin(); it1 != chunks.end(); it1++) {
+                // iterate over chunks
+                for (auto it2 = (*it1).begin(); it2 != (*it1).end(); it2++) {
+                    allchunks.push_back(tuple<uint64_t, uint64_t, uint64_t>((*it2)->beam_id, (*it2)->fpgacounts_begin(), (*it2)->fpgacounts_end()));
+                }
+            }
+        }
+        msgpack::sbuffer buffer;
+        msgpack::pack(buffer, allchunks);
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        //  Send reply back to client.
+        if (!(_frontend.send(*client, ZMQ_SNDMORE) &&
+              _frontend.send(*token_to_message(token), ZMQ_SNDMORE) &&
+              _frontend.send(*reply))) {
+            cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
+            return -1;
+        }
+        return 0;
+
         /*
          The get_chunks() RPC is disabled for now.
     } else if (funcname == "get_chunks") {
@@ -470,16 +509,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             write_chunk_request* w = new write_chunk_request();
 
             // Format the filename the chunk will be written to.
-            char* strp = NULL;
-            uint64_t fpga0 = (*chunk)->fpgacounts_begin();
-            uint64_t fpgaN = (*chunk)->fpgacounts_end() - fpga0;
-            int r = asprintf(&strp, req.filename_pattern.c_str(), (*chunk)->beam_id, fpga0, fpgaN);
-            if (r == -1) {
-                cout << "Failed to format filename: " << req.filename_pattern << endl;
-                continue;
-            }
-            w->filename = string(strp);
-            free(strp);
+            w->filename = (*chunk)->format_filename(req.filename_pattern);
 
             // Copy client ID
             zmq::message_t* client_copy = new zmq::message_t();
@@ -494,7 +524,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             WriteChunks_Reply rep;
             rep.beam = (*chunk)->beam_id;
             rep.fpga0 = (*chunk)->fpgacounts_begin();
-            rep.fpgaN = (*chunk)->fpgacounts_end() - rep.fpga0;
+            rep.fpgaN = (*chunk)->fpgacounts_N();
             rep.filename = w->filename;
             rep.success = true; // ?
             reply.push_back(rep);
