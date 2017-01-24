@@ -25,11 +25,11 @@ before_script:
     - tar xzf zeromq-4.2.0.tar.gz
     - cd zeromq-4.2.0
     #- cmake -D ZMQ_BUILD_TESTS=OFF -D WITH_PERF_TOOL=OFF
-    - ./configure --prefix=~/zeromq-4.2.0 --disable-perf --disable-curve -disable-curve-keygen --without-docs
+    - ./configure --prefix=$(HOME)/zmq --disable-perf --disable-curve -disable-curve-keygen --without-docs
     - make
     - make install
-    - export ZMQ_INC_DIR=~/zeromq-4.2.0/include
-    - export ZMQ_LIB_DIR=~/zeromq-4.2.0/lib
+    - export ZMQ_INC_DIR=~/zmq/include
+    - export ZMQ_LIB_DIR=~/zmq/lib
     - export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${ZMQ_LIB_DIR}
     - cd
     - wget https://raw.githubusercontent.com/zeromq/cppzmq/master/zmq.hpp
