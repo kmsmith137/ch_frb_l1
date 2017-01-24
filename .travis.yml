@@ -60,3 +60,7 @@ addons:
 #      - libzmq-dev
 
 # see ch_frb_io re: libmsgpack-dev
+
+# cache:
+#   directories:
+#   - $HOME/zeromq-4.2.0

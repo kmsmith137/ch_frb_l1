@@ -84,8 +84,8 @@ ch-frb-test: ch-frb-test.cpp $(L1_OBJS)
 ch-frb-test-debug: ch-frb-test.cpp $(L1_OBJS) $(IO_OBJS)
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lzmq -lhdf5 -llz4
 
-test-l1-rpc: test-l1-rpc.cpp $(L1_OBJS) $(IO_OBJS)
-	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lzmq -lhdf5 -llz4
+test-l1-rpc: test-l1-rpc.cpp $(L1_OBJS)
+	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lzmq -lhdf5 -llz4 -lch_frb_io
 
 clean:
 	rm -f *.o *~ $(BINARIES)
