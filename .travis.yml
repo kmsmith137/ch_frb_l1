@@ -43,4 +43,6 @@ addons:
     packages:
       - libhdf5-serial-dev
       - liblz4-dev
+      - libzmq-dev
 
+# see ch_frb_io re: libmsgpack-dev
