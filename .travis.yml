@@ -24,8 +24,7 @@ before_script:
     - wget https://github.com/zeromq/libzmq/releases/download/v4.2.0/zeromq-4.2.0.tar.gz
     - tar xzf zeromq-4.2.0.tar.gz
     - cd zeromq-4.2.0
-    #- cmake -D ZMQ_BUILD_TESTS=OFF -D WITH_PERF_TOOL=OFF
-    - ./configure --prefix=$(HOME)/zmq --disable-perf --disable-curve -disable-curve-keygen --without-docs
+    - ./configure --prefix=${HOME}/zmq --disable-perf --disable-curve -disable-curve-keygen --without-docs
     - make
     - make install
     - export ZMQ_INC_DIR=~/zmq/include
