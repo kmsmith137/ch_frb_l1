@@ -44,6 +44,7 @@ before_script:
     - export PKG_CONFIG_DIR=${PKG_CONFIG_DIR}:${ZMQ_LIB_DIR}/pkgconfig
 
     - pip install --user pyzmq
+    - pip install --user msgpack
 
     - cd
     - wget https://raw.githubusercontent.com/zeromq/cppzmq/master/zmq.hpp
