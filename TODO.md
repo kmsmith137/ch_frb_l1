@@ -1,29 +1,54 @@
 ### Two-node to do list.
 
-  - We'll try to demonstrate both 8-beam and 16-beam options, but we may end up
-    only getting the 8-beam option working for now, and leaving the 16-beam option
-    for the next few months
+  - Plan
 
-  - Simulation: Test whether current L0 simulator can write packets at full rate.
-    (It's OK to replay a short loop.)  If not, then we'll need to improve this code.
-    "Full rate" = 16 beams.
+     - Test dedispersion over network at full rate
 
-  - Monitoring: extend "status" RPC to include fields which are important for
-    monitoring performance, such as thread load fractions, and total allocated
-    assembled chunks.  Need some bare-bones tool to send a status RPC every
-    second and display result.
+     - Dedispersion + SSD
 
-  - Agree with the collaboration on what the "heavyweight" RPC's are.
-    Depending on the outcome of this discussion, we can make a plan and prioritize.
-  
-  - In the meantime, we can implement one heavyweight RPC, for example writing
-    an assembled to disk, and test NFS performance.
+     - Dedispersion + NFS
 
-  - Test write performance of the SSD, make sure it can keep up with real-time.
+     - Dedispersion + RPC
 
-  - Forming the slow pulsar timestream and streaming it to NFS.
+     - Multiples (e.g. dedispersion + SSD + NFS + RPC)
 
-  - Assembly language kernelizing the RFI excision and detrending transforms.
+     - Test IPMI on the compute node.
+
+  - L0 simulator
+
+     - Should send uniform RNG's.  [ Dustin ]
+
+     - Tie FPGA counts to system time.  [ Kendrick ]
+     
+     - Work on ch-frb-simulate-l0 executable, and script to start 8 processes
+       with appropriate bindings to network interfaces.  [ Dustin ]
+
+  - ch-frb-l1 executable
+
+     - Add RPC server.  [ Dustin ]
+     
+     - Add RFI removal and dedispersion. [ Kendrick ]
+
+     - Work on ch-frb-l1 executable, and script to start 2 processes
+       with appropriate bindings to network interfaces and cores.  [ Dustin ]
+
+     - Either implement two network threads talking to one assembler thread,
+       or modify the network thread to read from two sockets.
+       (Alterative: link bonding?)  [ Kendrick ]
+
+     - Decide how many RPC worker threads we need and what they should do.  [ Dustin ]
+
+  - Optional
+
+     - Monitoring: extend "status" RPC to include fields which are important for
+       monitoring performance, such as thread load fractions, and total allocated
+       assembled chunks.  Need some bare-bones tool to send a status RPC every
+       second and display result.  [ Dustin ]
+
+     - Agree with the collaboration on what the "heavyweight" RPC's are.
+       Depending on the outcome of this discussion, we can make a plan and prioritize.
+
+- In progress
 
   - Improving the bonsai code, so that in particular the output is in "sigmas".
 
@@ -37,13 +62,8 @@
     
   - Touch base with L2 group on division of web-based code.
 
-  - Test IPMI on the compute node.
-
   - Vaguely defined: develop rf_weblines a little bit more, as needed
     for tuning our RFI excision.
-
-  - Optional: demonstrate a "semi-debug" mode where we stream data to the SSD
-    and simultaneously dedisperse in real time.
 
 ### Eight-node priority
 
@@ -65,6 +85,8 @@
       - Python server-side RPC's for receiving coarse-grained triggers at L1B.
   
   - Polished version of rf_weblines that can be used over the internet.
+
+  - Forming the slow pulsar timestream and streaming it to NFS.
 
 ### 128-node priority
 
