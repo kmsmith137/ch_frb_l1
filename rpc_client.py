@@ -291,9 +291,16 @@ class RpcClient(object):
         return [results.get(token, None) for token in tokens]
 
 if __name__ == '__main__':
-
+    import argparse
     import sys
-    args = sys.argv[1:]
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--shutdown', action='store_true',
+                        help='Send shutdown RPC message?')
+    parser.add_argument('ports', nargs='*',
+                        help='Addresses or port numbers of RPC servers to contact')
+    opt = parser.parse_args()
+    args = opt.ports
 
     if len(args):
         servers = {}
@@ -330,5 +337,6 @@ if __name__ == '__main__':
     R = client.write_chunks([77,78], minfpga, maxfpga, 'chunk-beam(BEAM)-chunk(CHUNK)+(NCHUNK).msgpack', timeout=3000)
     print('Got:', R)
 
-    #client.shutdown()
-    #time.sleep(2)
+    if opt.shutdown:
+        client.shutdown()
+        time.sleep(2)

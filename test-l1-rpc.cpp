@@ -1,7 +1,9 @@
 #include <unistd.h>
 #include <iostream>
+#include <pthread.h>
 #include <ch_frb_io.hpp>
 #include <l1-rpc.hpp>
+
 
 using namespace std;
 using namespace ch_frb_io;
@@ -69,7 +71,8 @@ int main(int argc, char** argv) {
     // listen on other ports triggers GUI window popup warnings on Mac
     // OSX)
     cout << "Starting RPC server on port " << port << endl;
-    l1_rpc_server_start(stream, port);
+    bool rpc_exited = false;
+    pthread_t* rpc_thread = l1_rpc_server_start(stream, port, &rpc_exited);
 
     int nupfreq = 4;
     int nt_per = 16;
@@ -118,9 +121,11 @@ int main(int argc, char** argv) {
     }
     cout << endl;
 
-    for (;;) {
-        usleep(30 * 1000000);
-        if (!wait)
+    for (int nwait=0;; nwait++) {
+        if (rpc_exited)
+            break;
+        usleep(1000000);
+        if (!wait && nwait >= 30)
             break;
     }
 

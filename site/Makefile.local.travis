@@ -1,0 +1,36 @@
+# Makefile.local for travis-ci.org continuous integration
+
+# Directory where C++ libraries will be installed
+LIBDIR=$(HOME)/chime/lib
+
+# Directory where C++ header files will be installed
+INCDIR=$(HOME)/chime/include
+
+# Directory where executables will be installed
+BINDIR=$(HOME)/chime/bin
+
+MSGPACK_INC_DIR ?= ~/msgpack-2.1.0/include
+# /home/travis/
+
+ZMQ_INC_DIR ?= ~/zeromq-4.2.0/include
+ZMQ_LIB_DIR ?= ~/zeromq-4.2.0/lib
+
+CXX ?= g++
+
+OPTIMIZE ?= yes
+ifeq ($(OPTIMIZE), yes)
+    OPT_FLAGS := -O3 -funroll-loops
+else
+    OPT_FLAGS := -O0
+endif
+
+COVERAGE ?= no
+ifeq ($(COVERAGE), yes)
+    # Travis + Coverall: include coverage tracking code.  Also note that we turned off optimization!
+    OPT_FLAGS += -fprofile-arcs -ftest-coverage
+endif
+
+CPP := $(CXX) -std=c++11 -pthread -fPIC -Wall $(OPT_FLAGS) -march=native -ffast-math -I. -I$(INCDIR) -I$(MSGPACK_INC_DIR) -I$(ZMQ_INC_DIR)
+
+CPP_LFLAGS := -L. -L$(LIBDIR) -L$(ZMQ_LIB_DIR)
+

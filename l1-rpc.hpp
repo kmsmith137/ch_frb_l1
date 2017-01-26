@@ -12,7 +12,8 @@ const int default_port_l1_rpc = 5555;
 // High-level API: start the RPC server.
 // If *port* is not specified, will listen on all IP addresses on the default port *default_port_l1_rpc*.
 pthread_t* l1_rpc_server_start(std::shared_ptr<ch_frb_io::intensity_network_stream> stream,
-                               std::string port = "");
+                               std::string port = "",
+                               bool* exited = NULL);
 
 
 // implementation detail: a struct used to communicate between threads
