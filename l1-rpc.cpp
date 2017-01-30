@@ -257,9 +257,9 @@ void L1RpcServer::run() {
         worker_threads.push_back(thread);
     }
 
-    // convert _frontend and _backend to void*, calling socket_t.operator void*()
-    void* p_front = _frontend;
-    void* p_back  = _backend;
+    // convert _frontend and _backend to void* (explicitly) calling socket_t.operator void*()
+    void* p_front = _frontend.operator void*();
+    void* p_back  = _backend .operator void*();
 
     zmq_pollitem_t pollitems[] = {
         { p_front, 0, ZMQ_POLLIN, 0 },
