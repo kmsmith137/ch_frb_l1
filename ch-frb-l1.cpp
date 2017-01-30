@@ -15,13 +15,6 @@
 #include <ch_frb_io.hpp>
 #include <l1-rpc.hpp>
 
-#if defined(__AVX2__)
-const static bool HAVE_AVX2 = true;
-#else
-#warning "This machine does not have the AVX2 instruction set."
-const static bool HAVE_AVX2 = false;
-#endif
-
 using namespace std;
 using namespace ch_frb_io;
 
