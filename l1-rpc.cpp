@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include <pthread.h>
+#include <thread>
 
 #include <zmq.hpp>
 #include <msgpack.hpp>
@@ -176,22 +177,6 @@ private:
     L1RpcServer* _server;
 };
 
-struct rpc_worker_thread_context {
-    zmq::context_t* ctx;
-    L1RpcServer* server;
-};
-
-static void* rpc_worker_thread_main(void *opaque_arg) {
-    rpc_worker_thread_context *context = reinterpret_cast<rpc_worker_thread_context *>(opaque_arg);
-    zmq::context_t* ctx = context->ctx;
-    L1RpcServer* server = context->server;
-    delete context;
-
-    RpcWorker rpc(ctx, server);
-    rpc.run();
-    return NULL;
-}
-
 L1RpcServer::L1RpcServer(zmq::context_t &ctx, string port,
                      shared_ptr<ch_frb_io::intensity_network_stream> stream) :
     _ctx(ctx),
@@ -241,7 +226,8 @@ void L1RpcServer::run() {
     _frontend.bind(_port);
     _backend.bind("inproc://rpc-backend");
 
-    std::vector<pthread_t*> worker_threads;
+    std::vector<std::thread> worker_threads;
+    std::vector<RpcWorker*> workers;
 
     // How many worker threads should be created for writing
     // assembled_chunks to disk?
@@ -249,12 +235,9 @@ void L1RpcServer::run() {
         
     // Create and start workers.
     for (int i=0; i<nworkers; i++) {
-        pthread_t* thread = new pthread_t;
-        rpc_worker_thread_context *context = new rpc_worker_thread_context;
-        context->ctx = &_ctx;
-        context->server = this;
-        pthread_create(thread, NULL, rpc_worker_thread_main, context);
-        worker_threads.push_back(thread);
+        RpcWorker* w = new RpcWorker(&_ctx, this);
+        workers.push_back(w);
+        worker_threads.push_back(std::thread(std::bind(&RpcWorker::run, w)));
     }
 
     // convert _frontend and _backend to void*, calling socket_t.operator void*()
@@ -381,8 +364,8 @@ void L1RpcServer::run() {
 
     // join worker threads
     for (int i=0; i<nworkers; i++) {
-        pthread_join(*worker_threads[i], NULL);
-        delete worker_threads[i];
+        worker_threads[i].join();
+        delete workers[i];
     }
 
     cout << "L1 RPC server: exiting." << endl;
