@@ -8,12 +8,14 @@
 #include <cassert>
 #include <iostream>
 #include <sstream>
+#include <thread>
+#include <pthread.h>
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
-#include <pthread.h>
 #include <ch_frb_io.hpp>
 #include <l1-rpc.hpp>
+#include <chlog.hpp>
 
 using namespace std;
 using namespace ch_frb_io;
@@ -23,25 +25,17 @@ using namespace ch_frb_io;
 // Processing threads: we spawn one of these per beam, to process the real-time data.
 // Currently this is a placeholder which reads the data and throws it away!
 
+static void processing_thread_main(shared_ptr<ch_frb_io::intensity_network_stream> stream,
+                                    int ithread) {
+    chime_log_set_thread_name("proc-" + std::to_string(ithread));
 
-struct processing_thread_context {
-    shared_ptr<ch_frb_io::intensity_network_stream> stream;
-    int ithread = -1;
-};
+    chlog("Processing thread main: thread " << ithread);
 
-
-static void *processing_thread_main(void *opaque_arg)
-{
     const int nupfreq = 16;
     const int nalloc = ch_frb_io::constants::nfreq_coarse_tot * nupfreq * ch_frb_io::constants::nt_per_assembled_chunk;
 
     std::vector<float> intensity(nalloc, 0.0);
     std::vector<float> weights(nalloc, 0.0);
-
-    processing_thread_context *context = reinterpret_cast<processing_thread_context *> (opaque_arg);
-    shared_ptr<ch_frb_io::intensity_network_stream> stream = context->stream;
-    int ithread = context->ithread;
-    delete context;
 
     for (;;) {
 	// Get assembled data from netwrok
@@ -54,26 +48,9 @@ static void *processing_thread_main(void *opaque_arg)
 	// We call assembled_chunk::decode(), which extracts the data from its low-level 8-bit
 	// representation to a floating-point array, but our processing currently stops there!
 	chunk->decode(&intensity[0], &weights[0], ch_frb_io::constants::nt_per_assembled_chunk);
-        cout << "Decoded beam " << chunk->beam_id << ", chunk " << chunk->ichunk << endl;
+        chlog("Decoded beam " << chunk->beam_id << ", chunk " << chunk->ichunk);
     }
-
-    return NULL;
 }
-
-
-static void spawn_processing_thread(pthread_t &thread, const shared_ptr<ch_frb_io::intensity_network_stream> &stream, int ithread)
-{
-    processing_thread_context *context = new processing_thread_context;
-    context->stream = stream;
-    context->ithread = ithread;
-
-    int err = pthread_create(&thread, NULL, processing_thread_main, context);
-    if (err)
-	throw runtime_error(string("pthread_create() failed to create processing thread: ") + strerror(errno));
-
-    // no "delete context"!
-}
-
 
 static void usage()
 {
@@ -90,6 +67,8 @@ static void usage()
 
 
 int main(int argc, char **argv) {
+
+    chime_log_set_thread_name("main");
 
     ch_frb_io::intensity_network_stream::initializer ini_params;
 
@@ -150,21 +129,23 @@ int main(int argc, char **argv) {
     auto stream = ch_frb_io::intensity_network_stream::make(ini_params);
 
     // Spawn one processing thread per beam
-    pthread_t processing_threads[8];
+    std::vector<std::thread> processing_threads;
     for (int ibeam = 0; ibeam < 8; ibeam++)
-	spawn_processing_thread(processing_threads[ibeam], stream, ibeam);
+        processing_threads.push_back(std::thread(std::bind(processing_thread_main, stream, ibeam)));
 
     if ((rpc_port.length() == 0) && (rpc_portnum == 0))
         rpc_port = "tcp://127.0.0.1:5555";
     else if (rpc_portnum)
         rpc_port = "tcp://127.0.0.1:" + to_string(rpc_portnum);
 
-    cout << "Starting RPC server on " << rpc_port << endl;
+    chlog("Starting RPC server on " << rpc_port);
     bool rpc_exited = false;
     pthread_t* rpc_thread = l1_rpc_server_start(stream, rpc_port, &rpc_exited);
 
     // Start listening for packets.
     stream->start_stream();
+
+    chlog("Waiting for network stream to end...");
 
     // This will block until the stream ends, and the network and assembler threads exit.
     // (The way this works is that the sender sends a special "end-of-stream" packet, to
@@ -172,11 +153,12 @@ int main(int argc, char **argv) {
     // receive side.)
     stream->join_threads();
 
+    chlog("Network stream ended");
+
     // Join processing threads
     for (int ibeam = 0; ibeam < 8; ibeam++) {
-	int err = pthread_join(processing_threads[ibeam], NULL);
-	if (err)
-	    throw runtime_error("ch-frb-l1: pthread_join() failed [processing thread]");
+        chlog("Joining thread " << ibeam);
+        processing_threads[ibeam].join();
     }
 
     return 0;

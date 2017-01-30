@@ -95,7 +95,7 @@ int main(int argc, char **argv)
     int nchunks = int(gb_to_simulate * 1.0e9 / ostream->nbytes_per_chunk) + 1;
     int npackets = nchunks * ostream->npackets_per_chunk;
     int nbytes = nchunks * ostream->nbytes_per_chunk;
-    cerr << "ch-frb-simulate-l0: sending " << (nbytes/1.0e9) << " GB data (" << npackets << " packets)\n";
+    cerr << "ch-frb-simulate-l0: sending " << (nbytes/1.0e9) << " GB data (" << nchunks << " chunks, " << npackets << " packets)\n";
 
     vector<float> intensity(ostream->elts_per_chunk, 0.0);
     vector<float> weights(ostream->elts_per_chunk, 1.0);

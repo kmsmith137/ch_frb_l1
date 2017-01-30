@@ -56,7 +56,8 @@ IO_OBJS := \
 	../ch_frb_io/udp_packet_ringbuf.o \
 	../ch_frb_io/bitshuffle/bitshuffle.o \
 	../ch_frb_io/bitshuffle/bitshuffle_core.o \
-	../ch_frb_io/bitshuffle/iochain.o
+	../ch_frb_io/bitshuffle/iochain.o \
+	../ch_frb_io/chlog.o
 
 # Append compile flags
 CPP_CFLAGS ?=
@@ -73,7 +74,7 @@ ch-frb-l1: ch-frb-l1.o $(L1_OBJS)
 
 ch-frb-l1-debug: ch-frb-l1.cpp $(L1_OBJS) $(IO_OBJS)
 	cd ../ch_frb_io && make DEBUG=yes
-	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lzmq -lhdf5 -llz4
+	$(CPP) -o $@ $(CPP_CFLAGS) $^ $(CPP_LFLAGS) -lzmq -lhdf5 -llz4
 
 ch-frb-simulate-l0: ch-frb-simulate-l0.cpp
 	$(CPP) -o $@ $< $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io
