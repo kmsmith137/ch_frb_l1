@@ -54,14 +54,7 @@ static void *processing_thread_main(void *opaque_arg)
 	// We call assembled_chunk::decode(), which extracts the data from its low-level 8-bit
 	// representation to a floating-point array, but our processing currently stops there!
 	chunk->decode(&intensity[0], &weights[0], ch_frb_io::constants::nt_per_assembled_chunk);
-    cout << "Decoded beam " << chunk->beam_id << ", chunk " << chunk->ichunk << endl;
-
-    stringstream ss;
-    ss << "chunk-beam" << chunk->beam_id << "-ch" << chunk->ichunk << ".hdf5";
-    string fn = ss.str();
-
-    chunk->write_hdf5_file(fn);
-    cout << "Wrote " << fn << endl;
+        cout << "Decoded beam " << chunk->beam_id << ", chunk " << chunk->ichunk << endl;
     }
 
     return NULL;
@@ -90,11 +83,7 @@ static void usage()
 }
 
 
-int main(int argc, char **argv)
-{
-    // test assembled_chunk hdf5 output
-    shared_ptr<assembled_chunk> ch = assembled_chunk::make(42, 16, 16, 400, 100);
-    ch->write_hdf5_file("chunk.hdf5");
+int main(int argc, char **argv) {
 
     ch_frb_io::intensity_network_stream::initializer ini_params;
     ini_params.beam_ids = { 0, 1, 2, 3, 4, 5, 6, 7 };
