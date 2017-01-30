@@ -258,8 +258,8 @@ void L1RpcServer::run() {
     }
 
     zmq_pollitem_t pollitems[] = {
-        { _frontend, 0, ZMQ_POLLIN, 0 },
-        { _backend,  0, ZMQ_POLLIN, 0 },
+        { &_frontend, 0, ZMQ_POLLIN, 0 },
+        { &_backend,  0, ZMQ_POLLIN, 0 },
     };
 
     for (;;) {
