@@ -52,11 +52,6 @@ int main(int argc, char** argv) {
     argv += optind;
 
 
-    if ((port.length() == 0) && (portnum == 0))
-        port = "tcp://127.0.0.1:5555";
-    else if (portnum)
-        port = "tcp://127.0.0.1:" + to_string(portnum);
-
     intensity_network_stream::initializer ini;
     ini.beam_ids.push_back(beam);
     //ini.mandate_fast_kernels = HAVE_AVX2;
@@ -70,6 +65,11 @@ int main(int argc, char** argv) {
     // listen on localhost only, for local-machine testing (trying to
     // listen on other ports triggers GUI window popup warnings on Mac
     // OSX)
+    if ((port.length() == 0) && (portnum == 0))
+        port = "tcp://127.0.0.1:5555";
+    else if (portnum)
+        port = "tcp://127.0.0.1:" + to_string(portnum);
+
     cout << "Starting RPC server on port " << port << endl;
     bool rpc_exited = false;
     pthread_t* rpc_thread = l1_rpc_server_start(stream, port, &rpc_exited);

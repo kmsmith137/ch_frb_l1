@@ -77,8 +77,14 @@ static void spawn_processing_thread(pthread_t &thread, const shared_ptr<ch_frb_i
 
 static void usage()
 {
-    cerr << "usage: ch-frb-l1 [-r]\n"
-	 << "   -r uses reference kernels instead of avx2 kernels\n";
+    cerr << "usage: ch-frb-l1 [-r]\n" <<
+        "      [-u <L1 udp-port>]\n" <<
+        "      [-a <RPC address>] [-p <RPC port number>]\n" <<
+        "      [-b <beam id> (may be repeated)]\n" <<
+        "      [-h for help]" <<
+        "   -r uses reference kernels instead of avx2 kernels\n" <<
+        "  Addresses are like:\n" <<
+        "   -a tcp://127.0.0.1:5555" << endl;
     exit(2);
 }
 
@@ -86,18 +92,58 @@ static void usage()
 int main(int argc, char **argv) {
 
     ch_frb_io::intensity_network_stream::initializer ini_params;
-    ini_params.beam_ids = { 0, 1, 2, 3, 4, 5, 6, 7 };
+
 #ifdef __AVX2__
     ini_params.mandate_fast_kernels = true;
 #else
     cerr << "Warning: this machine does not appear to have the AVX2 instruction set, fast kernels will be disabled\n";
 #endif
 
-    for (int i = 1; i < argc; i++) {
-	if (strcmp(argv[i], "-r"))
-	    usage();
-	ini_params.mandate_fast_kernels = false;
-	ini_params.mandate_reference_kernels = true;
+    string rpc_port = "";
+    int rpc_portnum = 0;
+
+    int c;
+    while ((c = getopt(argc, argv, "a:p:b:u:wh")) != -1) {
+        switch (c) {
+        case 'a':
+            rpc_port = string(optarg);
+            break;
+
+        case 'p':
+            rpc_portnum = atoi(optarg);
+            break;
+
+        case 'b':
+            {
+                int beam = atoi(optarg);
+                ini_params.beam_ids.push_back(beam);
+                break;
+            }
+
+        case 'u':
+            {
+                int udpport = atoi(optarg);
+                ini_params.udp_port = udpport;
+                break;
+            }
+
+        case 'r':
+            ini_params.mandate_fast_kernels = false;
+            ini_params.mandate_reference_kernels = true;
+            break;
+
+        case 'h':
+        case '?':
+        default:
+            usage();
+            return 0;
+        }
+    }
+    argc -= optind;
+    argv += optind;
+
+    if (ini_params.beam_ids.size() == 0) {
+        ini_params.beam_ids = { 0, 1, 2, 3, 4, 5, 6, 7 };
     }
 
     // Make input stream object
@@ -108,8 +154,14 @@ int main(int argc, char **argv) {
     for (int ibeam = 0; ibeam < 8; ibeam++)
 	spawn_processing_thread(processing_threads[ibeam], stream, ibeam);
 
-    // start RPC-serving object
-    l1_rpc_server_start(stream);
+    if ((rpc_port.length() == 0) && (rpc_portnum == 0))
+        rpc_port = "tcp://127.0.0.1:5555";
+    else if (rpc_portnum)
+        rpc_port = "tcp://127.0.0.1:" + to_string(rpc_portnum);
+
+    cout << "Starting RPC server on " << rpc_port << endl;
+    bool rpc_exited = false;
+    pthread_t* rpc_thread = l1_rpc_server_start(stream, rpc_port, &rpc_exited);
 
     // Start listening for packets.
     stream->start_stream();
@@ -119,9 +171,6 @@ int main(int argc, char **argv) {
     // indicate there is no more data, which initiates the stream shutdown process on the
     // receive side.)
     stream->join_threads();
-
-    // FIXME -- reimplement
-    //rpc.stop();
 
     // Join processing threads
     for (int ibeam = 0; ibeam < 8; ibeam++) {
