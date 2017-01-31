@@ -12,17 +12,17 @@
 
 <style>
 
-.chart div {
+.chart rect {
+  fill: steelblue;
+}
+
+.chart text {
+  fill: white;
   font: 10px sans-serif;
-  background-color: steelblue;
-  text-align: right;
-  padding: 3px;
-  margin: 1px;
-  color: white;
+  text-anchor: end;
 }
 
 </style>
-
 <script type="text/javascript">
 
 var loaded = function(result) {
@@ -33,11 +33,14 @@ var loaded = function(result) {
         $('#node_status_' + i).html(node['status']);
 
         ch = node['chunks'];
-        fpga0 = 99999999999999999;
-        for (var j=0; j<ch.length; j++) {
-            fpga = ch[j][1];
-            fpga0 = Math.min(fpga0, fpga);
-        }
+
+        /*
+          fpga0 = 99999999999999999;
+          for (var j=0; j<ch.length; j++) {
+          fpga = ch[j][1];
+          fpga0 = Math.min(fpga0, fpga);
+          }
+        */
 
         /*
         var data = [];
@@ -46,32 +49,92 @@ var loaded = function(result) {
             data.push(maxfpga - fpga0);
         }
         console.log('data: ' + data);
-        */
         console.log('fpga0: ' + fpga0)
+        */
 
+        var Nchunk = 1024 * 400;
+
+        /*
         var fpga_lo = [];
         var fpga_hi = [];
+        var dfpga = []
         for (var j=0; j<ch.length; j++) {
             fpga_lo.push(ch[j][1]);
             fpga_hi.push(ch[j][2]);
+            dfpga.push(ch[j][2] - ch[j][1]);
         }
         console.log('fpga lo: ' + fpga_lo);
         console.log('fpga hi: ' + fpga_hi);
+        console.log('dfpga: ' + dfpga);
+        var lolo = d3.min(fpga_lo);
+        var hihi = d3.max(fpga_hi);
 
-        console.log('min ' + d3.min(fpga_lo));
-        console.log('max ' + d3.max(fpga_hi));
+        */
+
+        var chunk_lo = [];
+        var chunk_hi = [];
+        var dchunk = []
+        var chunk_range = []
+        for (var j=0; j<ch.length; j++) {
+            var lo = ch[j][1] / Nchunk;
+            var hi = ch[j][2] / Nchunk;
+            chunk_lo.push(lo);
+            chunk_hi.push(hi);
+            dchunk.push(hi - lo);
+            chunk_range.push([lo, hi]);
+        }
+        console.log('chunk lo: ' + chunk_lo);
+        console.log('chunk hi: ' + chunk_hi);
+        console.log('dchunk: ' + dchunk);
+
+        var lolo = d3.min(chunk_lo);
+        var hihi = d3.max(chunk_hi);
+
+        console.log('overall range: ' + lolo + ' to ' + hihi);
+
+        var width = 420;
+        var barHeight = 20;
 
         var x = d3.scaleLinear()
-            .domain([d3.min(fpga_lo), d3.max(fpga_hi)])
-            .range([0, 420]);
+            .domain([lolo, hihi])
+            .range([0, width]);
 
-        d3.select('#node_chunks_' + i)
+        var chart = d3.select('#node_chunks_' + i)
+            .attr("width", width)
+            .attr("height", barHeight * chunk_lo.length);
+
+        var bar = chart.selectAll("g")
+            .data(chunk_lo)
+            .enter().append("g")
+            .attr("transform", function(d, i) { return "translate(" + x(d) + "," + i * barHeight + ")"; });
+            //.attr("transform", function(d, i) { return "translate(0," + i * barHeight + ")"; });
+
+        /*
+          bar.append("rect")
+          .attr("width", x)
+          .attr("height", barHeight - 1);
+        */
+
+        bar.append("rect")
+            .data(dchunk)
+            .attr("width", function(d) { return d; })
+            .attr("height", barHeight - 1);
+
+        bar.append("text")
+            .attr("x", function(d) { return x(d) - 3; })
+            .attr("y", barHeight / 2)
+            .attr("dy", ".35em")
+            .text(function(d) { return d; });
+
+        /*
+          d3.select('#node_chunks_' + i)
             .selectAll("div")
             .data(fpga_hi)
             .enter().append("div")
             .style("width", function(d) { return d*0.00001 + "px"; })
             .text(function(d) { return d; });
             //.style("width", function(d) { return x(d) + "px"; })
+            */
     }
   };
 
@@ -90,7 +153,7 @@ var loaded = function(result) {
 <div>
   <p>{{ node }}</p>
   <div id="node_status_{{i}}"></div>
-  <div class="chart" id="node_chunks_{{i}}"></div>
+  <svg class="chart" id="node_chunks_{{i}}"></div>
 </div>
 {% endfor %}
 

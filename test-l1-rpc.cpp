@@ -121,6 +121,21 @@ int main(int argc, char** argv) {
     }
     cout << endl;
 
+
+    int Nchunk = 1024 * 400;
+    for (auto it = chunks.begin(); it != chunks.end(); it++) {
+        cout << "[" << endl;
+        for (auto it2 = it->begin(); it2 != it->end(); it2++) {
+            shared_ptr<assembled_chunk> ch = *it2;
+            cout << "  chunk " << (ch->fpgacounts_begin() / Nchunk) << " to " <<
+                (ch->fpgacounts_end() / Nchunk) << ", N chunks " <<
+                (ch->fpgacounts_N() / Nchunk) << endl;
+        }
+        cout << "]" << endl;
+    }
+    
+
+
     for (int nwait=0;; nwait++) {
         if (rpc_exited)
             break;
