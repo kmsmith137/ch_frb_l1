@@ -190,7 +190,37 @@ class RpcClient(object):
             hdr = msgpack.packb(['shutdown', self.token])
             tokens.append(self.token)
             self.sockets[k].send(hdr)
-        
+
+    def start_logging(self, address, servers=None):
+        '''
+        Sends a request to start chlog logging to the given address.
+        '''
+        if servers is None:
+            servers = self.servers.keys()
+        # Send RPC requests
+        tokens = []
+        for k in servers:
+            self.token += 1
+            hdr = msgpack.packb(['start_logging', self.token])
+            req = msgpack.packb(address)
+            tokens.append(self.token)
+            self.sockets[k].send(hdr + req)
+
+    def stop_logging(self, address, servers=None):
+        '''
+        Sends a request to stop chlog logging to the given address.
+        '''
+        if servers is None:
+            servers = self.servers.keys()
+        # Send RPC requests
+        tokens = []
+        for k in servers:
+            self.token += 1
+            hdr = msgpack.packb(['stop_logging', self.token])
+            req = msgpack.packb(address)
+            tokens.append(self.token)
+            self.sockets[k].send(hdr + req)
+            
     def _pop_token(self, t, d=None):
         '''
         Pops a message for the given token number *t*, or returns *d*
@@ -290,6 +320,43 @@ class RpcClient(object):
                     t0 = tnow
         return [results.get(token, None) for token in tokens]
 
+
+import threading
+
+class ChLogServer(threading.Thread):
+    def __init__(self, addr='127.0.0.1', port=None, context=None):
+        super(ChLogServer, self).__init__()
+        # I'm a demon thread! Muahahaha
+        self.daemon = True
+
+        if context is None:
+            self.context = zmq.Context()
+        else:
+            self.context = context
+
+        self.socket = self.context.socket(zmq.SUB)
+        #self.socket.set(zmq.SUBSCRIBE, '')
+        self.socket.subscribe('')
+        
+        addr = 'tcp://' + addr
+        if port is None:
+            addr += ':*'
+            self.socket.bind(addr)
+            addr = self.socket.get(zmq.LAST_ENDPOINT)
+        else:
+            addr += ':' + str(port)
+            self.socket.bind(addr)
+        print('Bound to', addr)
+        self.address = addr
+        
+        self.start()
+
+    def run(self):
+        while True:
+            parts = self.socket.recv_multipart()
+            print('Received:', parts)
+        
+        
 if __name__ == '__main__':
     import argparse
     import sys
@@ -297,6 +364,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--shutdown', action='store_true',
                         help='Send shutdown RPC message?')
+    parser.add_argument('--log', action='store_true',
+                        help='Start up chlog server?')
     parser.add_argument('ports', nargs='*',
                         help='Addresses or port numbers of RPC servers to contact')
     opt = parser.parse_args()
@@ -319,6 +388,11 @@ if __name__ == '__main__':
 
     client = RpcClient(servers, identity='client')
 
+    if opt.log:
+        logger = ChLogServer()
+        addr = logger.address
+        client.start_logging(addr)
+    
     print('get_statistics()...')
     stats = client.get_statistics(timeout=3000)
     print('Got stats:', stats)
@@ -337,6 +411,10 @@ if __name__ == '__main__':
     R = client.write_chunks([77,78], minfpga, maxfpga, 'chunk-beam(BEAM)-chunk(CHUNK)+(NCHUNK).msgpack', timeout=3000)
     print('Got:', R)
 
+    if opt.log:
+        addr = logger.address
+        client.stop_logging(addr)
+    
     if opt.shutdown:
         client.shutdown()
         time.sleep(2)

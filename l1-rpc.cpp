@@ -428,6 +428,20 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         _do_shutdown();
         return 0;
 
+    } else if ((funcname == "start_logging") ||
+               (funcname == "stop_logging")) {
+        // grab address argument
+        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
+        string addr = oh.get().as<string>();
+        chlog("Logging request: " << funcname << ", address " << addr);
+
+        if (funcname == "start_logging") {
+            chime_log_add_server(addr);
+        } else {
+            chime_log_remove_server(addr);
+        }
+        return 0;
+
     } else if (funcname == "get_statistics") {
         //cout << "RPC get_statistics() called" << endl;
         // No input arguments, so don't unpack anything more.

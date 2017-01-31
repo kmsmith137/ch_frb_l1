@@ -51,6 +51,7 @@ int main(int argc, char** argv) {
     argc -= optind;
     argv += optind;
 
+    chime_log_open_socket();
     chime_log_set_thread_name("main");
 
     intensity_network_stream::initializer ini;
