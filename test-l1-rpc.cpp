@@ -1,9 +1,9 @@
 #include <unistd.h>
 #include <iostream>
-#include <pthread.h>
+#include <sstream>
 #include <ch_frb_io.hpp>
 #include <l1-rpc.hpp>
-
+#include <chlog.hpp>
 
 using namespace std;
 using namespace ch_frb_io;
@@ -51,6 +51,7 @@ int main(int argc, char** argv) {
     argc -= optind;
     argv += optind;
 
+    chime_log_set_thread_name("main");
 
     intensity_network_stream::initializer ini;
     ini.beam_ids.push_back(beam);
@@ -70,9 +71,9 @@ int main(int argc, char** argv) {
     else if (portnum)
         port = "tcp://127.0.0.1:" + to_string(portnum);
 
-    cout << "Starting RPC server on port " << port << endl;
-    bool rpc_exited = false;
-    pthread_t* rpc_thread = l1_rpc_server_start(stream, port, &rpc_exited);
+    chlog("Starting RPC server on port " << port);
+    L1RpcServer rpc(stream, port);
+    rpc.start();
 
     int nupfreq = 4;
     int nt_per = 16;
@@ -87,19 +88,19 @@ int main(int argc, char** argv) {
 
     for (int i=0; i<100; i++) {
         ch = new assembled_chunk(beam, nupfreq, nt_per, fpga_per, i);
-        cout << "Pushing " << i << endl;
+        chlog("Pushing " << i);
         stream->inject_assembled_chunk(ch);
-        cout << "Pushed " << i << endl;
+        chlog("Pushed " << i);
 
         // downstream thread consumes with a lag of 2...
         if (i >= 2) {
             // Randomly consume 0 to 2 chunks
             if (rando(rng)) {
-                cout << "Downstream consumes a chunk" << endl;
+                chlog("Downstream consumes a chunk");
                 stream->get_assembled_chunk(0, false);
             }
             if (rando(rng)) {
-                cout << "Downstream consumes a chunk" << endl;
+                chlog("Downstream consumes a chunk");
                 stream->get_assembled_chunk(0, false);
             }
         }
@@ -110,25 +111,27 @@ int main(int argc, char** argv) {
     //cout << endl;
 
     vector<vector<shared_ptr<assembled_chunk> > > chunks;
-    cout << "Test retrieving chunks..." << endl;
+    chlog("Test retrieving chunks...");
     //rb->retrieve(30000000, 50000000, chunks);
     vector<uint64_t> beams;
     beams.push_back(beam);
     chunks = stream->get_ringbuf_snapshots(beams);
-    cout << "Got " << chunks.size() << " beams, with number of chunks:";
+    stringstream ss;
+    ss << "Got " << chunks.size() << " beams, with number of chunks:";
     for (auto it = chunks.begin(); it != chunks.end(); it++) {
-        cout << " " << it->size();
+        ss << " " << it->size();
     }
-    cout << endl;
+    string s = ss.str();
+    chlog(s);
 
     for (int nwait=0;; nwait++) {
-        if (rpc_exited)
+        if (rpc.is_shutdown())
             break;
         usleep(1000000);
         if (!wait && nwait >= 30)
             break;
     }
-
+    chlog("Exiting");
 }
 
 

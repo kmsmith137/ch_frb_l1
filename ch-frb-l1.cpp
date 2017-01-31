@@ -139,8 +139,8 @@ int main(int argc, char **argv) {
         rpc_port = "tcp://127.0.0.1:" + to_string(rpc_portnum);
 
     chlog("Starting RPC server on " << rpc_port);
-    bool rpc_exited = false;
-    pthread_t* rpc_thread = l1_rpc_server_start(stream, rpc_port, &rpc_exited);
+    L1RpcServer rpc(stream, rpc_port);
+    rpc.start();
 
     // Start listening for packets.
     stream->start_stream();
