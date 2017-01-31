@@ -14,10 +14,11 @@
 
 .chart rect {
   fill: steelblue;
+    stroke: black;
 }
 
 .chart text {
-  fill: white;
+  fill: black;
   font: 10px sans-serif;
   text-anchor: end;
 }
@@ -34,42 +35,8 @@ var loaded = function(result) {
 
         ch = node['chunks'];
 
-        /*
-          fpga0 = 99999999999999999;
-          for (var j=0; j<ch.length; j++) {
-          fpga = ch[j][1];
-          fpga0 = Math.min(fpga0, fpga);
-          }
-        */
-
-        /*
-        var data = [];
-        for (var j=0; j<ch.length; j++) {
-            maxfpga = ch[j][2];
-            data.push(maxfpga - fpga0);
-        }
-        console.log('data: ' + data);
-        console.log('fpga0: ' + fpga0)
-        */
-
+        // Show chunk numbers, not fpga counts.
         var Nchunk = 1024 * 400;
-
-        /*
-        var fpga_lo = [];
-        var fpga_hi = [];
-        var dfpga = []
-        for (var j=0; j<ch.length; j++) {
-            fpga_lo.push(ch[j][1]);
-            fpga_hi.push(ch[j][2]);
-            dfpga.push(ch[j][2] - ch[j][1]);
-        }
-        console.log('fpga lo: ' + fpga_lo);
-        console.log('fpga hi: ' + fpga_hi);
-        console.log('dfpga: ' + dfpga);
-        var lolo = d3.min(fpga_lo);
-        var hihi = d3.max(fpga_hi);
-
-        */
 
         var chunk_lo = [];
         var chunk_hi = [];
@@ -92,49 +59,41 @@ var loaded = function(result) {
 
         console.log('overall range: ' + lolo + ' to ' + hihi);
 
-        var width = 420;
-        var barHeight = 20;
+        var margin = {top: 20, right: 30, bottom: 30, left: 40},
+        width = 960 - margin.left - margin.right,
+        height = 500 - margin.top - margin.bottom;
 
         var x = d3.scaleLinear()
             .domain([lolo, hihi])
             .range([0, width]);
 
+        var y = d3.scaleLinear()
+            .domain([0, chunk_range.length])
+            .range([0, height]);
+
+        var barHeight = y(1) - y(0);
+
         var chart = d3.select('#node_chunks_' + i)
-            .attr("width", width)
-            .attr("height", barHeight * chunk_lo.length);
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 
         var bar = chart.selectAll("g")
-            .data(chunk_lo)
+            .data(chunk_range)
             .enter().append("g")
-            .attr("transform", function(d, i) { return "translate(" + x(d) + "," + i * barHeight + ")"; });
-            //.attr("transform", function(d, i) { return "translate(0," + i * barHeight + ")"; });
-
-        /*
-          bar.append("rect")
-          .attr("width", x)
-          .attr("height", barHeight - 1);
-        */
+            //.attr("transform", function(d, i) { return "translate(" + x(d[0]) + ",0)"; });
+            .attr("transform", function(d, i) { return "translate(" + x(d[0]) + "," + y(i) + ")"; });
 
         bar.append("rect")
-            .data(dchunk)
-            .attr("width", function(d) { return d; })
+            .attr("width", function(d) { return x(d[1]) - x(d[0]); })
             .attr("height", barHeight - 1);
 
         bar.append("text")
-            .attr("x", function(d) { return x(d) - 3; })
+            .attr("x", 0)
             .attr("y", barHeight / 2)
             .attr("dy", ".35em")
             .text(function(d) { return d; });
-
-        /*
-          d3.select('#node_chunks_' + i)
-            .selectAll("div")
-            .data(fpga_hi)
-            .enter().append("div")
-            .style("width", function(d) { return d*0.00001 + "px"; })
-            .text(function(d) { return d; });
-            //.style("width", function(d) { return x(d) + "px"; })
-            */
     }
   };
 
