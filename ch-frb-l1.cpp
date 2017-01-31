@@ -68,6 +68,7 @@ static void usage()
 
 int main(int argc, char **argv) {
 
+    chime_log_open_socket();
     chime_log_set_thread_name("main");
 
     ch_frb_io::intensity_network_stream::initializer ini_params;
