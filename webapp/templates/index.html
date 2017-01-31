@@ -1,0 +1,98 @@
+<!doctype html>
+<html>
+<head>
+<title>CHIME FRB L1 node status</title>
+
+<script type="text/javascript" src="{{ url_for('static', filename='jquery.js') }}"></script>
+<script type="text/javascript" src="{{ url_for('static', filename='d3.min.js') }}"></script>
+
+</head>
+
+<body id="thebody">
+
+<style>
+
+.chart div {
+  font: 10px sans-serif;
+  background-color: steelblue;
+  text-align: right;
+  padding: 3px;
+  margin: 1px;
+  color: white;
+}
+
+</style>
+
+<script type="text/javascript">
+
+var loaded = function(result) {
+    console.log('JSON loaded: ' + result);
+    for (var i=0, len=result.length; i<len; i++) {
+        node = result[i];
+        console.log('node ' + node);
+        $('#node_status_' + i).html(node['status']);
+
+        ch = node['chunks'];
+        fpga0 = 99999999999999999;
+        for (var j=0; j<ch.length; j++) {
+            fpga = ch[j][1];
+            fpga0 = Math.min(fpga0, fpga);
+        }
+
+        /*
+        var data = [];
+        for (var j=0; j<ch.length; j++) {
+            maxfpga = ch[j][2];
+            data.push(maxfpga - fpga0);
+        }
+        console.log('data: ' + data);
+        */
+        console.log('fpga0: ' + fpga0)
+
+        var fpga_lo = [];
+        var fpga_hi = [];
+        for (var j=0; j<ch.length; j++) {
+            fpga_lo.push(ch[j][1]);
+            fpga_hi.push(ch[j][2]);
+        }
+        console.log('fpga lo: ' + fpga_lo);
+        console.log('fpga hi: ' + fpga_hi);
+
+        console.log('min ' + d3.min(fpga_lo));
+        console.log('max ' + d3.max(fpga_hi));
+
+        var x = d3.scaleLinear()
+            .domain([d3.min(fpga_lo), d3.max(fpga_hi)])
+            .range([0, 420]);
+
+        d3.select('#node_chunks_' + i)
+            .selectAll("div")
+            .data(fpga_hi)
+            .enter().append("div")
+            .style("width", function(d) { return d*0.00001 + "px"; })
+            .text(function(d) { return d; });
+            //.style("width", function(d) { return x(d) + "px"; })
+    }
+  };
+
+  $(document).ready(function() {
+    console.log('hello ready');
+    $.getJSON('{{ node_status_url }}', loaded);
+  });
+
+  console.log('hello main');
+
+</script>
+
+<h3>CHIME FRB L1 node status</h3>
+
+{% for i,node in nodes %}
+<div>
+  <p>{{ node }}</p>
+  <div id="node_status_{{i}}"></div>
+  <div class="chart" id="node_chunks_{{i}}"></div>
+</div>
+{% endfor %}
+
+</body>
+</html>
