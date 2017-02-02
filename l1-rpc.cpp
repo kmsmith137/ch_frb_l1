@@ -1,5 +1,5 @@
 #include <unistd.h>
-#include <pthread.h>
+#include <thread>
 
 #include <zmq.hpp>
 #include <msgpack.hpp>
@@ -8,6 +8,7 @@
 
 #include "l1-rpc.hpp"
 #include "rpc.hpp"
+#include "chlog.hpp"
 
 using namespace std;
 using namespace ch_frb_io;
@@ -68,6 +69,7 @@ static string msg_string(zmq::message_t &msg) {
 }
  */
 
+// RPC requests to write assembled_chunks to disk are stored in this struct
 struct write_chunk_request {
     std::vector<std::pair<zmq::message_t*, uint32_t> > clients;
     std::string filename;
@@ -105,7 +107,8 @@ public:
         _server(server) {
     }
 
-    void run() {
+    void run(int iworker) {
+        chime_log_set_thread_name("RPC-worker-" + std::to_string(iworker));
         _socket.connect("inproc://rpc-backend");
 
         while (true) {
@@ -115,7 +118,7 @@ public:
             write_chunk_request* w = _server->pop_write_request();
             if (!w) {
                 // Quit!
-                cout << "Rpc worker: received NULL write_chunk_request; exiting." << endl;
+                chlog("Rpc worker: received NULL write_chunk_request; exiting.");
                 break;
             }
 
@@ -133,7 +136,7 @@ public:
                 w->chunk->write_msgpack_file(w->filename);
                 rep.success = true;
             } catch (...) {
-                cout << "Write msgpack file failed: filename " << rep.filename << endl;
+                chlog("Write msgpack file failed: filename " << rep.filename);
                 rep.error_message = "Failed to write msgpack file";
             }
             // Drop this chunk so its memory can be reclaimed
@@ -158,10 +161,10 @@ public:
                     if (!(_socket.send(*client, ZMQ_SNDMORE) &&
                           _socket.send(*token_to_message(token), ZMQ_SNDMORE) &&
                           _socket.send(*thisreply))) {
-                        cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
+                        chlog("ERROR: sending RPC reply: " << strerror(zmq_errno()));
                     }
                 } catch (const zmq::error_t& e) {
-                    cout << "ERROR sending RPC reply: " << e.what() << endl;
+                    chlog("ERROR sending RPC reply: " << e.what());
                 }
                 delete client;
                 delete thisreply;
@@ -176,85 +179,82 @@ private:
     L1RpcServer* _server;
 };
 
-struct rpc_worker_thread_context {
-    zmq::context_t* ctx;
-    L1RpcServer* server;
-};
-
-static void* rpc_worker_thread_main(void *opaque_arg) {
-    rpc_worker_thread_context *context = reinterpret_cast<rpc_worker_thread_context *>(opaque_arg);
-    zmq::context_t* ctx = context->ctx;
-    L1RpcServer* server = context->server;
-    delete context;
-
-    RpcWorker rpc(ctx, server);
-    rpc.run();
-    return NULL;
-}
-
-L1RpcServer::L1RpcServer(zmq::context_t &ctx, string port,
-                     shared_ptr<ch_frb_io::intensity_network_stream> stream) :
-    _ctx(ctx),
-    _frontend(_ctx, ZMQ_ROUTER),
-    _backend(_ctx, ZMQ_DEALER),
-    _port(port),
+L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
+                         const string &port,
+                         zmq::context_t *ctx) :
+    _ctx(ctx ? ctx : new zmq::context_t()),
+    _created_ctx(ctx == NULL),
+    _frontend(*_ctx, ZMQ_ROUTER),
+    _backend (*_ctx, ZMQ_DEALER),
     _shutdown(false),
     _stream(stream)
 {
+    if (port.length())
+        _port = port;
+    else
+        _port = "tcp://*:" + std::to_string(default_port_l1_rpc);
+
     // Set my identity
     _frontend.setsockopt(ZMQ_IDENTITY, _port);
     // Require messages sent on the frontend socket to have valid addresses.
     _frontend.setsockopt(ZMQ_ROUTER_MANDATORY, 1);
-
-    pthread_mutex_init(&this->_q_lock, NULL);
-    pthread_cond_init (&this->_q_cond, NULL);
 }
 
 L1RpcServer::~L1RpcServer() {
-    pthread_cond_destroy (&this->_q_cond);
-    pthread_mutex_destroy(&this->_q_lock);
+    _frontend.close();
+    _backend.close();
+    if (_created_ctx)
+        delete _ctx;
+}
+
+typedef std::lock_guard<std::mutex> scoped_lock;
+typedef std::unique_lock<std::mutex> ulock;
+
+bool L1RpcServer::is_shutdown() {
+    scoped_lock l(_q_mutex);
+    return _shutdown;
 }
 
 write_chunk_request* L1RpcServer::pop_write_request() {
     write_chunk_request* wreq;
-    pthread_mutex_lock(&this->_q_lock);
+
+    ulock u(_q_mutex);
     for (;;) {
         if (_shutdown) {
             wreq = NULL;
             break;
         }
         if (_write_reqs.empty()) {
-            pthread_cond_wait(&this->_q_cond, &this->_q_lock);
+            _q_cond.wait(u);
             continue;
         }
         wreq = _write_reqs.front();
         _write_reqs.pop_front();
         break;
     }
-    pthread_mutex_unlock(&this->_q_lock);
+    u.unlock();
     return wreq;
 }
 
 // Main thread for L1 RPC server.
 void L1RpcServer::run() {
-    cout << "bind(" << _port << ")" << endl;
+    chime_log_set_thread_name("L1-RPC-server");
+    chlog("bind(" << _port << ")");
     _frontend.bind(_port);
     _backend.bind("inproc://rpc-backend");
 
-    std::vector<pthread_t*> worker_threads;
+    std::vector<std::thread> worker_threads;
+    std::vector<RpcWorker*> workers;
 
     // How many worker threads should be created for writing
     // assembled_chunks to disk?
     int nworkers = 2;
-        
+
     // Create and start workers.
     for (int i=0; i<nworkers; i++) {
-        pthread_t* thread = new pthread_t;
-        rpc_worker_thread_context *context = new rpc_worker_thread_context;
-        context->ctx = &_ctx;
-        context->server = this;
-        pthread_create(thread, NULL, rpc_worker_thread_main, context);
-        worker_threads.push_back(thread);
+        RpcWorker* w = new RpcWorker(_ctx, this);
+        workers.push_back(w);
+        worker_threads.push_back(std::thread(std::bind(&RpcWorker::run, w, i)));
     }
 
     // convert _frontend and _backend to void* (explicitly) calling socket_t.operator void*()
@@ -268,25 +268,32 @@ void L1RpcServer::run() {
 
     for (;;) {
         /*{
-            pthread_mutex_lock(&this->_q_lock);
-            size_t n = _write_reqs.size();
-            pthread_mutex_unlock(&this->_q_lock);
-            cout << "L1RpcServer: polling.  Queued chunks to write: " << n << endl;
+         // lock
+         size_t n = _write_reqs.size();
+         cout << "L1RpcServer: polling.  Queued chunks to write: " << n << endl;
          }*/
 
         // Poll, waiting for new requests from clients, or replies
         //from workers.
 
         // int r = zmq::poll(pollitems, 2, -1);
-        int r = zmq::poll(pollitems, 2, 5000);
-        if (r == -1) {
-            cout << "zmq::poll error: " << strerror(errno) << endl;
+        try {
+            int r = zmq::poll(pollitems, 2, 5000);
+            if (r == -1) {
+                chlog("zmq::poll error: " << strerror(errno));
+                break;
+            }
+        } catch (const zmq::error_t& e) {
+            chlog("error in poll: " << e.what());
+            // This can happen when the main thread exits, L1RpcServer
+            // destructor gets called, zmq context destroyed...
+            _do_shutdown();
             break;
         }
 
         zmq::message_t client;
         zmq::message_t msg;
-        
+
         if (pollitems[0].revents & ZMQ_POLLIN) {
             // New request.  Should be exactly two message parts.
             int more;
@@ -294,27 +301,27 @@ void L1RpcServer::run() {
             //cout << "Receiving message on frontend socket" << endl;
             ok = _frontend.recv(&client);
             if (!ok) {
-                cout << "Failed to receive message on frontend socket!" << endl;
+                chlog("Failed to receive message on frontend socket!");
                 continue;
             }
             more = _frontend.getsockopt<int>(ZMQ_RCVMORE);
             if (!more) {
-                cout << "Expected two message parts on frontend socket!" << endl;
+                chlog("Expected two message parts on frontend socket!");
                 continue;
             }
             ok = _frontend.recv(&msg);
             if (!ok) {
-                cout << "Failed to receive second message on frontend socket!" << endl;
+                chlog("Failed to receive second message on frontend socket!");
                 continue;
             }
             more = _frontend.getsockopt<int>(ZMQ_RCVMORE);
             if (more) {
-                cout << "Expected only two message parts on frontend socket!" << endl;
+                chlog("Expected only two message parts on frontend socket!");
                 // recv until !more?
                 while (more) {
                     ok = _frontend.recv(&msg);
                     if (!ok) {
-                        cout << "Failed to recv() while dumping bad message on frontend socket!" << endl;
+                        chlog("Failed to recv() while dumping bad message on frontend socket!");
                         break;
                     }
                     more = _frontend.getsockopt<int>(ZMQ_RCVMORE);
@@ -325,13 +332,13 @@ void L1RpcServer::run() {
             try {
                 _handle_request(&client, &msg);
             } catch (const std::exception& e) {
-                cout << "Warning: Failed to handle RPC request... ignoring!  Error: " << e.what() << endl;
+                chlog("Warning: Failed to handle RPC request... ignoring!  Error: " << e.what());
                 try {
                     msgpack::object_handle oh = msgpack::unpack(reinterpret_cast<const char *>(msg.data()), msg.size());
                     msgpack::object obj = oh.get();
-                    cout << "  message: " << obj << endl;
+                    chlog("  message: " << obj);
                 } catch (...) {
-                    cout << "  failed to un-msgpack message" << endl;
+                    chlog("  failed to un-msgpack message");
                 }
             }
             if (_shutdown)
@@ -372,20 +379,38 @@ void L1RpcServer::run() {
             if (!(_frontend.send(client, ZMQ_SNDMORE) &&
                   _frontend.send(token, ZMQ_SNDMORE) &&
                   _frontend.send(msg))) {
-                cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
+                chlog("ERROR: sending RPC reply: " << strerror(zmq_errno()));
             }
         }
     }
 
-    cout << "L1 RPC server: broke out of main loop.  Joining workers..." << endl;
+
+
+
+    chlog("L1 RPC server: broke out of main loop.  Joining workers...");
 
     // join worker threads
     for (int i=0; i<nworkers; i++) {
-        pthread_join(*worker_threads[i], NULL);
-        delete worker_threads[i];
+        worker_threads[i].join();
+        delete workers[i];
     }
 
-    cout << "L1 RPC server: exiting." << endl;
+    chlog("L1 RPC server: exiting.");
+}
+
+std::thread L1RpcServer::start() {
+    thread t(std::bind(&L1RpcServer::run, this));
+    t.detach();
+    return t;
+}
+
+void L1RpcServer::_do_shutdown() {
+    ulock u(_q_mutex);
+    _stream->end_stream();
+    _shutdown = true;
+    u.unlock();
+    _q_cond.notify_all();
+    _stream->join_threads();
 }
 
 int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) {
@@ -399,18 +424,21 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
     uint32_t token = rpcreq.token;
 
     if (funcname == "shutdown") {
-        cout << "Shutdown requested." << endl;
+        chlog("Shutdown requested.");
+        _do_shutdown();
+        return 0;
 
-        {
-            pthread_mutex_lock(&this->_q_lock);
+    } else if ((funcname == "start_logging") ||
+               (funcname == "stop_logging")) {
+        // grab address argument
+        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
+        string addr = oh.get().as<string>();
+        chlog("Logging request: " << funcname << ", address " << addr);
 
-            _stream->end_stream();
-            _shutdown = true;
-
-            pthread_cond_broadcast(&this->_q_cond);
-            pthread_mutex_unlock(&this->_q_lock);
-
-            _stream->join_threads();
+        if (funcname == "start_logging") {
+            chime_log_add_server(addr);
+        } else {
+            chime_log_remove_server(addr);
         }
         return 0;
 
@@ -430,7 +458,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         if (!(_frontend.send(*client, ZMQ_SNDMORE) &&
               _frontend.send(*token_to_message(token), ZMQ_SNDMORE) &&
               _frontend.send(*reply))) {
-            cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
+            chlog("ERROR: sending RPC reply: " << strerror(zmq_errno()));
             return -1;
         }
         //cout << "Sent stats reply!" << endl;
@@ -464,7 +492,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         if (!(_frontend.send(*client, ZMQ_SNDMORE) &&
               _frontend.send(*token_to_message(token), ZMQ_SNDMORE) &&
               _frontend.send(*reply))) {
-            cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
+            chlog("ERROR: sending RPC reply: " << strerror(zmq_errno()));
             return -1;
         }
         return 0;
@@ -543,23 +571,24 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         if (!(_frontend.send(*client, ZMQ_SNDMORE) &&
               _frontend.send(*token_to_message(token), ZMQ_SNDMORE) &&
               _frontend.send(*replymsg))) {
-            cout << "ERROR: sending RPC reply: " << strerror(zmq_errno()) << endl;
+            chlog("ERROR: sending RPC reply: " << strerror(zmq_errno()));
             return -1;
         }
 
         return 0;
     } else {
         // Silent failure?
-        cout << "Error: unknown RPC function name: " << funcname << endl;
+        chlog("Error: unknown RPC function name: " << funcname);
         return -1;
     }
 }
 
-// Enqueues a new request to write a chunk.        
+// Enqueues a new request to write a chunk.
 void L1RpcServer::_add_write_request(write_chunk_request* req) {
-    pthread_mutex_lock(&this->_q_lock);
 
-    // Highest priority goes at the front of the queue.
+    ulock u(_q_mutex);
+
+     // Highest priority goes at the front of the queue.
     // Search for the first element with priority lower than this one's.
     // AND search for a higher-priority duplicate of this element.
     deque<write_chunk_request*>::iterator it;
@@ -568,7 +597,8 @@ void L1RpcServer::_add_write_request(write_chunk_request* req) {
             //cout << "Found an existing write request for chunk: beam " << req->chunk->beam_id << ", ichunk " << req->chunk->ichunk << " with >= priority" << endl;
             // Found a higher-priority existing entry -- add this request's clients to the existing one.
             (*it)->clients.insert((*it)->clients.end(), req->clients.begin(), req->clients.end());
-            pthread_mutex_unlock(&this->_q_lock);
+ 
+            u.unlock();
             return;
         }
         if ((*it)->priority < req->priority)
@@ -617,11 +647,11 @@ void L1RpcServer::_add_write_request(write_chunk_request* req) {
      }
      */
 
+    u.unlock();
+
     if (added)
         // queue not empty!
-        pthread_cond_signal(&this->_q_cond);
-
-    pthread_mutex_unlock(&this->_q_lock);
+        _q_cond.notify_one();
 }
 
 // Helper function to retrieve requested assembled_chunks from the ring buffer.
@@ -634,47 +664,5 @@ void L1RpcServer::_get_chunks(vector<uint64_t> &beams,
     for (auto beamit = ch.begin(); beamit != ch.end(); beamit++) {
         chunks.insert(chunks.end(), beamit->begin(), beamit->end());
     }
-}
-
-struct rpc_thread_context {
-    shared_ptr<ch_frb_io::intensity_network_stream> stream;
-    // eg, "tcp://*:5555";
-    string port;
-    bool* exited;
-};
-
-static void *rpc_thread_main(void *opaque_arg) {
-    rpc_thread_context *context = reinterpret_cast<rpc_thread_context *> (opaque_arg);
-    string port = context->port;
-    shared_ptr<ch_frb_io::intensity_network_stream> stream = context->stream;
-    bool* exited = context->exited;
-    delete context;
-
-    zmq::context_t ctx;
-    L1RpcServer rpc(ctx, port, stream);
-    rpc.run();
-    if (exited)
-        *exited = true;
-    return NULL;
-}
-
-pthread_t* l1_rpc_server_start(shared_ptr<ch_frb_io::intensity_network_stream> stream,
-                               string port,
-                               bool* exited) {
-
-    if (port.length() == 0)
-        port = "tcp://*:" + std::to_string(default_port_l1_rpc);
-
-    //cout << "Starting RPC server on " << port << endl;
-    rpc_thread_context *context = new rpc_thread_context;
-    context->stream = stream;
-    context->port = port;
-    context->exited = exited;
-
-    pthread_t* rpc_thread = new pthread_t;
-    int err = pthread_create(rpc_thread, NULL, rpc_thread_main, context);
-    if (err)
-        throw runtime_error(string("pthread_create() failed to create RPC thread: ") + strerror(errno));
-    return rpc_thread;
 }
 

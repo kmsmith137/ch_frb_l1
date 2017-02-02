@@ -16,8 +16,6 @@
 
   - L0 simulator
 
-     - Should send uniform RNG's.  [ Dustin ]
-
      - Tie FPGA counts to system time.  [ Kendrick ]
      
      - Work on ch-frb-simulate-l0 executable, and script to start 8 processes
@@ -25,8 +23,6 @@
 
   - ch-frb-l1 executable
 
-     - Add RPC server.  [ Dustin ]
-     
      - Add RFI removal and dedispersion. [ Kendrick ]
 
      - Work on ch-frb-l1 executable, and script to start 2 processes
