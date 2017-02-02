@@ -131,7 +131,9 @@ int main(int argc, char **argv) {
 
     // Spawn one processing thread per beam
     std::vector<std::thread> processing_threads;
-    for (int ibeam = 0; ibeam < 8; ibeam++)
+    for (int ibeam = 0; ibeam < ini_params.beam_ids.size(); ibeam++)
+        // Note: the processing thread gets 'ibeam', not the beam id,
+        // because that is what get_assembled_chunk() takes
         processing_threads.push_back(std::thread(std::bind(processing_thread_main, stream, ibeam)));
 
     if ((rpc_port.length() == 0) && (rpc_portnum == 0))
@@ -157,7 +159,7 @@ int main(int argc, char **argv) {
     chlog("Network stream ended");
 
     // Join processing threads
-    for (int ibeam = 0; ibeam < 8; ibeam++) {
+    for (int ibeam = 0; ibeam < ini_params.beam_ids.size(); ibeam++) {
         chlog("Joining thread " << ibeam);
         processing_threads[ibeam].join();
     }
