@@ -32,6 +32,8 @@ def node_status():
     #print('Chunks:', ch)
     print('Chunks:')
     for bch in ch:
+        if bch is None:
+            continue
         for b,f0,f1,w in bch:
             Nchunk = 1024 * 400
             print('  beam', b, 'chunk', f0/Nchunk, '+', (f1-f0)/Nchunk, 'from', w)

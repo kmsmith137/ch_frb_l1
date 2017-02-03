@@ -20,7 +20,7 @@
 .chart text {
   fill: black;
   font: 10px sans-serif;
-  text-anchor: end;
+  text-anchor: begin;
 }
 
 </style>
@@ -51,7 +51,7 @@ var loaded = function(result) {
             chunk_lo.push(lo);
             chunk_hi.push(hi);
             dchunk.push(hi - lo);
-            chunk_range.push([lo, hi]);
+            chunk_range.push([lo, hi, wh]);
         }
         console.log('chunk lo: ' + chunk_lo);
         console.log('chunk hi: ' + chunk_hi);
@@ -63,15 +63,19 @@ var loaded = function(result) {
         console.log('overall range: ' + lolo + ' to ' + hihi);
 
         var margin = {top: 20, right: 30, bottom: 30, left: 40},
-        width = 960 - margin.left - margin.right,
-        height = 500 - margin.top - margin.bottom;
+        // width = 960 - margin.left - margin.right,
+        // height = 500 - margin.top - margin.bottom;
+
+        width  = 800 - margin.left - margin.right,
+        height = 200 - margin.top - margin.bottom;
 
         var x = d3.scaleLinear()
             .domain([lolo, hihi])
             .range([0, width]);
 
         var y = d3.scaleLinear()
-            .domain([0, chunk_range.length])
+            //.domain([0, chunk_range.length])
+            .domain([0, 6])
             .range([0, height]);
 
         var barHeight = y(1) - y(0);
@@ -82,16 +86,15 @@ var loaded = function(result) {
             .append("g")
             .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 
-        var bar = chart.selectAll("g")
-            .data(chunk_range)
-            .enter().append("g")
-            //.attr("transform", function(d, i) { return "translate(" + x(d[0]) + ",0)"; });
-            .attr("transform", function(d, i) { return "translate(" + x(d[0]) + "," + y(i) + ")"; });
+        var axis = d3.axisBottom(x);
+        chart.append("g")
+            .attr("transform", "translate(0," + height + ")")
+            .call(axis);
 
-        var rect = bar.append("rect")
-            .attr("width", function(d) { return x(d[1]) - x(d[0]); })
-            .attr("height", barHeight - 1);
 
+        // The keys of these maps are the chunk "where" attributes
+        // HACK -- they're described as bitmasks, but we treat them here as
+        // discrete values.
         var colormap = { 1: "blue",
                          2: "steelblue",
                          4: "steelblue",
@@ -100,10 +103,37 @@ var loaded = function(result) {
                          32: "black",
                          64: "black",
                          128: "black" };
+
+        var heightmap = {
+            // Downstream
+            1: 1,
+            // Level 1
+            2: 2,
+            32: 2,
+            // Level 2
+            4: 3,
+            64: 3,
+            // Level 3
+            8: 4,
+            128: 4,
+            // Level 4
+            16: 5,
+        };
+
+        var bar = chart.selectAll("g")
+            .data(chunk_range)
+            .enter().append("g")
+            .attr("transform", function(d) { return "translate(" + x(d[0]) + "," + y(heightmap[d[2]]) + ")"; });
+            //.attr("transform", function(d, i) { return "translate(" + x(d[0]) + "," + y(i) + ")"; });
+
+        var rect = bar.append("rect")
+            .attr("width", function(d) { return x(d[1]) - x(d[0]); })
+            .attr("height", barHeight - 1);
+
         rect.data(chunk_where)
             .style("fill", function(d) { return colormap[d]; });
 
-        console.log('chunk_where: ' + chunk_where);
+        //console.log('chunk_where: ' + chunk_where);
 
         bar.append("text")
             .attr("x", 0)
