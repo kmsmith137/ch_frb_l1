@@ -149,13 +149,18 @@ var loaded = function(result) {
             .call(axis);
 
 
+        setTimeout(load_status, 3000);
     }
   };
 
   $(document).ready(function() {
     console.log('hello ready');
-    $.getJSON('{{ node_status_url }}', loaded);
+    load_status();
   });
+
+  var load_status = function() {
+    $.getJSON('{{ node_status_url }}', loaded);
+  };
 
   console.log('hello main');
 
