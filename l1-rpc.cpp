@@ -440,20 +440,23 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
        // No input arguments, so don't unpack anything more.
 
         // Grab snapshot of all ringbufs...
-        vector<tuple<uint64_t, uint64_t, uint64_t> > allchunks;
+        vector<tuple<uint64_t, uint64_t, uint64_t, uint64_t> > allchunks;
 
         intensity_network_stream::initializer ini = _stream->get_initializer();
         for (auto beamit = ini.beam_ids.begin(); beamit != ini.beam_ids.end(); beamit++) {
-            // yuck, convert vector<int> to vector<uint64_t>...
+            // Retrieve one beam at a time
             int beam = *beamit;
             vector<uint64_t> beams;
             beams.push_back(beam);
-            vector<vector<shared_ptr<assembled_chunk> > > chunks = _stream->get_ringbuf_snapshots(beams);
+            vector<vector<pair<shared_ptr<assembled_chunk>, uint64_t> > > chunks = _stream->get_ringbuf_snapshots(beams);
             // iterate over beams (we only requested one)
             for (auto it1 = chunks.begin(); it1 != chunks.end(); it1++) {
                 // iterate over chunks
                 for (auto it2 = (*it1).begin(); it2 != (*it1).end(); it2++) {
-                    allchunks.push_back(tuple<uint64_t, uint64_t, uint64_t>((*it2)->beam_id, (*it2)->fpgacounts_begin(), (*it2)->fpgacounts_end()));
+                    allchunks.push_back(make_tuple((uint64_t)it2->first->beam_id,
+                                                   it2->first->fpgacounts_begin(),
+                                                   it2->first->fpgacounts_end(),
+                                                   it2->second));
                 }
             }
         }
@@ -628,11 +631,13 @@ void L1RpcServer::_add_write_request(write_chunk_request* req) {
 void L1RpcServer::_get_chunks(vector<uint64_t> &beams,
                             uint64_t min_fpga, uint64_t max_fpga,
                             vector<shared_ptr<assembled_chunk> > &chunks) {
-    vector<vector<shared_ptr<assembled_chunk> > > ch;
+    vector<vector<pair<shared_ptr<assembled_chunk>, uint64_t> > > ch;
     ch = _stream->get_ringbuf_snapshots(beams, min_fpga, max_fpga);
     // collapse vector-of-vectors to vector.
     for (auto beamit = ch.begin(); beamit != ch.end(); beamit++) {
-        chunks.insert(chunks.end(), beamit->begin(), beamit->end());
+        for (auto it2 = beamit->begin(); it2 != beamit->end(); it2++) {
+            chunks.push_back(it2->first);
+        }
     }
 }
 

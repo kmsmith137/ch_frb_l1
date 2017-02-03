@@ -77,7 +77,7 @@
 
      Retrieves the list of chunks in the ring buffers of this L1 node.
 
-     Returns an array of [ beam, fpga0, fpga1 ] arrays, one for each buffered assembled_chunk.
+     Returns an array of [ beam, fpga0, fpga1, bitmask ] arrays, one for each buffered assembled_chunk.  For simplicity, each of these elements is a uint64_t.
 
 
  ** NOT IMPLEMENTED ** get_chunks(GetChunks_Request)

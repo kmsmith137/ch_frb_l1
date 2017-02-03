@@ -42,9 +42,12 @@ var loaded = function(result) {
         var chunk_hi = [];
         var dchunk = []
         var chunk_range = []
+        var chunk_where = [];
         for (var j=0; j<ch.length; j++) {
             var lo = ch[j][1] / Nchunk;
             var hi = ch[j][2] / Nchunk;
+            var wh = ch[j][3];
+            chunk_where.push(wh);
             chunk_lo.push(lo);
             chunk_hi.push(hi);
             dchunk.push(hi - lo);
@@ -85,15 +88,28 @@ var loaded = function(result) {
             //.attr("transform", function(d, i) { return "translate(" + x(d[0]) + ",0)"; });
             .attr("transform", function(d, i) { return "translate(" + x(d[0]) + "," + y(i) + ")"; });
 
-        bar.append("rect")
+        var rect = bar.append("rect")
             .attr("width", function(d) { return x(d[1]) - x(d[0]); })
             .attr("height", barHeight - 1);
+
+        var colormap = { 1: "blue",
+                         2: "steelblue",
+                         4: "steelblue",
+                         8: "steelblue",
+                         16: "steelblue",
+                         32: "black",
+                         64: "black",
+                         128: "black" };
+        rect.data(chunk_where)
+            .style("fill", function(d) { return colormap[d]; });
+
+        console.log('chunk_where: ' + chunk_where);
 
         bar.append("text")
             .attr("x", 0)
             .attr("y", barHeight / 2)
             .attr("dy", ".35em")
-            .text(function(d) { return d; });
+            .text(function(d) { return d[0] + "+" + (d[1]-d[0]); });
     }
   };
 

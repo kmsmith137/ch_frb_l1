@@ -85,31 +85,65 @@ int main(int argc, char** argv) {
     rng.seed(42);
     std::uniform_int_distribution<> rando(0,1);
 
+    std::vector<int> consumed_chunks;
+
+    int backlog = 0;
+    int failed_push = 0;
+
     for (int i=0; i<100; i++) {
         ch = new assembled_chunk(beam, nupfreq, nt_per, fpga_per, i);
         cout << "Pushing " << i << endl;
-        stream->inject_assembled_chunk(ch);
-        cout << "Pushed " << i << endl;
+        if (stream->inject_assembled_chunk(ch))
+            cout << "Pushed " << i << endl;
+        else {
+            cout << "Push failed (ring buffer full)" << endl;
+            failed_push++;
+        }
 
         // downstream thread consumes with a lag of 2...
         if (i >= 2) {
             // Randomly consume 0 to 2 chunks
-            if (rando(rng)) {
-                cout << "Downstream consumes a chunk" << endl;
-                stream->get_assembled_chunk(0, false);
+            shared_ptr<assembled_chunk> ach;
+            if ((backlog > 0) && rando(rng)) {
+                cout << "Downstream consumes a chunk (backlog)" << endl;
+                ach = stream->get_assembled_chunk(0, false);
+                if (ach) {
+                    cout << "  (chunk " << ach->ichunk << ")" << endl;
+                    consumed_chunks.push_back(ach->ichunk);
+                    backlog--;
+                }
             }
             if (rando(rng)) {
                 cout << "Downstream consumes a chunk" << endl;
-                stream->get_assembled_chunk(0, false);
+                ach = stream->get_assembled_chunk(0, false);
+                if (ach) {
+                    cout << "  (chunk " << ach->ichunk << ")" << endl;
+                    consumed_chunks.push_back(ach->ichunk);
+                } else
+                    backlog++;
+            }
+            if (rando(rng)) {
+                cout << "Downstream consumes a chunk" << endl;
+                ach = stream->get_assembled_chunk(0, false);
+                if (ach) {
+                    cout << "  (chunk " << ach->ichunk << ")" << endl;
+                    consumed_chunks.push_back(ach->ichunk);
+                } else
+                    backlog++;
             }
         }
+
+        cout << endl;
+        stream->print_state();
+        cout << endl;
+
     }
 
     //cout << "End state:" << endl;
     //rb->print();
     //cout << endl;
 
-    vector<vector<shared_ptr<assembled_chunk> > > chunks;
+    vector<vector<pair<shared_ptr<assembled_chunk>, uint64_t> > > chunks;
     cout << "Test retrieving chunks..." << endl;
     //rb->retrieve(30000000, 50000000, chunks);
     vector<uint64_t> beams;
@@ -126,14 +160,16 @@ int main(int argc, char** argv) {
     for (auto it = chunks.begin(); it != chunks.end(); it++) {
         cout << "[" << endl;
         for (auto it2 = it->begin(); it2 != it->end(); it2++) {
-            shared_ptr<assembled_chunk> ch = *it2;
+            shared_ptr<assembled_chunk> ch = it2->first;
             cout << "  chunk " << (ch->fpgacounts_begin() / Nchunk) << " to " <<
                 (ch->fpgacounts_end() / Nchunk) << ", N chunks " <<
                 (ch->fpgacounts_N() / Nchunk) << endl;
         }
         cout << "]" << endl;
     }
-    
+
+    cout << "State:" << endl;
+    stream->print_state();
 
 
     for (int nwait=0;; nwait++) {

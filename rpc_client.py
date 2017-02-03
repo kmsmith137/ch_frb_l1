@@ -92,7 +92,7 @@ class RpcClient(object):
     def list_chunks(self, servers=None, wait=True, timeout=-1):
         '''
         Retrieves lists of chunks held by each server.
-        Return value is one list per server, containing a list of [beam, fpga0, fpga1] entries.
+        Return value is one list per server, containing a list of [beam, fpga0, fpga1, bitmask] entries.
         '''
         if servers is None:
             servers = self.servers.keys()
