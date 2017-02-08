@@ -45,7 +45,7 @@ def node_status():
 
     stat = [ dict(addr=k, status='ok', chunks=chi) for k,chi in zip(app.nodes, ch) ]
     j = json.dumps(stat)
-    #print('Status:', j)
+    # print('JSON:', j)
     return j
 
 if __name__ == '__main__':
