@@ -1,6 +1,7 @@
 from __future__ import print_function
 import json
 from flask import Flask, render_template, jsonify, request
+import msgpack
 
 from rpc_client import RpcClient
 
@@ -33,8 +34,16 @@ def node_status():
     if client is None:
         client = RpcClient(dict([(''+str(i), k) for i,k in enumerate(app.nodes)]))
 
-    ch = client.list_chunks(timeout=3.)
+    #ch = client.list_chunks(timeout=3.)
 
+    ### HACK -- no timeouts here -- will wait forever!
+    # Make RPC requests for list_chunks and get_statistics asynchronously
+    ltokens = client.list_chunks(wait=False)
+    stats = client.get_statistics()
+    ch = client.wait_for_tokens(ltokens)
+    ch = [msgpack.unpackb(p[0]) if p is not None else None
+          for p in ch]
+    
     # print('Chunks:')
     # for bch in ch:
     #     if bch is None:
@@ -43,7 +52,9 @@ def node_status():
     #         Nchunk = 1024 * 400
     #         print('  beam', b, 'chunk', f0/Nchunk, '+', (f1-f0)/Nchunk, 'from', w)
 
-    stat = [ dict(addr=k, status='ok', chunks=chi) for k,chi in zip(app.nodes, ch) ]
+    #print('Stats:', stats)
+    
+    stat = [ dict(addr=k, status='ok', chunks=chi, stats=st) for k,chi,st in zip(app.nodes, ch, stats) ]
     j = json.dumps(stat)
     # print('JSON:', j)
     return j

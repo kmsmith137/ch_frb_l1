@@ -69,6 +69,7 @@ var chartdata = {};
 // ---- g            = chartbody     body
 // ------ [g for each bar]
 // --------[ rect for each bar ]
+// --------[ text for each bar ]
 // ---- g            = xaxisbox
 // ------ [xaxis]
 
@@ -99,13 +100,62 @@ var init_plot = function() {
     }
 }
 
+var add_commas = function(s) {
+  outs = '';
+  while (s.length > 3) {
+    outs = ',' + s.substring(s.length - 3, s.length) + outs;
+    s = s.substring(0, s.length - 3);
+  }
+  outs = s + outs;
+  return outs;
+}
+
 // Called to update the chart when a JSON response is received
 var loaded = function(result) {
     //console.log('JSON loaded: ' + result);
     for (var i=0, len=result.length; i<len; i++) {
         node = result[i];
         //console.log('node ' + node);
-        //$('#node_status_' + i).html(node['status']);
+
+        stats = node['stats'];
+        //console.log('stats:' + stats);
+        // stats is a list: [0] is per-L1 node
+        // [1] is per-node packet counts from L0 hosts
+        // [2...] are per-beam stats
+        nodestats = stats[0];
+        console.log('nodestats: ' + nodestats);
+
+        for (var key in nodestats) {
+            console.log('  ' + key + ' = ' + nodestats[key]);
+        }
+        //node['status']
+        var working = nodestats['network_thread_working_usec'];
+        var waiting = nodestats['network_thread_waiting_usec'];
+        var npct = (1.0 * working) / (working + waiting + 1);
+        working = nodestats['assembler_thread_working_usec'];
+        waiting = nodestats['assembler_thread_waiting_usec'];
+        var apct = (1.0 * working) / (working + waiting + 1);
+
+        nbytes = nodestats['count_bytes_received'];
+        npackets = nodestats['count_packets_received'];
+        npgood = nodestats['count_packets_good'];
+        npbad = nodestats['count_packets_bad'];
+        npdrop = nodestats['count_packets_dropped'];
+        nbytesq = nodestats['count_bytes_queued'];
+        udpringsize = nodestats['udp_ringbuf_size'];
+        udpringmax  = nodestats['udp_ringbuf_maxsize'];
+
+        st = 'Network thread: ' + npct.toFixed(2) + ' core.';
+        st += '<br>Assembler thread: ' + apct.toFixed(2) + ' core.';
+        st += '<br>Received: ' + (nbytes * 1e-9).toFixed(3) + ' GB';
+        st += ', ' + add_commas(npackets.toString()) + ' packets, ';
+        st += ((100.0 * npgood) / npackets).toFixed(1) + '% good, ';
+        st += ((100.0 * npbad ) / npackets).toFixed(1) + '% bad, ';
+        st += ((100.0 * npdrop ) / npackets).toFixed(1) + '% dropped.';
+        st += '  Socket queued: ' + add_commas(nbytesq.toString()) + ' bytes.';
+        st += '<br>UDP buffer btw network & assembler threads: ' + udpringsize
+            + ' of ' + udpringmax + ' packets';
+        $('#node_status_' + i).html(st);
 
         ch = node['chunks'];
         if (ch == null)
@@ -115,7 +165,8 @@ var loaded = function(result) {
         var Nchunk = 1024 * 400;
 
         // How much space to leave between bars, in *pixels*
-        var barspacer = 1;
+        //var barspacer = 1;
+        var barspacer = 2;
 
         var chunk_lo = [];
         var chunk_hi = [];
@@ -153,7 +204,7 @@ var loaded = function(result) {
         bar.exit().remove();
         var newbar = bar.enter().append("g");
         newbar.append("rect").style("fill", "green");
-        newbar.append("text");
+        //newbar.append("text");
         var bar = newbar.merge(bar);
 
         // Set the positions of the bars
@@ -191,6 +242,7 @@ var loaded = function(result) {
     $.getJSON('{{ node_status_url }}', loaded);
   };
 
+  // For testing: load some fake data
   var fake_loaded = function() {
       var Nchunk = 1024 * 400;
 
@@ -238,7 +290,7 @@ var loaded = function(result) {
 <div>
   <p>{{ node }}</p>
   <div id="node_status_{{i}}"></div>
-  <svg class="chart" id="node_chunks_{{i}}" /></div>
+  <svg class="chart" id="node_chunks_{{i}}" />
 </div>
 {% endfor %}
 

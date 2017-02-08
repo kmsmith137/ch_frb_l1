@@ -63,12 +63,14 @@ static void *processing_thread_main(void *opaque_arg)
 	chunk->decode(&intensity[0], &weights[0], ch_frb_io::constants::nt_per_assembled_chunk);
     cout << "Decoded beam " << chunk->beam_id << ", chunk " << chunk->ichunk << endl;
 
-    stringstream ss;
-    ss << "chunk-beam" << chunk->beam_id << "-ch" << chunk->ichunk << ".hdf5";
-    string fn = ss.str();
+    /*
+     stringstream ss;
+     ss << "chunk-beam" << chunk->beam_id << "-ch" << chunk->ichunk << ".msgpack";
+     string fn = ss.str();
 
-    chunk->write_hdf5_file(fn);
-    cout << "Wrote " << fn << endl;
+     chunk->write_msgpack_file(fn);
+     cout << "Wrote " << fn << endl;
+     */
     }
 
     return NULL;
