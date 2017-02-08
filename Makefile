@@ -93,6 +93,10 @@ clean:
 install:
 	echo 'Nothing to install here!'
 
+flask:
+	FLASK_APP=webapp.webapp FLASK_DEBUG=1 flask run
+.PHONY: flask
+
 
 # These are files; don't apply implicit make rules
 Makefile.local: ;

@@ -14,9 +14,11 @@ int main(int argc, char** argv) {
     int portnum = 0;
     int udpport = 0;
     int wait = 0;
+    float chunksleep = 0;
+    int nchunks = 100;
 
     int c;
-    while ((c = getopt(argc, argv, "a:p:b:u:wh")) != -1) {
+    while ((c = getopt(argc, argv, "a:p:b:u:ws:n:h")) != -1) {
         switch (c) {
         case 'a':
             port = string(optarg);
@@ -38,10 +40,18 @@ int main(int argc, char** argv) {
             wait = 1;
             break;
 
+        case 's':
+            chunksleep = atof(optarg);
+            break;
+
+        case 'n':
+            nchunks = atoi(optarg);
+            break;
+
         case 'h':
         case '?':
         default:
-            cout << string(argv[0]) << ": [-a <address>] [-p <port number>] [-b <beam id>] [-u <L1 udp-port>] [-w to wait indef] [-h for help]" << endl;
+            cout << string(argv[0]) << ": [-a <address>] [-p <port number>] [-b <beam id>] [-u <L1 udp-port>] [-w to wait indef] [-s <sleep between chunks>] [-n <N chunks>] [-h for help]" << endl;
             cout << "eg,  -a tcp://127.0.0.1:5555" << endl;
             cout << "     -p 5555" << endl;
             cout << "     -b 78" << endl;
@@ -90,13 +100,13 @@ int main(int argc, char** argv) {
     int backlog = 0;
     int failed_push = 0;
 
-    for (int i=0; i<100; i++) {
+    for (int i=0; i<nchunks; i++) {
         ch = new assembled_chunk(beam, nupfreq, nt_per, fpga_per, i);
-        cout << "Pushing " << i << endl;
+        cout << "Injecting " << i << endl;
         if (stream->inject_assembled_chunk(ch))
-            cout << "Pushed " << i << endl;
+            cout << "Injected " << i << endl;
         else {
-            cout << "Push failed (ring buffer full)" << endl;
+            cout << "Inject failed (ring buffer full)" << endl;
             failed_push++;
         }
 
@@ -136,6 +146,10 @@ int main(int argc, char** argv) {
         cout << endl;
         stream->print_state();
         cout << endl;
+
+
+        if (chunksleep)
+            usleep(int(chunksleep * 1000000));
 
     }
 

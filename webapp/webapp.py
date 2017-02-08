@@ -19,6 +19,11 @@ def index():
     return render_template('index.html', nodes=list(enumerate(app.nodes)),
                            node_status_url='/node-status')
 
+@app.route('/2')
+def index2():
+    return render_template('index2.html', nodes=list(enumerate(app.nodes)),
+                           node_status_url='/node-status')
+
 @app.route('/node-status')
 def node_status():
     #    a = request.args.get('a', 0, type=int)
@@ -29,14 +34,14 @@ def node_status():
         client = RpcClient(dict([(''+str(i), k) for i,k in enumerate(app.nodes)]))
 
     ch = client.list_chunks(timeout=3.)
-    #print('Chunks:', ch)
-    print('Chunks:')
-    for bch in ch:
-        if bch is None:
-            continue
-        for b,f0,f1,w in bch:
-            Nchunk = 1024 * 400
-            print('  beam', b, 'chunk', f0/Nchunk, '+', (f1-f0)/Nchunk, 'from', w)
+
+    # print('Chunks:')
+    # for bch in ch:
+    #     if bch is None:
+    #         continue
+    #     for b,f0,f1,w in bch:
+    #         Nchunk = 1024 * 400
+    #         print('  beam', b, 'chunk', f0/Nchunk, '+', (f1-f0)/Nchunk, 'from', w)
 
     stat = [ dict(addr=k, status='ok', chunks=chi) for k,chi in zip(app.nodes, ch) ]
     j = json.dumps(stat)
