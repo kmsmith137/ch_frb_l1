@@ -143,6 +143,9 @@ public:
             // Drop this chunk so its memory can be reclaimed
             w->chunk.reset();
 
+            // Testing :)
+            //sleep(3);
+
             // Format the reply sent to the client(s).
             msgpack::sbuffer buffer;
             msgpack::pack(buffer, rep);
@@ -236,6 +239,17 @@ write_chunk_request* L1RpcServer::pop_write_request() {
     u.unlock();
     return wreq;
 }
+
+void L1RpcServer::enqueue_write_request(std::shared_ptr<ch_frb_io::assembled_chunk> chunk,
+                                        std::string filename,
+                                        int priority) {
+    write_chunk_request* w = new write_chunk_request();
+    w->filename = filename;
+    w->priority = priority;
+    w->chunk = chunk;
+    _add_write_request(w);
+}
+
 
 // Main thread for L1 RPC server.
 void L1RpcServer::run() {
