@@ -5,6 +5,7 @@
 #include <msgpack.hpp>
 
 #include "ch_frb_io.hpp"
+#include "l1-ringbuf.hpp"
 
 #include "l1-rpc.hpp"
 #include "rpc.hpp"
@@ -488,6 +489,18 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
                 }
             }
         }
+        // Add any messages queued for writing by the RPC worker threads.
+        {
+            ulock u(_q_mutex);
+            for (auto it=_write_reqs.begin(); it!=_write_reqs.end(); it++) {
+                shared_ptr<assembled_chunk> ch = (*it)->chunk;
+                allchunks.push_back(make_tuple((uint64_t)ch->beam_id,
+                                               ch->fpgacounts_begin(),
+                                               ch->fpgacounts_end(),
+                                               L1RB_WRITEQUEUE));
+            }
+        }
+
         msgpack::sbuffer buffer;
         msgpack::pack(buffer, allchunks);
         zmq::message_t* reply = sbuffer_to_message(buffer);

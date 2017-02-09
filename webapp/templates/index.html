@@ -37,22 +37,25 @@ var colormap = { 1:   "forestgreen",
                  16:  "steelblue",
                  32:  "gray",
                  64:  "gray",
-                 128: "gray" };
+                 128: "gray",
+                 256: "cornflowerblue" };
 
 var heightmap = {
+    // RPC queued write request
+    256: 0,
     // Downstream
-    1: 0,
+    1: 1,
     // Level 1
-    2:  1,
-    32: 1,
+    2:  2,
+    32: 2,
     // Level 2
-    4:  2,
-    64: 2,
+    4:  3,
+    64: 3,
     // Level 3
-    8:   3,
-    128: 3,
+    8:   4,
+    128: 4,
     // Level 4
-    16: 4,
+    16: 5,
 };
 
 var margin = {top: 20, right: 30, bottom: 30, left: 40};
@@ -193,7 +196,7 @@ var loaded = function(result) {
 
         // Set y scale
         var y = d3.scaleLinear()
-            .domain([0, 5])
+            .domain([0, 6])
             .range([0, height]);
         var barHeight = y(1) - y(0);
 
