@@ -3,18 +3,13 @@
 
 #include <vector>
 #include <deque>
-#include <pthread.h>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
 #include <zmq.hpp>
 #include <ch_frb_io.hpp>
 
 const int default_port_l1_rpc = 5555;
-
-// High-level API: start the RPC server.
-// If *port* is not specified, will listen on all IP addresses on the default port *default_port_l1_rpc*.
-pthread_t* l1_rpc_server_start(std::shared_ptr<ch_frb_io::intensity_network_stream> stream,
-                               std::string port = "",
-                               bool* exited = NULL);
-
 
 // implementation detail: a struct used to communicate between threads
 // of the RPC server.
@@ -25,12 +20,20 @@ class L1RpcServer {
 public:
     // Creates a new RPC server listening on the given port, and reading
     // from the ring buffers of the given stream.
-    L1RpcServer(zmq::context_t &ctx, std::string port,
-                std::shared_ptr<ch_frb_io::intensity_network_stream> stream);
+    L1RpcServer(std::shared_ptr<ch_frb_io::intensity_network_stream> stream,
+                const std::string &port = "",
+                zmq::context_t* ctx = NULL);
+                
     ~L1RpcServer();
 
     // Main RPC service loop.  Does not return.
     void run();
+
+    // Start the RPC service thread.
+    std::thread start();
+
+    // Returns True if an RPC shutdown() call has been received.
+    bool is_shutdown();
 
     // called by RPC worker threads.
     write_chunk_request* pop_write_request();
@@ -51,8 +54,14 @@ protected:
                      uint64_t min_fpga, uint64_t max_fpga,
                      std::vector<std::shared_ptr<ch_frb_io::assembled_chunk> > &chunks);
 
+    void _do_shutdown();
+
 private:
-    zmq::context_t &_ctx;
+    // ZeroMQ context
+    zmq::context_t* _ctx;
+
+    // true if we created _ctx and thus should delete it
+    bool _created_ctx;
 
     // Client-facing socket
     zmq::socket_t _frontend;
@@ -66,9 +75,9 @@ private:
     // the queue of write requests to be run by the RpcWorker(s)
     std::deque<write_chunk_request*> _write_reqs;
     // (and the mutex for it)
-    pthread_mutex_t _q_lock;
+    std::mutex _q_mutex;
 
-    pthread_cond_t _q_cond;
+    std::condition_variable _q_cond;
 
     // flag when we are shutting down.
     bool _shutdown;

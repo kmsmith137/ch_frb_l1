@@ -1,9 +1,9 @@
 #include <unistd.h>
 #include <iostream>
-#include <pthread.h>
+#include <sstream>
 #include <ch_frb_io.hpp>
 #include <l1-rpc.hpp>
-
+#include <chlog.hpp>
 
 using namespace std;
 using namespace ch_frb_io;
@@ -61,11 +61,8 @@ int main(int argc, char** argv) {
     argc -= optind;
     argv += optind;
 
-
-    if ((port.length() == 0) && (portnum == 0))
-        port = "tcp://127.0.0.1:5555";
-    else if (portnum)
-        port = "tcp://127.0.0.1:" + to_string(portnum);
+    chime_log_open_socket();
+    chime_log_set_thread_name("main");
 
     intensity_network_stream::initializer ini;
     ini.beam_ids.push_back(beam);
@@ -80,9 +77,14 @@ int main(int argc, char** argv) {
     // listen on localhost only, for local-machine testing (trying to
     // listen on other ports triggers GUI window popup warnings on Mac
     // OSX)
-    cout << "Starting RPC server on port " << port << endl;
-    bool rpc_exited = false;
-    pthread_t* rpc_thread = l1_rpc_server_start(stream, port, &rpc_exited);
+    if ((port.length() == 0) && (portnum == 0))
+        port = "tcp://127.0.0.1:5555";
+    else if (portnum)
+        port = "tcp://127.0.0.1:" + to_string(portnum);
+
+    chlog("Starting RPC server on port " << port);
+    L1RpcServer rpc(stream, port);
+    rpc.start();
 
     int nupfreq = 4;
     int nt_per = 16;
@@ -102,11 +104,11 @@ int main(int argc, char** argv) {
 
     for (int i=0; i<nchunks; i++) {
         ch = new assembled_chunk(beam, nupfreq, nt_per, fpga_per, i);
-        cout << "Injecting " << i << endl;
+        chlog("Injecting " << i);
         if (stream->inject_assembled_chunk(ch))
-            cout << "Injected " << i << endl;
+            chlog("Injected " << i);
         else {
-            cout << "Inject failed (ring buffer full)" << endl;
+            chlog("Inject failed (ring buffer full)");
             failed_push++;
         }
 
@@ -124,19 +126,19 @@ int main(int argc, char** argv) {
                 }
             }
             if (rando(rng)) {
-                cout << "Downstream consumes a chunk" << endl;
+                chlog("Downstream consumes a chunk");
                 ach = stream->get_assembled_chunk(0, false);
                 if (ach) {
-                    cout << "  (chunk " << ach->ichunk << ")" << endl;
+                    chlog("  (chunk " << ach->ichunk << ")");
                     consumed_chunks.push_back(ach->ichunk);
                 } else
                     backlog++;
             }
             if (rando(rng)) {
-                cout << "Downstream consumes a chunk" << endl;
+                chlog("Downstream consumes a chunk");
                 ach = stream->get_assembled_chunk(0, false);
                 if (ach) {
-                    cout << "  (chunk " << ach->ichunk << ")" << endl;
+                    chlog("  (chunk " << ach->ichunk << ")");
                     consumed_chunks.push_back(ach->ichunk);
                 } else
                     backlog++;
@@ -158,16 +160,18 @@ int main(int argc, char** argv) {
     //cout << endl;
 
     vector<vector<pair<shared_ptr<assembled_chunk>, uint64_t> > > chunks;
-    cout << "Test retrieving chunks..." << endl;
+    chlog("Test retrieving chunks...");
     //rb->retrieve(30000000, 50000000, chunks);
     vector<uint64_t> beams;
     beams.push_back(beam);
     chunks = stream->get_ringbuf_snapshots(beams);
-    cout << "Got " << chunks.size() << " beams, with number of chunks:";
+    stringstream ss;
+    ss << "Got " << chunks.size() << " beams, with number of chunks:";
     for (auto it = chunks.begin(); it != chunks.end(); it++) {
-        cout << " " << it->size();
+        ss << " " << it->size();
     }
-    cout << endl;
+    string s = ss.str();
+    chlog(s);
 
 
     int Nchunk = 1024 * 400;
@@ -187,13 +191,13 @@ int main(int argc, char** argv) {
 
 
     for (int nwait=0;; nwait++) {
-        if (rpc_exited)
+        if (rpc.is_shutdown())
             break;
         usleep(1000000);
         if (!wait && nwait >= 30)
             break;
     }
-
+    chlog("Exiting");
 }
 
 

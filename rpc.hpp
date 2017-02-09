@@ -124,6 +124,12 @@
      server ASAP.  Any queued write requests that have not been
      completed will be dropped.
 
+ * start_logging(string address)
+
+ * stop_logging(string address)
+
+     Starts or stops chlog() from sending to the given log server.
+
  */
 
 // See l1-rpc.cpp for some implementation details.
