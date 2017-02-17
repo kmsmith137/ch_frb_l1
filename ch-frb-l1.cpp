@@ -127,7 +127,7 @@ int main(int argc, char **argv) {
     }
 
     // Make input stream object
-    auto stream = ch_frb_io::intensity_network_stream::make(ini_params);
+    shared_ptr<ch_frb_io::intensity_network_stream> stream = ch_frb_io::intensity_network_stream::make(ini_params);
 
     // Spawn one processing thread per beam
     std::vector<std::thread> processing_threads;

@@ -302,7 +302,11 @@ void L1RpcServer::run() {
             chlog("error in poll: " << e.what());
             // This can happen when the main thread exits, L1RpcServer
             // destructor gets called, zmq context destroyed...
-            _do_shutdown();
+            //_do_shutdown();
+            ulock u(_q_mutex);
+            _shutdown = true;
+            u.unlock();
+            _q_cond.notify_all();
             break;
         }
 
