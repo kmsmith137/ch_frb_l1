@@ -17,10 +17,13 @@ public:
 
     void send_one_chunk();
 
-protected:
-    std::shared_ptr<ch_frb_io::intensity_network_ostream> stream;
+    void finish();
+
     int ichunk;
     int nchunks;
+
+protected:
+    std::shared_ptr<ch_frb_io::intensity_network_ostream> stream;
     std::vector<float> intensity;
     std::vector<float> weights;
 

@@ -30,7 +30,7 @@ endif
 #
 #
 
-BINARIES := ch-frb-l1 ch-frb-simulate-l0 rpc-client test-l1-rpc
+BINARIES := ch-frb-l1 ch-frb-simulate-l0 rpc-client test-l1-rpc sim-l0-set
 
 all: $(BINARIES)
 .PHONY: all
@@ -75,6 +75,9 @@ ch-frb-l1: ch-frb-l1.o $(L1_OBJS)
 ch-frb-l1-debug: ch-frb-l1.cpp $(L1_OBJS) $(IO_OBJS)
 	cd ../ch_frb_io && make DEBUG=yes
 	$(CPP) -o $@ $(CPP_CFLAGS) $^ $(CPP_LFLAGS) -lzmq -lhdf5 -llz4
+
+sim-l0-set: sim-l0-set.cpp l0-sim.cpp
+	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io
 
 ch-frb-simulate-l0: ch-frb-simulate-l0.cpp l0-sim.cpp
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io

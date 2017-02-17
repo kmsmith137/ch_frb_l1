@@ -28,7 +28,7 @@ L0Simulator::L0Simulator(ch_frb_io::intensity_network_ostream::initializer ini,
     // builtin random number generators.
     std::random_device rd;
     unsigned int seed = rd();
-    std::ranlux48_base rando(seed);
+    rando = std::ranlux48_base(seed);
     //cout << "range " << rando.min() << " to " << rando.max() << endl;
     // Range is 2**48.
 
@@ -46,12 +46,10 @@ L0Simulator::L0Simulator(ch_frb_io::intensity_network_ostream::initializer ini,
 }
 
 void L0Simulator::run() {
-
-    for (; ichunk < nchunks; ichunk++) {
+    for (; ichunk < nchunks;) {
         send_one_chunk();
     }
-    // All done!
-    stream->end_stream(true);  // "true" joins network thread
+    finish();
 }
 
 void L0Simulator::send_one_chunk() {
@@ -74,5 +72,11 @@ void L0Simulator::send_one_chunk() {
 
     int64_t fpga_count = int64_t(ichunk) * int64_t(stream->fpga_counts_per_chunk);
     stream->send_chunk(&intensity[0], &weights[0], stride, fpga_count);
+    ichunk++;
+}
+
+void L0Simulator::finish() {
+    // All done!
+    stream->end_stream(true);  // "true" joins network thread
 }
 
