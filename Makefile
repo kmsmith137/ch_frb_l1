@@ -76,8 +76,8 @@ ch-frb-l1-debug: ch-frb-l1.cpp $(L1_OBJS) $(IO_OBJS)
 	cd ../ch_frb_io && make DEBUG=yes
 	$(CPP) -o $@ $(CPP_CFLAGS) $^ $(CPP_LFLAGS) -lzmq -lhdf5 -llz4
 
-ch-frb-simulate-l0: ch-frb-simulate-l0.cpp
-	$(CPP) -o $@ $< $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io
+ch-frb-simulate-l0: ch-frb-simulate-l0.cpp l0-sim.cpp
+	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io
 
 ch-frb-test: ch-frb-test.cpp $(L1_OBJS)
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io -lzmq -lhdf5
