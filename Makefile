@@ -103,7 +103,7 @@ install:
 	echo 'Nothing to install here!'
 
 flask:
-	FLASK_APP=webapp.webapp FLASK_DEBUG=1 flask run
+	FLASK_APP=webapp.webapp FLASK_DEBUG=1 flask run --host 0.0.0.0
 .PHONY: flask
 
 
