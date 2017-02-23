@@ -83,7 +83,7 @@ int main(int argc, char **argv) {
     int rpc_portnum = 0;
 
     int c;
-    while ((c = getopt(argc, argv, "a:p:b:u:wh")) != -1) {
+    while ((c = getopt(argc, argv, "a:p:b:u:wrh")) != -1) {
         switch (c) {
         case 'a':
             rpc_port = string(optarg);
