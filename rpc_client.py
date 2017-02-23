@@ -2,6 +2,7 @@ from __future__ import print_function
 import zmq
 import msgpack
 import time
+import numpy as np
 
 '''
 Python client for the L1 RPC service.
@@ -13,6 +14,51 @@ results.
 
 This client can talk to multiple RPC servers at once.
 '''
+
+class AssembledChunk(object):
+      def __init__(self, msgpacked_chunk):
+          c = msgpacked_chunk
+          print('header', c[0])
+          version = c[1]
+          assert(version == 1)
+          print('version', version)
+          compressed = c[2]
+          print('compressed?', compressed)
+          compressed_size = c[3]
+          print('compressed size', compressed_size)
+          self.beam = c[4]
+          self.nupfreq = c[5]
+          self.nt_per_packet = c[6]
+          self.fpga_counts_per_sample = c[7]
+          self.nt_coarse = c[8]
+          self.nscales = c[9]
+          self.ndata   = c[10]
+          self.fpga0   = c[11]
+          self.fpgaN   = c[12]
+          self.binning = c[13]
+
+          scales  = c[14]
+          offsets = c[15]
+          data    = c[16]
+
+          if compressed:
+             import pybitshuffle
+             data = pybitshuffle.decompress(data, self.ndata)
+
+          # Convert to numpy arrays
+          self.scales  = np.fromstring(scales , dtype='<f4')
+          self.offsets = np.fromstring(offsets, dtype='<f4')
+          self.data = np.frombuffer(data, dtype=np.uint8)
+          # could now reshape 'adata' into an nfreq_coarse x nupfreq x nt_per_assmbled_chunk array...
+
+def read_msgpack_file(fn):
+    f = open(fn, 'rb')
+    m = msgpack.unpackb(f.read())
+    return AssembledChunk(m)
+
+# c = read_msgpack_file('chunk-beam0077-chunk00000094+01.msgpack')
+# print('Got', c)
+
 
 class WriteChunkReply(object):
     '''
