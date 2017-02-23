@@ -3,6 +3,12 @@
 # Directory where executables will be installed
 BINDIR=$(HOME)/bin
 
+# Directory where C++ libraries will be installed
+LIBDIR=$(HOME)/lib
+
+# Directory where C++ header files will be installed
+INCDIR=$(HOME)/include
+
 #
 # C++ command line
 # Don't forget -std=c++11 -pthread -fPIC

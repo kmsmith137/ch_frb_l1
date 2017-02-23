@@ -93,8 +93,8 @@ test-l1-rpc: test-l1-rpc.cpp $(L1_OBJS)
 
 # Python wrapper
 pybitshuffle.so: pybitshuffle.c
-	gcc -c $^ $$(pkg-config --cflags python) -I$(INCDIR)
-	gcc -o $@ -shared pybitshuffle.o $$(pkg-config --libs python) -L$(LIBDIR) -lch_frb_io
+	$(CC) -std=c99 -fPIC -c $^ $$(pkg-config --cflags python) -I$(INCDIR)
+	$(CC) -std=c99 -fPIC -o $@ -shared pybitshuffle.o $$(pkg-config --libs python) -L$(LIBDIR) -lch_frb_io
 
 clean:
 	rm -f *.o *~ $(BINARIES)
