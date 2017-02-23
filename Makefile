@@ -32,7 +32,7 @@ endif
 
 BINARIES := ch-frb-l1 ch-frb-simulate-l0 rpc-client test-l1-rpc
 
-all: $(BINARIES) bitshuffle.so
+all: $(BINARIES) pybitshuffle.so
 .PHONY: all
 
 INCFILES := l1-rpc.hpp rpc.hpp
@@ -89,7 +89,7 @@ test-l1-rpc: test-l1-rpc.cpp $(L1_OBJS)
 	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lzmq -lhdf5 -llz4 -lch_frb_io
 
 # Python wrapper
-bitshuffle.so: pybitshuffle.c
+pybitshuffle.so: pybitshuffle.c
 	gcc -c $^ $$(pkg-config --cflags python) -I$(INCDIR)
 	gcc -o $@ -shared pybitshuffle.o $$(pkg-config --libs python) -L$(LIBDIR) -lch_frb_io
 

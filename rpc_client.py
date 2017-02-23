@@ -41,22 +41,12 @@ class AssembledChunk(object):
           offsets = c[15]
           data    = c[16]
 
-          #
-          #assert(not compressed)
           if compressed:
-             import bitshuffle
-             print('compressed data:', len(data))
-             print('Ndata:', self.ndata)
-
-             f = open('cdata.bin', 'wb')
-             f.write(data)
-             f.close()
-
-             data = bitshuffle.decompress(data, self.ndata)
-             print('Decompressed data:', len(data))
+             import pybitshuffle
+             data = pybitshuffle.decompress(data, self.ndata)
 
           # Convert to numpy arrays
-          self.scales = np.fromstring(scales, dtype='<f4')
+          self.scales  = np.fromstring(scales , dtype='<f4')
           self.offsets = np.fromstring(offsets, dtype='<f4')
           self.data = np.frombuffer(data, dtype=np.uint8)
           # could now reshape 'adata' into an nfreq_coarse x nupfreq x nt_per_assmbled_chunk array...
