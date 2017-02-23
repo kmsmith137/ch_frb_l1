@@ -368,6 +368,8 @@ if __name__ == '__main__':
                         help='Start up chlog server?')
     parser.add_argument('--write', '-w', nargs=4, metavar='x',#['<comma-separated beams>', '<minfpga>', '<maxfpga>', '<filename-pattern>'],
                         help='Send write_chunks command: <comma-separated beams> <minfpga> <maxfpga> <filename-pattern>', action='append')
+    parser.add_argument('--list', action='store_true', default=False,
+                        help='Just send list_chunks command and exit.')
     parser.add_argument('ports', nargs='*',
                         help='Addresses or port numbers of RPC servers to contact')
     opt = parser.parse_args()
@@ -395,6 +397,16 @@ if __name__ == '__main__':
         addr = logger.address
         client.start_logging(addr)
 
+    doexit = False
+
+    if opt.list:
+        chunks = client.list_chunks()
+        print('Received chunk list:', len(chunks))
+        for chunklist in chunks:
+            for beam,f0,f1,where in chunklist:
+                print('  beam %4i, FPGA range %i to %i' % (beam, f0, f1))
+        doexit = True
+
     if len(opt.write):
         for beams, f0, f1, fnpat in opt.write:
             beams = beams.split(',')
@@ -402,6 +414,9 @@ if __name__ == '__main__':
             f0 = int(f0, 10)
             f1 = int(f1, 10)
             R = client.write_chunks(beams, f0, f1, fnpat)
+        doexit = True
+
+    if doexit:
         sys.exit(0)
     
     print('get_statistics()...')
