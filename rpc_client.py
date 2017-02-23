@@ -2,6 +2,7 @@ from __future__ import print_function
 import zmq
 import msgpack
 import time
+import numpy as np
 
 '''
 Python client for the L1 RPC service.
@@ -46,13 +47,18 @@ class AssembledChunk(object):
              import bitshuffle
              print('compressed data:', len(data))
              print('Ndata:', self.ndata)
+
+             f = open('cdata.bin', 'wb')
+             f.write(data)
+             f.close()
+
              data = bitshuffle.decompress(data, self.ndata)
-             print('data:', data)
+             print('Decompressed data:', len(data))
 
           # Convert to numpy arrays
           self.scales = np.fromstring(scales, dtype='<f4')
           self.offsets = np.fromstring(offsets, dtype='<f4')
-          self.data = np.fromstring(data, dtype=np.uint8)
+          self.data = np.frombuffer(data, dtype=np.uint8)
           # could now reshape 'adata' into an nfreq_coarse x nupfreq x nt_per_assmbled_chunk array...
 
 def read_msgpack_file(fn):
@@ -60,9 +66,8 @@ def read_msgpack_file(fn):
     m = msgpack.unpackb(f.read())
     return AssembledChunk(m)
 
-c = read_msgpack_file('chunk-beam0077-chunk00000094+01.msgpack')
-print('Got', c)
-sys.exit(0)
+# c = read_msgpack_file('chunk-beam0077-chunk00000094+01.msgpack')
+# print('Got', c)
 
 
 class WriteChunkReply(object):

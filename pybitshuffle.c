@@ -26,11 +26,22 @@ static PyObject* bitshuffle_decompress(PyObject* self, PyObject* args) {
         PyErr_SetString(PyExc_MemoryError, "Failed to allocate space for bitshuffle-uncompressed data");
         return NULL;
     }
-    
-    int64_t n = bshuf_decompress_lz4(cdata, data, cbytes, 1, 0);
-    printf("Decompressed %i\n", (int)n);
 
-    if (n != ndecomp) {
+    printf("Compressed data:\n");
+    int i,j,k=0;
+    const uint8_t* udata = cdata;
+    for (j=0; j<8; j++) {
+        for (i=0; i<8; i++) {
+            printf(" %3i", (int)udata[k]);
+            k++;
+        }
+        printf("\n");
+    }
+    
+    int64_t n = bshuf_decompress_lz4((const void*)cdata, (void*)data, (size_t)ndecomp, 1, 0);
+    printf("Decompressed: read %i\n", (int)n);
+
+    if (n != cbytes) {
         PyErr_SetString(PyExc_ValueError, "Bitshuffle-decompressed data was not the size expected!");
         free(data);
         return NULL;
