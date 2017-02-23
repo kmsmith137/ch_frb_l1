@@ -40,7 +40,7 @@ static PyMethodDef bitshuffleMethods[] = {
 };
 
 PyMODINIT_FUNC
-initbitshuffle(void) {
-    Py_InitModule("bitshuffle", bitshuffleMethods);
+initpybitshuffle(void) {
+    Py_InitModule("pybitshuffle", bitshuffleMethods);
 }
 
