@@ -58,6 +58,7 @@ static void usage()
         "      [-u <L1 udp-port>]\n" <<
         "      [-a <RPC address>] [-p <RPC port number>]\n" <<
         "      [-b <beam id> (may be repeated)]\n" <<
+        "      [-w]: wait after stream has ended\n" <<
         "      [-h for help]" <<
         "   -r uses reference kernels instead of avx2 kernels\n" <<
         "  Addresses are like:\n" <<
@@ -81,6 +82,7 @@ int main(int argc, char **argv) {
 
     string rpc_port = "";
     int rpc_portnum = 0;
+    bool wait = false;
 
     int c;
     while ((c = getopt(argc, argv, "a:p:b:u:wrh")) != -1) {
@@ -92,6 +94,10 @@ int main(int argc, char **argv) {
         case 'p':
             rpc_portnum = atoi(optarg);
             break;
+
+	case 'w':
+	  wait = true;
+	  break;
 
         case 'b':
             {
@@ -126,12 +132,15 @@ int main(int argc, char **argv) {
         ini_params.beam_ids = { 0, 1, 2, 3, 4, 5, 6, 7 };
     }
 
+    if (wait)
+      ini_params.accept_end_of_stream_packets = false;
+
     // Make input stream object
     shared_ptr<ch_frb_io::intensity_network_stream> stream = ch_frb_io::intensity_network_stream::make(ini_params);
 
     // Spawn one processing thread per beam
     std::vector<std::thread> processing_threads;
-    for (int ibeam = 0; ibeam < ini_params.beam_ids.size(); ibeam++)
+    for (size_t ibeam = 0; ibeam < ini_params.beam_ids.size(); ibeam++)
         // Note: the processing thread gets 'ibeam', not the beam id,
         // because that is what get_assembled_chunk() takes
         processing_threads.push_back(std::thread(std::bind(processing_thread_main, stream, ibeam)));
@@ -159,7 +168,7 @@ int main(int argc, char **argv) {
     chlog("Network stream ended");
 
     // Join processing threads
-    for (int ibeam = 0; ibeam < ini_params.beam_ids.size(); ibeam++) {
+    for (size_t ibeam = 0; ibeam < ini_params.beam_ids.size(); ibeam++) {
         chlog("Joining thread " << ibeam);
         processing_threads[ibeam].join();
     }

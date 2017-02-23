@@ -366,6 +366,8 @@ if __name__ == '__main__':
                         help='Send shutdown RPC message?')
     parser.add_argument('--log', action='store_true',
                         help='Start up chlog server?')
+    parser.add_argument('--write', '-w', nargs=4, metavar='x',#['<comma-separated beams>', '<minfpga>', '<maxfpga>', '<filename-pattern>'],
+                        help='Send write_chunks command: <comma-separated beams> <minfpga> <maxfpga> <filename-pattern>', action='append')
     parser.add_argument('ports', nargs='*',
                         help='Addresses or port numbers of RPC servers to contact')
     opt = parser.parse_args()
@@ -392,6 +394,15 @@ if __name__ == '__main__':
         logger = ChLogServer()
         addr = logger.address
         client.start_logging(addr)
+
+    if len(opt.write):
+        for beams, f0, f1, fnpat in opt.write:
+            beams = beams.split(',')
+            beams = [int(b,10) for b in beams]
+            f0 = int(f0, 10)
+            f1 = int(f1, 10)
+            R = client.write_chunks(beams, f0, f1, fnpat)
+        sys.exit(0)
     
     print('get_statistics()...')
     stats = client.get_statistics(timeout=3000)
