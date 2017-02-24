@@ -63,10 +63,10 @@ class AssembledChunk(object):
         #weights     = np.zeros((nf, self.nt), np.float32)
         #weights[(self.data > 0) * (self.data < 255)] = 1.
 
-        print('Data shape:', self.data.shape)
-        print('Scales shape:', self.scales.shape)
-        print('nupfreq:', self.nupfreq)
-        print('nt_per_packet:', self.nt_per_packet)
+        # print('Data shape:', self.data.shape)
+        # print('Scales shape:', self.scales.shape)
+        # print('nupfreq:', self.nupfreq)
+        # print('nt_per_packet:', self.nt_per_packet)
 
         intensities = (self.offsets.repeat(self.nupfreq, axis=0).repeat(self.nt_per_packet, axis=1) +
                        self.data * self.scales.repeat(self.nupfreq, axis=0).repeat(self.nt_per_packet, axis=1)).astype(np.float32)
@@ -438,7 +438,8 @@ if __name__ == '__main__':
     parser.add_argument('--log', action='store_true',
                         help='Start up chlog server?')
     parser.add_argument('--write', '-w', nargs=4, metavar='x',#['<comma-separated beams>', '<minfpga>', '<maxfpga>', '<filename-pattern>'],
-                        help='Send write_chunks command: <comma-separated beams> <minfpga> <maxfpga> <filename-pattern>', action='append')
+                        help='Send write_chunks command: <comma-separated beams> <minfpga> <maxfpga> <filename-pattern>', action='append',
+        default=[])
     parser.add_argument('--list', action='store_true', default=False,
                         help='Just send list_chunks command and exit.')
     parser.add_argument('ports', nargs='*',

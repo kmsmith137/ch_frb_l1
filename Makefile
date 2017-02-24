@@ -94,8 +94,8 @@ test-l1-rpc: test-l1-rpc.cpp $(L1_OBJS)
 hdf5-stream: hdf5-stream.cpp
 	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $< -lrf_pipelines -lch_frb_io $(LIBS)
 
-terminus-l1: terminus-l1.cpp
-	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $< -lrf_pipelines -lch_frb_io $(LIBS) -lsimpulse
+terminus-l1: terminus-l1.cpp $(L1_OBJS)
+	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lrf_pipelines -lch_frb_io $(LIBS) -lsimpulse -lzmq
 
 # Python wrapper
 pybitshuffle.so: pybitshuffle.c

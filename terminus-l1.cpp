@@ -10,6 +10,9 @@
 #include "reverter.hpp"
 #include "simpulse.hpp"
 
+#include <l1-rpc.hpp>
+#include <chlog.hpp>
+
 using namespace std;
 using namespace ch_frb_io;
 using namespace rf_pipelines;
@@ -17,55 +20,67 @@ using namespace simpulse;
 
 static void usage() {
     cout << "hdf5-stream [options] <HDF5 filenames ...>\n" <<
-        "    [-d DEST],  DEST like \"127.0.0.1:10252\"\n" <<
-        "    [-b BEAM],  BEAM an integer beam id\n" <<
-        "    [-t Gbps],  throttle packet-sending rate\n" << endl;
+        //"    [-d DEST],  DEST like \"127.0.0.1:10252\"\n" <<
+        //"    [-b BEAM],  BEAM an integer beam id\n" <<
+        "    [-t Gbps],  throttle packet-sending rate\n" <<
+        "    [-a <RPC address>]  like \"tcp://127.0.0.1:5555\"\n" <<
+        "    [-p <RPC port number>] (integer port number)\n" <<
+        endl;
 }
 
 /*
  rf_pipelines transforms:
 
  - make_chime_stream_from_filename_list (hdf5)
- - inject frb
- - noisy_packetizer --> sends to L1 (beam 1)
- - noisy_packetizer --> sends to L1 (beam 2)
- - noisy_packetizer --> sends to L1 (beam 3)
- - noisy_packetizer --> sends to L1 (beam 4)
 
-
-
-OR
-
- - make_chime_stream_from_filename_list (hdf5)
-
- - saver 1
+ - saver
  - inject frb (w/ S/N for beam 1)
  - (noise_adder?)
  - chime_packetizer --> sends to L1 (beam 1)
- - reverter 1
+ - reverter
 
- ... repeat for ...
- - noisy_packetizer --> sends to L1 (beam 2)
- - noisy_packetizer --> sends to L1 (beam 3)
- - noisy_packetizer --> sends to L1 (beam 4)
+ ... repeat for each beam...
+ - inject frb (w/ S/N for beam 2)
+ - (noise_adder?)
+ - chime_packetizer --> sends to L1 (beam 2)
+ - reverter
 
 
  */
 
+// this function is required to pull assembled_chunks from the end of
+// the L1 pipeline.  These would go on to RFI removal and Bonsai
+// dedispersion in real life L1...
+static void processing_thread_main(shared_ptr<ch_frb_io::intensity_network_stream> stream, int ithread);
+                                   
 int main(int argc, char **argv) {
 
     string dest = "127.0.0.1:10252";
     float gbps = 0.0;
 
+    string rpc_port = "";
+    int rpc_portnum = 0;
+    
     int c;
-    while ((c = getopt(argc, argv, "d:g:h")) != -1) {
+    while ((c = getopt(argc, argv, "g:a:p:h")) != -1) {
         switch (c) {
-	case 'd':
-	  dest = string(optarg);
-	  break;
+            /*
+             case 'd':
+             dest = string(optarg);
+             break;
+             */
 	case 'g':
 	  gbps = atof(optarg);
 	  break;
+
+        case 'a':
+            rpc_port = string(optarg);
+            break;
+
+        case 'p':
+            rpc_portnum = atoi(optarg);
+            break;
+
         case 'h':
         case '?':
         default:
@@ -163,6 +178,61 @@ int main(int argc, char **argv) {
     // don't need to restore the last one in the transform chain...
     //rev = make_shared<Reverter>(saver);
     //transforms.push_back(rev);
+
+    //
+    chime_log_open_socket();
+    chime_log_set_thread_name("main");
+    ch_frb_io::intensity_network_stream::initializer ini_params;
+    ini_params.beam_ids = { 1, 2, 3 };
+    ini_params.accept_end_of_stream_packets = false;
+    ini_params.mandate_fast_kernels = false;
+    ini_params.mandate_reference_kernels = true;
+
+    // Make input stream object
+    shared_ptr<ch_frb_io::intensity_network_stream> instream = ch_frb_io::intensity_network_stream::make(ini_params);
+
+    // Spawn one processing thread per beam
+    std::vector<std::thread> processing_threads;
+    for (size_t ibeam = 0; ibeam < ini_params.beam_ids.size(); ibeam++)
+        // Note: the processing thread gets 'ibeam', not the beam id,
+        // because that is what get_assembled_chunk() takes
+        processing_threads.push_back(std::thread(std::bind(processing_thread_main, instream, ibeam)));
+
+    if ((rpc_port.length() == 0) && (rpc_portnum == 0))
+        rpc_port = "tcp://127.0.0.1:5555";
+    else if (rpc_portnum)
+        rpc_port = "tcp://127.0.0.1:" + to_string(rpc_portnum);
     
+    chlog("Starting RPC server on " << rpc_port);
+    L1RpcServer rpc(instream, rpc_port);
+    rpc.start();
+    
+    // Start listening for packets.
+    instream->start_stream();
+
+
+    // Start the rf_pipelines stream from hdf5 files to network
     stream->run(transforms);
+
+    // This won't happen (we're ignoring end-of-stream packets)
+    instream->join_threads();
+
+    
 }
+
+
+
+static void processing_thread_main(shared_ptr<ch_frb_io::intensity_network_stream> stream,
+                                    int ithread) {
+    chime_log_set_thread_name("proc-" + std::to_string(ithread));
+    chlog("Processing thread main: thread " << ithread);
+    for (;;) {
+	// Get assembled data from netwrok
+	auto chunk = stream->get_assembled_chunk(ithread);
+	if (!chunk)
+	    break;  // End-of-stream reached
+        chlog("Finished beam " << chunk->beam_id << ", chunk " << chunk->ichunk);
+    }
+}
+
+
