@@ -95,7 +95,7 @@ hdf5-stream: hdf5-stream.cpp
 	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $< -lrf_pipelines -lch_frb_io $(LIBS)
 
 terminus-l1: terminus-l1.cpp
-	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $< -lrf_pipelines -lch_frb_io $(LIBS)
+	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $< -lrf_pipelines -lch_frb_io $(LIBS) -lsimpulse
 
 # Python wrapper
 pybitshuffle.so: pybitshuffle.c

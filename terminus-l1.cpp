@@ -8,10 +8,12 @@
 #include "rf_pipelines.hpp"
 #include "chime_packetizer.hpp"
 #include "reverter.hpp"
+#include "simpulse.hpp"
 
 using namespace std;
 using namespace ch_frb_io;
 using namespace rf_pipelines;
+using namespace simpulse;
 
 static void usage() {
     cout << "hdf5-stream [options] <HDF5 filenames ...>\n" <<
@@ -96,9 +98,31 @@ int main(int argc, char **argv) {
     
     shared_ptr<Saver> saver = make_saver(nt_per_chunk);
     shared_ptr<Reverter> rev = make_shared<Reverter>(saver);
+
+    // HACK
+    int nfreq = 16 * 1024;
+    double freq_lo_mhz = 400;
+    double freq_hi_mhz = 800;
+
+    double dm = 500;
+    double sm = 0.;
+    double intrinsic_width = 0.;
+    double fluence = 1e12;
+    double spectral_index = 0.0;
+    double undispersed_arrival_time = 714.3;
+
+    vector<shared_ptr<single_pulse> > pulses;
+    pulses.push_back(make_shared<single_pulse>
+                     (1024, nfreq, freq_lo_mhz, freq_hi_mhz,
+                      dm, sm, intrinsic_width, fluence, spectral_index,
+                      undispersed_arrival_time));
+    
+    shared_ptr<wi_transform> pulser = make_pulse_adder(nt_per_chunk, pulses);
     
     auto packetizer = make_chime_packetizer(dest, nfreq_coarse_per_packet, nt_per_chunk, nt_per_packet, wt_cutoff, gbps, beam);
 
+    transforms.push_back(pulser);
+    
     transforms.push_back(saver);
     transforms.push_back(packetizer);
     transforms.push_back(rev);
