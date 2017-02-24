@@ -485,6 +485,10 @@ if __name__ == '__main__':
             f0 = int(f0, 10)
             f1 = int(f1, 10)
             R = client.write_chunks(beams, f0, f1, fnpat)
+            print('Results:')
+            if R is not None:
+                for r in R:
+                    print('  ', r)
         doexit = True
 
     if doexit:

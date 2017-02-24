@@ -99,46 +99,66 @@ int main(int argc, char **argv) {
     shared_ptr<Saver> saver = make_saver(nt_per_chunk);
     shared_ptr<Reverter> rev = make_shared<Reverter>(saver);
 
-    // HACK
+    // HACK -- should get these from the stream...
     int nfreq = 16 * 1024;
     double freq_lo_mhz = 400;
     double freq_hi_mhz = 800;
 
     double dm = 500;
     double sm = 0.;
-    double intrinsic_width = 0.;
-    double fluence = 1e12;
-    double spectral_index = 0.0;
-    double undispersed_arrival_time = 714.3;
+    double intrinsic_width = 0.010;
+    double fluence = 1e5;
 
-    vector<shared_ptr<single_pulse> > pulses;
-    pulses.push_back(make_shared<single_pulse>
-                     (1024, nfreq, freq_lo_mhz, freq_hi_mhz,
-                      dm, sm, intrinsic_width, fluence, spectral_index,
-                      undispersed_arrival_time));
+    double fluence_frac1 = 1.0;
+    double fluence_frac2 = 0.1;
+    double fluence_frac3 = 0.01;
     
-    shared_ptr<wi_transform> pulser = make_pulse_adder(nt_per_chunk, pulses);
-    
+    double spectral_index = 0.0;
+    // the undispersed arrival time is ~ 3 seconds before the timestamp
+    double undispersed_arrival_time = 711.3;
+
+    vector<shared_ptr<single_pulse> > pulses1;
+    pulses1.push_back(make_shared<single_pulse>
+                      (1024, nfreq, freq_lo_mhz, freq_hi_mhz,
+                       dm, sm, intrinsic_width, fluence * fluence_frac1,
+                       spectral_index, undispersed_arrival_time));
+    shared_ptr<wi_transform> pulser1 = make_pulse_adder(nt_per_chunk, pulses1);
+
     auto packetizer = make_chime_packetizer(dest, nfreq_coarse_per_packet, nt_per_chunk, nt_per_packet, wt_cutoff, gbps, beam);
 
-    transforms.push_back(pulser);
-    
     transforms.push_back(saver);
+    transforms.push_back(pulser1);
     transforms.push_back(packetizer);
     transforms.push_back(rev);
 
     beam = 2;
     packetizer = make_chime_packetizer(dest, nfreq_coarse_per_packet, nt_per_chunk, nt_per_packet, wt_cutoff, gbps, beam);
 
+    vector<shared_ptr<single_pulse> > pulses2;
+    pulses2.push_back(make_shared<single_pulse>
+                      (1024, nfreq, freq_lo_mhz, freq_hi_mhz,
+                       dm, sm, intrinsic_width, fluence * fluence_frac2,
+                       spectral_index, undispersed_arrival_time));
+    shared_ptr<wi_transform> pulser2 = make_pulse_adder(nt_per_chunk, pulses2);
+    
     // Can't just re-use the transform, must create new one.
     rev = make_shared<Reverter>(saver);
 
+    transforms.push_back(pulser2);
     transforms.push_back(packetizer);
     transforms.push_back(rev);
 
     beam = 3;
     packetizer = make_chime_packetizer(dest, nfreq_coarse_per_packet, nt_per_chunk, nt_per_packet, wt_cutoff, gbps, beam);
+
+    vector<shared_ptr<single_pulse> > pulses3;
+    pulses3.push_back(make_shared<single_pulse>
+                      (1024, nfreq, freq_lo_mhz, freq_hi_mhz,
+                       dm, sm, intrinsic_width, fluence * fluence_frac3,
+                       spectral_index, undispersed_arrival_time));
+    shared_ptr<wi_transform> pulser3 = make_pulse_adder(nt_per_chunk, pulses3);
     
+    transforms.push_back(pulser3);
     transforms.push_back(packetizer);
     // don't need to restore the last one in the transform chain...
     //rev = make_shared<Reverter>(saver);
