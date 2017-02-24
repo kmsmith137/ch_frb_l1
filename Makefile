@@ -30,7 +30,7 @@ endif
 #
 #
 
-BINARIES := ch-frb-l1 ch-frb-simulate-l0 rpc-client test-l1-rpc sim-l0-set hdf5-stream
+BINARIES := ch-frb-l1 ch-frb-simulate-l0 rpc-client test-l1-rpc sim-l0-set hdf5-stream terminus-l1
 
 all: $(BINARIES) pybitshuffle.so
 .PHONY: all
@@ -92,6 +92,9 @@ test-l1-rpc: test-l1-rpc.cpp $(L1_OBJS)
 	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lzmq -lhdf5 -llz4 -lch_frb_io
 
 hdf5-stream: hdf5-stream.cpp
+	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $< -lrf_pipelines -lch_frb_io $(LIBS)
+
+terminus-l1: terminus-l1.cpp
 	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $< -lrf_pipelines -lch_frb_io $(LIBS)
 
 # Python wrapper
