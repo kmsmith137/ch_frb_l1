@@ -32,6 +32,8 @@ static void usage() {
 
 
 
+OR
+
  - make_chime_stream_from_filename_list (hdf5)
 
  - saver 1
@@ -48,41 +50,14 @@ static void usage() {
 
  */
 
-/*
-class noisy_packetizer : chime_packetizer {
-public:
-    noisy_packetizer(float noise, const std::string &dstname, int nfreq_per_packet, int nt_per_chunk, int nt_per_packet, float wt_cutoff, double target_gbps, int beam_id=0);
-    virtual void process_chunk(double t0, double t1, float *intensity, float *weights, ssize_t stride, float *pp_intensity, float *pp_weights, ssize_t pp_stride);
-    virtual std::string get_name() const { return "noisy_packetizer"; }
-protected:
-    float noise;
-};
-
-noisy_packetizer::noisy_packetizer(float thenoise, const std::string &dstname, int nfreq_per_packet, int nt_per_chunk, int nt_per_packet, float wt_cutoff, double target_gbps, int beam_id=0) :
-    chime_packetizer(dstname, nfreq_per_packet, nt_per_chunk, nt_per_packet, wt_cutoff, target_gbps, beam_id),
-    noise(thenoise)
-{
-}
-
-void noisy_packetizer::process_chunk(double t0, double t1, float *intensity, float *weights, ssize_t stride, float *pp_intensity, float *pp_weights, ssize_t pp_stride) {
-    chime_packetizer::process_chunk(t0, t1, intensity, weights, stride, pp_intensity, pp_weights, pp_stride);
-}
- */
-
-
-
 int main(int argc, char **argv) {
 
     string dest = "127.0.0.1:10252";
-    //int beam = 0;
     float gbps = 0.0;
 
     int c;
     while ((c = getopt(argc, argv, "d:g:h")) != -1) {
         switch (c) {
-        //case 'b':
-        //    beam = atoi(optarg);
-        //    break;
 	case 'd':
 	  dest = string(optarg);
 	  break;
@@ -119,38 +94,31 @@ int main(int argc, char **argv) {
     float wt_cutoff = 1.;
     int beam = 1;
     
-    //pair<shared_ptr<wi_transform>, shared_ptr<wi_transform> > rev = make_reverter(nt_per_chunk);
-
     shared_ptr<Saver> saver = make_saver(nt_per_chunk);
-    shared_ptr<Reverter> rev1 = make_shared<Reverter>(saver);
+    shared_ptr<Reverter> rev = make_shared<Reverter>(saver);
     
     auto packetizer = make_chime_packetizer(dest, nfreq_coarse_per_packet, nt_per_chunk, nt_per_packet, wt_cutoff, gbps, beam);
 
-    //transforms.push_back(rev.first);
     transforms.push_back(saver);
     transforms.push_back(packetizer);
-    transforms.push_back(rev1);
-
-    //rev = make_reverter(nt_per_chunk);
+    transforms.push_back(rev);
 
     beam = 2;
     packetizer = make_chime_packetizer(dest, nfreq_coarse_per_packet, nt_per_chunk, nt_per_packet, wt_cutoff, gbps, beam);
 
-    shared_ptr<Reverter> rev2 = make_shared<Reverter>(saver);
+    // Can't just re-use the transform, must create new one.
+    rev = make_shared<Reverter>(saver);
 
-    //transforms.push_back(rev.first);
     transforms.push_back(packetizer);
-    //transforms.push_back(rev.second);
-    transforms.push_back(rev2);
-
-    //rev = make_reverter(nt_per_chunk);
+    transforms.push_back(rev);
 
     beam = 3;
     packetizer = make_chime_packetizer(dest, nfreq_coarse_per_packet, nt_per_chunk, nt_per_packet, wt_cutoff, gbps, beam);
     
-    //transforms.push_back(rev.first);
     transforms.push_back(packetizer);
-    //transforms.push_back(rev.second);
+    // don't need to restore the last one in the transform chain...
+    //rev = make_shared<Reverter>(saver);
+    //transforms.push_back(rev);
     
     stream->run(transforms);
 }
