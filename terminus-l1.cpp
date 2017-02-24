@@ -7,6 +7,7 @@
 
 #include "rf_pipelines.hpp"
 #include "chime_packetizer.hpp"
+#include "reverter.hpp"
 
 using namespace std;
 using namespace ch_frb_io;
@@ -118,31 +119,38 @@ int main(int argc, char **argv) {
     float wt_cutoff = 1.;
     int beam = 1;
     
-    pair<shared_ptr<wi_transform>, shared_ptr<wi_transform> > rev = make_reverter(nt_per_chunk);
+    //pair<shared_ptr<wi_transform>, shared_ptr<wi_transform> > rev = make_reverter(nt_per_chunk);
 
+    shared_ptr<Saver> saver = make_saver(nt_per_chunk);
+    shared_ptr<Reverter> rev1 = make_shared<Reverter>(saver);
+    
     auto packetizer = make_chime_packetizer(dest, nfreq_coarse_per_packet, nt_per_chunk, nt_per_packet, wt_cutoff, gbps, beam);
 
-    transforms.push_back(rev.first);
+    //transforms.push_back(rev.first);
+    transforms.push_back(saver);
     transforms.push_back(packetizer);
-    transforms.push_back(rev.second);
+    transforms.push_back(rev1);
 
-    rev = make_reverter(nt_per_chunk);
+    //rev = make_reverter(nt_per_chunk);
 
     beam = 2;
     packetizer = make_chime_packetizer(dest, nfreq_coarse_per_packet, nt_per_chunk, nt_per_packet, wt_cutoff, gbps, beam);
 
-    transforms.push_back(rev.first);
-    transforms.push_back(packetizer);
-    transforms.push_back(rev.second);
+    shared_ptr<Reverter> rev2 = make_shared<Reverter>(saver);
 
-    rev = make_reverter(nt_per_chunk);
+    //transforms.push_back(rev.first);
+    transforms.push_back(packetizer);
+    //transforms.push_back(rev.second);
+    transforms.push_back(rev2);
+
+    //rev = make_reverter(nt_per_chunk);
 
     beam = 3;
     packetizer = make_chime_packetizer(dest, nfreq_coarse_per_packet, nt_per_chunk, nt_per_packet, wt_cutoff, gbps, beam);
     
-    transforms.push_back(rev.first);
+    //transforms.push_back(rev.first);
     transforms.push_back(packetizer);
-    transforms.push_back(rev.second);
+    //transforms.push_back(rev.second);
     
     stream->run(transforms);
 }
