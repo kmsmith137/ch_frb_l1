@@ -21,7 +21,7 @@ using namespace simpulse;
 static void usage() {
     cout << "hdf5-stream [options] <HDF5 filenames ...>\n" <<
         "    [-g Gbps],  throttle packet-sending rate\n" <<
-        "    [-a <RPC address>]  like \"tcp://127.0.0.1:5555\"\n" <<
+        "    [-a <RPC address>], default \"tcp://*:5555\"\n" <<
         "    [-P <RPC port number>] (integer port number)\n" <<
         "    [-t <time of first pulse, seconds>]\n" <<
         "    [-p <period of pulses, seconds>]\n" <<
@@ -159,7 +159,7 @@ int main(int argc, char **argv) {
     vector<shared_ptr<single_pulse> > pulses;
     for (int i=0; i<npulses; i++) {
         double undispersed_arrival_time = pulse_t0 - pt0 + i*pulse_period;
-
+	cout << "Creating simulated pulse " << i << endl;
         pulses.push_back(make_shared<single_pulse>
                          (1024, nfreq, freq_lo_mhz, freq_hi_mhz,
                           dm, sm, intrinsic_width, fluence,
@@ -171,7 +171,7 @@ int main(int argc, char **argv) {
 
     ch_frb_io::intensity_network_stream::initializer ini_params;
     
-    for (int j=0; j<fluence_fractions.size(); j++) {
+    for (size_t j=0; j<fluence_fractions.size(); j++) {
         int beam = 1 + j;
         // Add this beam to the packet receiver's list of beams
         ini_params.beam_ids.push_back(beam);
