@@ -176,12 +176,9 @@ int main(int argc, char **argv) {
         // Add this beam to the packet receiver's list of beams
         ini_params.beam_ids.push_back(beam);
 
-        // Set fluences of pulses.
-        for (auto it=pulses.begin(); it!=pulses.end(); it++)
-            (*it)->set_fluence(fluence * fluence_fractions[j]);
-
         // Create the transform that will add pulses to this beam
-        shared_ptr<wi_transform> pulser = make_pulse_adder(nt_per_chunk, pulses);
+        // (weighted by the fluence_fraction for this beam)
+        shared_ptr<wi_transform> pulser = make_pulse_adder(nt_per_chunk, pulses, fluence_fractions[j]);
         transforms.push_back(pulser);
 
         // Create the transform that will send packets for this beam
