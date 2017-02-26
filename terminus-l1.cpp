@@ -20,11 +20,14 @@ using namespace simpulse;
 
 static void usage() {
     cout << "hdf5-stream [options] <HDF5 filenames ...>\n" <<
-        //"    [-d DEST],  DEST like \"127.0.0.1:10252\"\n" <<
-        //"    [-b BEAM],  BEAM an integer beam id\n" <<
-        "    [-t Gbps],  throttle packet-sending rate\n" <<
+        "    [-g Gbps],  throttle packet-sending rate\n" <<
         "    [-a <RPC address>]  like \"tcp://127.0.0.1:5555\"\n" <<
-        "    [-p <RPC port number>] (integer port number)\n" <<
+        "    [-P <RPC port number>] (integer port number)\n" <<
+        "    [-t <time of first pulse, seconds>]\n" <<
+        "    [-p <period of pulses, seconds>]\n" <<
+        "    [-n <number of pulses>]\n" <<
+        "    [-f <fluence of pulses>], default 1e5\n" <<
+        "    [-d <Dispersion Measure>], deafult 500\n" <<
         endl;
 }
 
@@ -60,15 +63,19 @@ int main(int argc, char **argv) {
 
     string rpc_port = "";
     int rpc_portnum = 0;
+
+    double pulse_t0 = 0;
+    double pulse_period = 0;
+    int npulses = 0;
+
+    double fluence = 1e5;
+    double dm = 500;
+
+    vector<double> fluence_fractions = { 1.0, 0.3, 0.1 };
     
     int c;
-    while ((c = getopt(argc, argv, "g:a:p:h")) != -1) {
+    while ((c = getopt(argc, argv, "g:a:P:t:p:n:f:d:h")) != -1) {
         switch (c) {
-            /*
-             case 'd':
-             dest = string(optarg);
-             break;
-             */
 	case 'g':
 	  gbps = atof(optarg);
 	  break;
@@ -77,10 +84,26 @@ int main(int argc, char **argv) {
             rpc_port = string(optarg);
             break;
 
-        case 'p':
+        case 'P':
             rpc_portnum = atoi(optarg);
             break;
 
+        case 't':
+            pulse_t0 = atof(optarg);
+            break;
+        case 'p':
+            pulse_period = atof(optarg);
+            break;
+        case 'n':
+            npulses = atof(optarg);
+            break;
+        case 'f':
+            fluence = atof(optarg);
+            break;
+        case 'd':
+            dm = atof(optarg);
+            break;
+            
         case 'h':
         case '?':
         default:
@@ -109,81 +132,70 @@ int main(int argc, char **argv) {
     int nfreq_coarse_per_packet = 4;
     int nt_per_packet = 2;
     float wt_cutoff = 1.;
-    int beam = 1;
     
     shared_ptr<Saver> saver = make_saver(nt_per_chunk);
-    shared_ptr<Reverter> rev = make_shared<Reverter>(saver);
+    shared_ptr<Reverter> rev;
 
     // HACK -- should get these from the stream...
     int nfreq = 16 * 1024;
     double freq_lo_mhz = 400;
     double freq_hi_mhz = 800;
 
-    double dm = 500;
+    // Pulse properties
     double sm = 0.;
-    double intrinsic_width = 0.010;
-    double fluence = 1e5;
-
-    double fluence_frac1 = 1.0;
-    double fluence_frac2 = 0.1;
-    double fluence_frac3 = 0.01;
-    
+    double intrinsic_width = 0.01;
     double spectral_index = 0.0;
-    // the undispersed arrival time is ~ 3 seconds before the timestamp
-    double undispersed_arrival_time = 711.3;
 
-    vector<shared_ptr<single_pulse> > pulses1;
-    pulses1.push_back(make_shared<single_pulse>
-                      (1024, nfreq, freq_lo_mhz, freq_hi_mhz,
-                       dm, sm, intrinsic_width, fluence * fluence_frac1,
-                       spectral_index, undispersed_arrival_time));
-    shared_ptr<wi_transform> pulser1 = make_pulse_adder(nt_per_chunk, pulses1);
+    // Find out the difference between undispersed arrival time and first
+    // appearance in the CHIME band.  For DM=500, about 3 seconds.
+    shared_ptr<single_pulse> pp = make_shared<single_pulse>
+        (1024, nfreq, freq_lo_mhz, freq_hi_mhz,
+         dm, sm, intrinsic_width, fluence,
+         spectral_index, 0.);
+    double pt0, pt1;
+    pp->get_endpoints(pt0, pt1);
 
-    auto packetizer = make_chime_packetizer(dest, nfreq_coarse_per_packet, nt_per_chunk, nt_per_packet, wt_cutoff, gbps, beam);
+    // Create the list of pulses to be added
+    vector<shared_ptr<single_pulse> > pulses;
+    for (int i=0; i<npulses; i++) {
+        double undispersed_arrival_time = pulse_t0 - pt0 + i*pulse_period;
 
+        pulses.push_back(make_shared<single_pulse>
+                         (1024, nfreq, freq_lo_mhz, freq_hi_mhz,
+                          dm, sm, intrinsic_width, fluence,
+                          spectral_index, undispersed_arrival_time));
+    }
+
+    // Save the data stream before adding pulses.
     transforms.push_back(saver);
-    transforms.push_back(pulser1);
-    transforms.push_back(packetizer);
-    transforms.push_back(rev);
 
-    beam = 2;
-    packetizer = make_chime_packetizer(dest, nfreq_coarse_per_packet, nt_per_chunk, nt_per_packet, wt_cutoff, gbps, beam);
-
-    vector<shared_ptr<single_pulse> > pulses2;
-    pulses2.push_back(make_shared<single_pulse>
-                      (1024, nfreq, freq_lo_mhz, freq_hi_mhz,
-                       dm, sm, intrinsic_width, fluence * fluence_frac2,
-                       spectral_index, undispersed_arrival_time));
-    shared_ptr<wi_transform> pulser2 = make_pulse_adder(nt_per_chunk, pulses2);
+    ch_frb_io::intensity_network_stream::initializer ini_params;
     
-    // Can't just re-use the transform, must create new one.
-    rev = make_shared<Reverter>(saver);
+    for (int j=0; j<fluence_fractions.size(); j++) {
+        int beam = 1 + j;
+        // Add this beam to the packet receiver's list of beams
+        ini_params.beam_ids.push_back(beam);
 
-    transforms.push_back(pulser2);
-    transforms.push_back(packetizer);
-    transforms.push_back(rev);
+        // Set fluences of pulses.
+        for (auto it=pulses.begin(); it!=pulses.end(); it++)
+            (*it)->set_fluence(fluence * fluence_fractions[j]);
 
-    beam = 3;
-    packetizer = make_chime_packetizer(dest, nfreq_coarse_per_packet, nt_per_chunk, nt_per_packet, wt_cutoff, gbps, beam);
+        // Create the transform that will add pulses to this beam
+        shared_ptr<wi_transform> pulser = make_pulse_adder(nt_per_chunk, pulses);
+        transforms.push_back(pulser);
 
-    vector<shared_ptr<single_pulse> > pulses3;
-    pulses3.push_back(make_shared<single_pulse>
-                      (1024, nfreq, freq_lo_mhz, freq_hi_mhz,
-                       dm, sm, intrinsic_width, fluence * fluence_frac3,
-                       spectral_index, undispersed_arrival_time));
-    shared_ptr<wi_transform> pulser3 = make_pulse_adder(nt_per_chunk, pulses3);
+        // Create the transform that will send packets for this beam
+        auto packetizer = make_chime_packetizer(dest, nfreq_coarse_per_packet, nt_per_chunk, nt_per_packet, wt_cutoff, gbps, beam);
+        transforms.push_back(packetizer);
+
+        // Create the transform that will revert the stream (no more pulses)
+        rev = make_shared<Reverter>(saver);
+        transforms.push_back(rev);
+    }
     
-    transforms.push_back(pulser3);
-    transforms.push_back(packetizer);
-    // don't need to restore the last one in the transform chain...
-    //rev = make_shared<Reverter>(saver);
-    //transforms.push_back(rev);
-
-    //
+    // Initialize the packet receiver
     chime_log_open_socket();
     chime_log_set_thread_name("main");
-    ch_frb_io::intensity_network_stream::initializer ini_params;
-    ini_params.beam_ids = { 1, 2, 3 };
     ini_params.accept_end_of_stream_packets = false;
     ini_params.mandate_fast_kernels = false;
     ini_params.mandate_reference_kernels = true;
