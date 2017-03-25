@@ -64,6 +64,14 @@ If you run into problems or have suggestions, let me know!
   make install
   ```
 
+ - yaml-cpp (https://github.com/jbeder/yaml-cpp)
+
+  On osx, you can probably install with: `brew install yaml-cpp`.
+
+  On CentOS, you can probably install with `yum install yaml-cpp-devel`.
+
+   
+
 ### INSTALLING BITSHUFFLE (optional but recommended)
 
   Clone this repo: https://github.com/kiyo-masui/bitshuffle

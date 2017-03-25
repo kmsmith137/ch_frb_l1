@@ -22,6 +22,7 @@ The CHIMEFRB pipeline currently consists of the following external dependencies.
   - zeromq
   - cppzmq (C++ bindings for zeromq, header-only, https://github.com/zeromq)
   - jsoncpp
+  - yaml-cpp
 
 plus the following components:
 
