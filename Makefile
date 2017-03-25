@@ -35,7 +35,7 @@ BINARIES := ch-frb-l1 ch-frb-simulate-l0 rpc-client test-l1-rpc
 all: $(BINARIES)
 .PHONY: all
 
-INCFILES := l1-rpc.hpp rpc.hpp
+INCFILES := ch_frb_l1.hpp l1-rpc.hpp rpc.hpp
 
 L1_OBJS := l1-rpc.o
 
@@ -76,8 +76,8 @@ ch-frb-l1-debug: ch-frb-l1.cpp $(L1_OBJS) $(IO_OBJS)
 	cd ../ch_frb_io && make DEBUG=yes
 	$(CPP) -o $@ $(CPP_CFLAGS) $^ $(CPP_LFLAGS) -lzmq -lhdf5 -llz4
 
-ch-frb-simulate-l0: ch-frb-simulate-l0.cpp
-	$(CPP) -o $@ $< $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io
+ch-frb-simulate-l0: ch-frb-simulate-l0.o yaml_paramfile.o
+	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io -lyaml-cpp
 
 ch-frb-test: ch-frb-test.cpp $(L1_OBJS)
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io -lzmq -lhdf5
