@@ -131,7 +131,7 @@ int main(int argc, char **argv) {
 
     // Spawn one processing thread per beam
     std::vector<std::thread> processing_threads;
-    for (int ibeam = 0; ibeam < ini_params.beam_ids.size(); ibeam++)
+    for (unsigned int ibeam = 0; ibeam < ini_params.beam_ids.size(); ibeam++)
         // Note: the processing thread gets 'ibeam', not the beam id,
         // because that is what get_assembled_chunk() takes
         processing_threads.push_back(std::thread(std::bind(processing_thread_main, stream, ibeam)));
