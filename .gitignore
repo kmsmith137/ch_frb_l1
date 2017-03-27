@@ -2,6 +2,7 @@
 *.o
 Makefile.local
 ch-frb-l1
+new-ch-frb-l1
 ch-frb-simulate-l0
 rpc-client
 test-l1-rpc
