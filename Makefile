@@ -30,7 +30,7 @@ endif
 #
 #
 
-BINARIES := ch-frb-l1 ch-frb-simulate-l0 rpc-client test-l1-rpc
+BINARIES := ch-frb-l1 ch-frb-simulate-l0 rpc-client test-l1-rpc new-ch-frb-l1
 
 all: $(BINARIES)
 .PHONY: all

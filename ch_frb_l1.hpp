@@ -59,6 +59,18 @@ inline std::vector<int> vrange(int n)
     return vrange(0,n);
 }
 
+template<typename T>
+inline std::vector<T> vconcat(const std::vector<T> &v1, const std::vector<T> &v2)
+{
+    size_t n1 = v1.size();
+    size_t n2 = v2.size();
+
+    std::vector<T> ret(n1+n2);
+    memcpy(&ret[0], &v1[0], n1 * sizeof(T));
+    memcpy(&ret[n1], &v2[0], n2 * sizeof(T));
+    return ret;
+}
+
 
 // -------------------------------------------------------------------------------------------------
 //
