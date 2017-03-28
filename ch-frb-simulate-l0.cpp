@@ -196,6 +196,7 @@ shared_ptr<ch_frb_io::intensity_network_ostream> l0_params::make_ostream(int ith
     ini_params.nfreq_coarse_per_packet = nfreq_coarse_per_packet;
     ini_params.nt_per_packet = nt_per_packet;
     ini_params.fpga_counts_per_sample = fpga_counts_per_sample;
+    ini_params.send_end_of_stream_packets = (jthread == 0);   // only one distinguished thread will send end-of-stream packets
     ini_params.print_status_at_end = false;
 
     return ch_frb_io::intensity_network_ostream::make(ini_params);
@@ -263,7 +264,12 @@ void sim_thread_main(const shared_ptr<ch_frb_io::intensity_network_ostream> &ost
 	ostream->send_chunk(&intensity[0], &weights[0], stride, fpga_count);
     }
 
-    ostream->end_stream(true);  // "true" joins network thread
+    // We don't call ostream->end_stream() here.  This is because end_stream() has the side effect
+    // of sending end-of-stream packets in one distinguished thread (see above).  We want to make
+    // sure that all threads have finished transmitting before the end-of-stream packets are sent.
+    //
+    // Therefore, we postpone the call to ostream->end_stream() until all sim_threads have finished
+    // and joined (see main() below).
 }
 
 
@@ -303,6 +309,11 @@ int main(int argc, char **argv)
 
     for (int ithread = 0; ithread < p.nthreads_tot; ithread++)
 	threads[ithread].join();
+
+    // We postpone the calls to intensity_network_ostream::end_stream() until all sim_threads
+    // have finished (see explanation above).
+    for (int ithread = 0; ithread < p.nthreads_tot; ithread++)
+	streams[ithread]->end_stream(true);  // "true" joins network thread
 
     for (int ithread = 0; ithread < p.nthreads_tot; ithread++)
 	streams[ithread]->print_status();
