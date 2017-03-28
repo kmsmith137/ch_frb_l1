@@ -188,11 +188,14 @@ static void dedispersion_thread_main(const l1_params &l1_config, const bonsai::c
 	ch_frb_io::pin_thread_to_cores({c,c+20});
 	
 	auto stream = rf_pipelines::make_chime_network_stream(sp, ibeam);
-	auto dedisperser = make_dedisperser(cp, tp);
 	auto transform_chain = make_rfi_chain();
-	
+
+	auto dedisperser = make_dedisperser(cp, tp);
 	transform_chain.push_back(dedisperser);
-	stream->run(transform_chain);
+
+	// (transform_chain, outdir, json_output, verbosity)
+	stream->run(transform_chain, string(), nullptr, 0);
+
     } catch (exception &e) {
 	cerr << e.what() << "\n";
 	throw;
