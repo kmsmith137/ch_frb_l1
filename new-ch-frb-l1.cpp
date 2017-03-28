@@ -184,7 +184,7 @@ static void dedispersion_thread_main(const l1_params &l1_config, const bonsai::c
 	if (l1_config.nbeams != 16)
 	    throw runtime_error("ch-frb-l1: current core-pinning logic in dedispersion_thread_main() assumes 16 threads");
 	
-	int c = (l1_config.nbeams / 8) * 10 + (l1_config.nbeams % 8);
+	int c = (ibeam / 8) * 10 + (ibeam % 8);
 	ch_frb_io::pin_thread_to_cores({c,c+20});
 	
 	auto stream = rf_pipelines::make_chime_network_stream(sp, ibeam);
