@@ -234,9 +234,6 @@ int main(int argc, char **argv)
 	int nbeams_per_stream = xdiv(nbeams, nstreams);
 	int istream = ibeam / nbeams_per_stream;
 	threads[ibeam] = std::thread(dedispersion_thread_main, l1_config, bonsai_config, input_streams[istream], output_streams[ibeam], ibeam);
-
-	// FIXME temporary!
-	sleep(1);
     }
 
     for (int ibeam = 0; ibeam < nbeams; ibeam++)
