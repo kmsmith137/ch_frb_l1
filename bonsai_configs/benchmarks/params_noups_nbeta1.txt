@@ -1,6 +1,5 @@
 tree_size = [ 32768, 32768, 32768, 32768, 16384, 8192 ]
 nchan = 16384
-npf = 4
 nups = 1
 nds = [ 1, 2, 4, 8, 16, 32 ]
 nsm = 1
@@ -14,9 +13,7 @@ freq_lo_MHz = 400.0
 freq_hi_MHz = 800.0
 dt_sample = 0.001
 nt_ftree_pad = 16
-ftree_rank = 7
-nt_tree = 512
-nt_data = 256
+nt_tree = [ 1024, 1024, 1024, 1024, 512, 256 ]
+nt_data = 8192
 ndm_per_trigger = 64
 nt_per_trigger = 64
-
