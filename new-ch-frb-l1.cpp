@@ -49,7 +49,6 @@ l1_params::l1_params(const string &filename)
     yaml_paramfile p(filename);
      
     this->nbeams = p.read_scalar<int> ("nbeams");
-    this->nstreams = p.read_scalar<int> ("nstreams");
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
     
@@ -225,7 +224,7 @@ int main(int argc, char **argv)
 
     for (int ibeam = 0; ibeam < nbeams; ibeam++) {
 	int nbeams_per_stream = xdiv(nbeams, nstreams);
-	int istream = nbeams / nbeams_per_stream;
+	int istream = ibeam / nbeams_per_stream;
 	threads[ibeam] = std::thread(dedispersion_thread_main, l1_config, bonsai_config, input_streams[istream], output_streams[ibeam], ibeam);
     }
 
