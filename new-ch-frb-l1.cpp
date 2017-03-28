@@ -175,21 +175,28 @@ static void dedispersion_thread_main(const l1_params &l1_config, const bonsai::c
 				     const shared_ptr<bonsai::trigger_output_stream> &tp,
 				     int ibeam)
 {
-    if (std::thread::hardware_concurrency() != 40)
-	throw runtime_error("ch-frb-l1: this program is currently hardcoded to run on the 20-core chimefrb test nodes, and won't run on smaller machines");
+    // FIXME write a std::thread subclass which makes this try..catch logic automatic.
 
-    if (l1_config.nbeams != 16)
-	throw runtime_error("ch-frb-l1: current core-pinning logic in dedispersion_thread_main() assumes 16 threads");
-
-    int c = (l1_config.nbeams / 8) * 10 + (l1_config.nbeams % 8);
-    ch_frb_io::pin_thread_to_cores({c,c+20});
-
-    auto stream = rf_pipelines::make_chime_network_stream(sp, ibeam);
-    auto dedisperser = make_dedisperser(cp, tp);
-    auto transform_chain = make_rfi_chain();
-
-    transform_chain.push_back(dedisperser);
-    stream->run(transform_chain);
+    try {
+	if (std::thread::hardware_concurrency() != 40)
+	    throw runtime_error("ch-frb-l1: this program is currently hardcoded to run on the 20-core chimefrb test nodes, and won't run on smaller machines");
+	
+	if (l1_config.nbeams != 16)
+	    throw runtime_error("ch-frb-l1: current core-pinning logic in dedispersion_thread_main() assumes 16 threads");
+	
+	int c = (l1_config.nbeams / 8) * 10 + (l1_config.nbeams % 8);
+	ch_frb_io::pin_thread_to_cores({c,c+20});
+	
+	auto stream = rf_pipelines::make_chime_network_stream(sp, ibeam);
+	auto dedisperser = make_dedisperser(cp, tp);
+	auto transform_chain = make_rfi_chain();
+	
+	transform_chain.push_back(dedisperser);
+	stream->run(transform_chain);
+    } catch (exception &e) {
+	cerr << e.what() << "\n";
+	throw;
+    }
 }
 
 
@@ -223,9 +230,13 @@ int main(int argc, char **argv)
 	output_streams[ibeam] = l1_config.make_output_stream(ibeam);
 
     for (int ibeam = 0; ibeam < nbeams; ibeam++) {
+	cerr << "spawning thread " << ibeam << endl;
 	int nbeams_per_stream = xdiv(nbeams, nstreams);
 	int istream = ibeam / nbeams_per_stream;
 	threads[ibeam] = std::thread(dedispersion_thread_main, l1_config, bonsai_config, input_streams[istream], output_streams[ibeam], ibeam);
+
+	// FIXME temporary!
+	sleep(1);
     }
 
     for (int ibeam = 0; ibeam < nbeams; ibeam++)
