@@ -78,15 +78,4 @@ Here are some links to get you started on the "Documentation Easter Egg Hunt":
        should be a pretty readable overview of the rf_pipelines C++ api.
 
   - bonsai
-     - The bonsai package is not as well documented as the others, I hope to improve this soon!
-     - Some PDF slides: [bonsai/kms_16_01_13.pdf] (https://github.com/CHIMEFRB/bonsai/blob/master/kms_16_01_13.pdf),
-       [bonsai/kms_16_05_03.pdf] (https://github.com/CHIMEFRB/bonsai/blob/master/kms_16_05_03.pdf).
-     - At a practical level, the most important thing to understand for purposes of running the bonsai code
-       is the format and meaning of its config file.  Right now the best documentation is to look at the commented example in
-       [bonsai/examples/example_bonsai_config_file.txt] (https://github.com/CHIMEFRB/bonsai/blob/master/examples/example_bonsai_config_file.txt)
-     - Most of the example scripts in
-       [rf_pipelines/examples] (https://github.com/kmsmith137/rf_pipelines/tree/master/examples)
-       include a bonsai dedisperser in the pipeline, so these may be useful to look at.
-       They also show how to run the bonsai code through its rf_pipelines interface, which is the most convenient way to run it.
-
-
+     - The bonsai package now has lots of documentation, just start with bonsai/README.md.

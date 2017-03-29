@@ -1,6 +1,6 @@
-### Two-node to do list.
+### TO DO
 
-  - Plan 
+  - Testbed testing
 
      - Test dedispersion over network at full rate
 
@@ -14,80 +14,38 @@
 
      - Test IPMI on the compute node.
 
-  - L0 simulator
+     - Do some testing of NFS throughput, but this will have to wait until we have real file servers.
 
-     - Tie FPGA counts to system time.  [ Kendrick ]
-     
-     - Work on ch-frb-simulate-l0 executable, and script to start 8 processes
-       with appropriate bindings to network interfaces.  [ Dustin ]
+  - ch-frb-l1 
 
-  - ch-frb-l1 executable
+     - Decide how many RPC worker threads we need and what they should do.
 
-     - Add RFI removal and dedispersion. [ Kendrick ]
+     - Alex Josephy's L1B code is not yet integrated.
 
-     - Work on ch-frb-l1 executable, and script to start 2 processes
-       with appropriate bindings to network interfaces and cores.  [ Dustin ]
+     - Distributed logging needs to be integrated in a lot of places.
 
-     - Either implement two network threads talking to one assembler thread,
-       or modify the network thread to read from two sockets.
-       (Alterative: link bonding?)  [ Kendrick ]
+     - We need more visualization and administration tools (our plans here are not defined very well).
 
-     - Decide how many RPC worker threads we need and what they should do.  [ Dustin ]
-
-  - Optional
+  - ch_frb_io
 
      - Monitoring: extend "status" RPC to include fields which are important for
        monitoring performance, such as thread load fractions, and total allocated
        assembled chunks.  Need some bare-bones tool to send a status RPC every
-       second and display result.  [ Dustin ]
+       second and display result.
 
      - Agree with the collaboration on what the "heavyweight" RPC's are.
        Depending on the outcome of this discussion, we can make a plan and prioritize.
 
-- In progress
+  - rf_pipelines
 
-  - Improving the bonsai code, so that in particular the output is in "sigmas".
+     - Needs some fairly large internal changes, to allow subchains at downsampled resolution
+       and more general types of transforms.  This is the biggest loose end in L1!
 
-  - rf_pipelines internal changes, to allow efficient transform chains at downsampled resolution.
+     - RFI removal code is converging, but will continue to evolve.
 
-  - Write code to 16K-upchannelize data.
+  - bonsai
 
-  - Make a plan for collecting more data of various types.
+     - Serialization for coarse-grained trigger arrays (via msgpack?), so that we can pass them to 
+       L1B processes over a local socket.
 
-  - Propose RFI excision code.
-    
-  - Touch base with L2 group on division of web-based code.
-
-  - Vaguely defined: develop rf_weblines a little bit more, as needed
-    for tuning our RFI excision.
-
-### Eight-node priority
-
-  - Figure out whether eight nodes can write to a single NFS server efficiently.
-    If not, then we have some work to do!
-
-  - Figure out exactly how we're integrating our status RPC with Prometheus.
-
-  - Figure out how we're doing logging.
-
-  - Telescoping ring buffer.
-
-  - Bonsai RPC's:
-
-      - C++ server-side RPC's for retrieving ring-buffered coarse-grained triggers.
-
-      - C++ client-side RPC's for sending a stream of coarse-grained triggers to the L1B process.
-
-      - Python server-side RPC's for receiving coarse-grained triggers at L1B.
-  
-  - Polished version of rf_weblines that can be used over the internet.
-
-  - Forming the slow pulsar timestream and streaming it to NFS.
-
-### 128-node priority
-
-  - Slow pulsar search related RPC's and master search code.
-
-  - Use SSD as destination for writes if NFS server is not available.
-
-  - What to do about bright RFI removal?
+     - Coarse-grained trigger array ring buffer, retrievable by RPC.
