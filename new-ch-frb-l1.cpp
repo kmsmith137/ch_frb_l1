@@ -105,6 +105,7 @@ shared_ptr<ch_frb_io::intensity_network_stream> l1_params::make_input_stream(int
     ini_params.ipaddr = ipaddr[istream];
     ini_params.udp_port = port[istream];
     ini_params.beam_ids = vrange(4*istream, 4*(istream+1));
+    ini_params.mandate_fast_kernels = true;
     
     // Setting this flag means that an exception will be thrown if either:
     //
@@ -122,9 +123,17 @@ shared_ptr<ch_frb_io::intensity_network_stream> l1_params::make_input_stream(int
     
     ini_params.throw_exception_on_buffer_drop = true;
 
+    // This disables the "telescoping" part of the telescoping ring buffers.
+    // Currently, the telescoping logic is too slow for real-time use.  (The
+    // symptom is that the assembler threads run slow, triggering condition (1)
+    // from the previous comment.)  We should be able to fix this by writing
+    // fancy assembly language kernels for the telescoping logic!
+
+    ini_params.assembled_ringbuf_nlevels = 1;
+
     // Note that processing threads 0-7 are pinned to cores 0-7 (on CPU1)
     // and cores 10-17 (on CPU2).  I decided to pin assembler threads to
-    // either core 8 or 18.  This leaves cores 9 and 19 free for RPC threads.
+    // cores 8 and 18.  This leaves cores 9 and 19 free for RPC threads.
 
     if (istream < (nstreams/2))
 	ini_params.assembler_thread_cores = {8,28};
