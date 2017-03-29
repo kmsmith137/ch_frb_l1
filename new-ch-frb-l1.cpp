@@ -249,6 +249,7 @@ int main(int argc, char **argv)
 	auto statistics = input_streams[istream]->get_statistics();
 
 	for (unsigned int irec = 0; irec < statistics.size(); irec++) {
+	    cout << "    record " << irec  << endl;
 	    const auto &s = statistics[irec];
 
 	    vector<string> keys;
@@ -259,7 +260,7 @@ int main(int argc, char **argv)
 	
 	    for (const auto &k: keys) {
 		auto kv = s.find(k);
-		cout << "    " << k << " " << kv->second << endl;
+		cout << "         " << k << " " << kv->second << endl;
 	    }
 	}
     }
