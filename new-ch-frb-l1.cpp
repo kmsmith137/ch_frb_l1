@@ -1,9 +1,21 @@
 // Major features missing:
 //
 //   - RFI removal is a placeholder
-//   - Coarse-grained trigger output stream is a placeholder
+//   - Alex Josephy's grouping/sifting code is not integrated
 //   - RPC threads currently are not spawned
-//   - Logging threads currently are not spawned.
+//   - Distributed logging is not integrated
+//
+// Currently hardcoded to assume the NUMA setup of the CHIMEFRB L1 nodes:
+//   - Dual CPU
+//   - 10 cores/cpu
+//   - Hyperthreading enabled
+//   - all NIC's on the same PCI-E bus as the first CPU.
+//
+// Note that the Linux scheduler defines 40 "cores":
+//   cores 0-9:    primary hyperthread on CPU1 
+//   cores 10-19:  primary hyperthread on CPU2
+//   cores 20-29:  secondary hyperthread on CPU1
+//   cores 30-39:  secondary hyperthread on CPU2
 
 #include <thread>
 
@@ -77,18 +89,6 @@ l1_params::l1_params(const string &filename)
 
 
 // l1_params::make_input_stream(): returns a stream object which will read packets from the correlator.
-//
-// Currently hardcoded to assume the following NUMA setup:
-//   - dual cpu
-//   - 10 cores/cpu
-//   - all NIC's on the same PCI-E bus as the first CPU.
-
-
-// Assuming hyperthreading is enabled, these core_lists can be used to pin threasd
-// either to the first or second CPU.
-static vector<int> cpu1_cores() { return vconcat(vrange(0,10), vrange(20,30)); }
-static vector<int> cpu2_cores() { return vconcat(vrange(10,20), vrange(30,40)); }
-
 
 shared_ptr<ch_frb_io::intensity_network_stream> l1_params::make_input_stream(int istream)
 {
@@ -105,13 +105,41 @@ shared_ptr<ch_frb_io::intensity_network_stream> l1_params::make_input_stream(int
     ini_params.ipaddr = ipaddr[istream];
     ini_params.udp_port = port[istream];
     ini_params.beam_ids = vrange(4*istream, 4*(istream+1));
+    
+    // Setting this flag means that an exception will be thrown if either:
+    //
+    //    1. the unassembled-packet ring buffer between the network and
+    //       assembler threads is full (i.e. assembler thread is running slow)
+    //
+    //    2. the assembled_chunk ring buffer between the network and
+    //       processing threads is full (i.e. processing thread is running slow)
+    //
+    // If we wanted, we could define separate flags for these two conditions.
+    //
+    // Note that in situation (2), the pipeline will crash anyway since
+    // rf_pipelines doesn't contain code to handle gaps in the data.  This
+    // is something that we'll fix soon, but it's nontrivial.
+    
+    ini_params.throw_exception_on_buffer_drop = true;
 
-    // Note: network thread is always pinned to the first CPU,
-    // but the assembler thread is pinned to whichever CPU will
-    // run the dedispersion threads.
+    // Note that processing threads 0-7 are pinned to cores 0-7 (on CPU1)
+    // and cores 10-17 (on CPU2).  I decided to pin assembler threads to
+    // either core 8 or 18.  This leaves cores 9 and 19 free for RPC threads.
 
-    ini_params.network_thread_cores = cpu1_cores();
-    ini_params.assembler_thread_cores = (istream < (nstreams/2)) ? cpu1_cores() : cpu2_cores();
+    if (istream < (nstreams/2))
+	ini_params.assembler_thread_cores = {8,28};
+    else
+	ini_params.assembler_thread_cores = {18,38};
+
+    // I decided to pin all network threads to CPU1, since according to
+    // the motherboard manual, all NIC's live on the same PCI-E bus as CPU1.
+    //
+    // I think it makes sense to avoid pinning network threads to specific
+    // cores on the CPU, since they use minimal cycles, but scheduling latency
+    // is important for minimizing packet drops.  I haven't really tested this
+    // assumption though!
+
+    ini_params.network_thread_cores = vconcat(vrange(0,10), vrange(20,30));
 
     return ch_frb_io::intensity_network_stream::make(ini_params);
 }
