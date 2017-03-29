@@ -196,8 +196,10 @@ shared_ptr<ch_frb_io::intensity_network_ostream> l0_params::make_ostream(int ith
     ini_params.nfreq_coarse_per_packet = nfreq_coarse_per_packet;
     ini_params.nt_per_packet = nt_per_packet;
     ini_params.fpga_counts_per_sample = fpga_counts_per_sample;
-    ini_params.send_end_of_stream_packets = (jthread == 0);   // only one distinguished thread will send end-of-stream packets
     ini_params.print_status_at_end = false;
+
+    // only one distinguished thread will send end-of-stream packets
+    ini_params.send_end_of_stream_packets = (jthread == nthreads_per_stream-1);
 
     return ch_frb_io::intensity_network_ostream::make(ini_params);
 }
