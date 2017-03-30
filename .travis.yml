@@ -63,6 +63,13 @@ before_script:
     - make
     - make install
 
+    - cd
+    - git clone https://github.com/kmsmith137/rf_pipelines.git
+    - cd rf_pipelines
+    - ln -s site/Makefile.local.travis Makefile.local
+    - make
+    - make install
+
 script:
     - pwd
     - cd $BUILD_DIR
@@ -85,6 +92,7 @@ addons:
       - liblz4-dev
       - libyaml-cpp-dev
       - libboost-dev
+      - python-numpy    # for rpc_client.py
 
 # Version in trusty is too old (2.1 vs current = 4.2.0)
 #      - libzmq-dev
