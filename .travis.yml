@@ -84,6 +84,7 @@ addons:
       - libhdf5-serial-dev
       - liblz4-dev
       - libyaml-cpp-dev
+      - libboost-dev
 
 # Version in trusty is too old (2.1 vs current = 4.2.0)
 #      - libzmq-dev
