@@ -72,8 +72,11 @@ before_script:
     - mv include/* chime/include/
 
     - cd
-    - git clone https://github.com/kmsmith137/rf_pipelines.git
+    ###- git clone https://github.com/kmsmith137/rf_pipelines.git
+    - git clone https://github.com/dstndstn/rf_pipelines.git
     - cd rf_pipelines
+    ### TEMP
+    - git checkout hdf5conv-2
     - ln -s site/Makefile.local.travis Makefile.local
     - make
     - make install
