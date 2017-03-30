@@ -54,10 +54,8 @@ before_script:
     - cd
     - git clone https://github.com/CHIMEFRB/ch_frb_io.git
     - cd ch_frb_io
-
     ### TEMP
     - git checkout webapp
-
     - ln -s site/Makefile.local.travis Makefile.local
     - pwd
     - make
@@ -76,6 +74,8 @@ before_script:
     - python -c "import sys; print('\n'.join(sys.path))"
     - export PYTHONPATH=${PYTHONPATH}:/usr/lib/python2.7/dist-packages
     - python -c "import numpy; print(numpy.get_include())"
+    - pip install --user Cython
+    - cython --version
 
     - cd
     #- git clone https://github.com/kmsmith137/simpulse.git
@@ -122,7 +122,8 @@ addons:
       - libjsoncpp-dev  # for rf_pipelines
       - python-numpy    # for rpc_client.py and simpulse
       - libfftw3-dev    # for simpulse
-      - cython          # for simpulse
+#      - cython          # for simpulse  -- need a version newer than 0.20.1 ?
+
 
 # Version in trusty is too old (2.1 vs current = 4.2.0)
 #      - libzmq-dev
