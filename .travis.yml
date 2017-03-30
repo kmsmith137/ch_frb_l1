@@ -71,6 +71,19 @@ before_script:
     - cd
     - mv include/* chime/include/
 
+    - python -c "import distutils.sysconfig; print(distutils.sysconfig.get_python_inc())"
+    - python -c "import numpy; print(numpy.get_include())"
+
+    - cd
+    #- git clone https://github.com/kmsmith137/simpulse.git
+    - git clone https://github.com/dstndstn/simpulse.git
+    - cd simpulse
+    ### TEMP
+    - git checkout travis
+    - ln -s site/Makefile.local.travis Makefile.local
+    - make
+    - make install
+
     - cd
     ###- git clone https://github.com/kmsmith137/rf_pipelines.git
     - git clone https://github.com/dstndstn/rf_pipelines.git
