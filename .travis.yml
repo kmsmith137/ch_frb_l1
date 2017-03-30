@@ -64,6 +64,14 @@ before_script:
     - make install
 
     - cd
+    - git clone https://github.com/kmsmith137/simd_helpers.git
+    - cd simd_helpers
+    - ln -s site/Makefile.norootprivs Makefile.local
+    - make install
+    - cd
+    - mv include/* chime/include/
+
+    - cd
     - git clone https://github.com/kmsmith137/rf_pipelines.git
     - cd rf_pipelines
     - ln -s site/Makefile.local.travis Makefile.local
