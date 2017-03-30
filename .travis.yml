@@ -73,6 +73,8 @@ before_script:
 
     - python -c "import distutils.sysconfig; print(distutils.sysconfig.get_python_inc())"
     - dpkg -L python-numpy
+    - python -c "import sys; print('\n'.join(sys.path))"
+    - export PYTHONPATH=${PYTHONPATH}:/usr/lib/python2.7/dist-packages
     - python -c "import numpy; print(numpy.get_include())"
 
     - cd
