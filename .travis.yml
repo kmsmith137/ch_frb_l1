@@ -52,6 +52,13 @@ before_script:
     - cp zmq.hpp $ZMQ_INC_DIR
 
     - cd
+    - wget https://support.hdfgroup.org/ftp/HDF5/current18/src/hdf5-1.8.18.tar.gz
+    - tar xzf hdf5-1.8.18.tar.gz
+    - cd hdf5-1.8.18
+    - ./configure --prefix=$HOME/chime --enable-cxx
+    - make all install
+
+    - cd
     - git clone https://github.com/CHIMEFRB/ch_frb_io.git
     - cd ch_frb_io
     ### TEMP
@@ -136,7 +143,7 @@ after_success:
 addons:
   apt:
     packages:
-      - libhdf5-serial-dev
+#      - libhdf5-serial-dev
       - liblz4-dev
       - libyaml-cpp-dev
       - libboost-dev
