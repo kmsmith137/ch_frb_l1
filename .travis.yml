@@ -98,6 +98,13 @@ before_script:
     - make install
 
     - cd
+    - git clone https://github.com/kmsmith137/sp_hdf5.git
+    - cd sp_hdf5
+    - make install
+    - cd
+    - mv include/* chime/include/
+
+    - cd
     ###- git clone https://github.com/CHIMEFRB/bonsai.git
     ###- git clone https://github.com/dstndstn/bonsai.git
     ###- cd bonsai
