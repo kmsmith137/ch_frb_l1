@@ -97,6 +97,16 @@ before_script:
     - make
     - make install
 
+    - cd
+    ###- git clone https://github.com/CHIMEFRB/bonsai.git
+    - git clone https://github.com/dstndstn/bonsai.git
+    - cd bonsai
+    ### TEMP
+    - git checkout travis
+    - ln -s site/Makefile.local.travis Makefile.local
+    - make
+    - make install
+
 script:
     - pwd
     - cd $BUILD_DIR
