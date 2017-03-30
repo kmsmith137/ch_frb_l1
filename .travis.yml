@@ -72,7 +72,7 @@ before_script:
     - mv include/* chime/include/
 
     - python -c "import distutils.sysconfig; print(distutils.sysconfig.get_python_inc())"
-    - dpkg -L python-numpy
+    #- dpkg -L python-numpy
     - python -c "import sys; print('\n'.join(sys.path))"
     - export PYTHONPATH=${PYTHONPATH}:/usr/lib/python2.7/dist-packages
     - python -c "import numpy; print(numpy.get_include())"
@@ -120,8 +120,9 @@ addons:
       - libyaml-cpp-dev
       - libboost-dev
       - libjsoncpp-dev  # for rf_pipelines
-      - python-numpy    # for rpc_client.py
-      - libfftw3-dev     # for simpulse
+      - python-numpy    # for rpc_client.py and simpulse
+      - libfftw3-dev    # for simpulse
+      - cython          # for simpulse
 
 # Version in trusty is too old (2.1 vs current = 4.2.0)
 #      - libzmq-dev
