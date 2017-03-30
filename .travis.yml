@@ -72,6 +72,7 @@ before_script:
     - mv include/* chime/include/
 
     - python -c "import distutils.sysconfig; print(distutils.sysconfig.get_python_inc())"
+    - dpkg -L python-numpy
     - python -c "import numpy; print(numpy.get_include())"
 
     - cd
