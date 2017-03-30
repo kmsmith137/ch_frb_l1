@@ -99,10 +99,13 @@ before_script:
 
     - cd
     ###- git clone https://github.com/CHIMEFRB/bonsai.git
-    - git clone https://github.com/dstndstn/bonsai.git
-    - cd bonsai
+    ###- git clone https://github.com/dstndstn/bonsai.git
+    ###- cd bonsai
     ### TEMP
-    - git checkout travis
+    ###- git checkout travis
+    - mkdir bonsai
+    - wget http://broiler.astrometry.net/~dstn/temp/bonsai.tar.gz
+    - tar xzf bonsai.tar.gz
     - ln -s site/Makefile.local.travis Makefile.local
     - make
     - make install
