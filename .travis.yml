@@ -121,6 +121,7 @@ addons:
       - libboost-dev
       - libjsoncpp-dev  # for rf_pipelines
       - python-numpy    # for rpc_client.py
+      - libfftw-dev     # for simpulse
 
 # Version in trusty is too old (2.1 vs current = 4.2.0)
 #      - libzmq-dev
