@@ -18,6 +18,8 @@ before_script:
     - cat /proc/cpuinfo
 
     - pip install --user cpp-coveralls
+    - pip install --user Cython
+
     - BUILD_DIR=$(pwd)
     - export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:~/chime/lib
 
@@ -53,18 +55,18 @@ before_script:
     - wget https://raw.githubusercontent.com/zeromq/cppzmq/master/zmq.hpp
     - cp zmq.hpp $ZMQ_INC_DIR
 
+    # Cached hdf5 source code install
     - cd
-    - wget https://support.hdfgroup.org/ftp/HDF5/current18/src/hdf5-1.8.18.tar.gz
-    - tar xzf hdf5-1.8.18.tar.gz
-    - cd hdf5-1.8.18
-    - ./configure --prefix=$HOME/chime --enable-cxx
-    - make all install > log 2>&1
+    - if [ -d "hdf5" ]; then (cd hdf5 && make all install) || rm -R hdf5; fi
+    - if [ ! -d "hdf5" ]; then (wget https://support.hdfgroup.org/ftp/HDF5/current18/src/hdf5-1.8.18.tar.gz && tar xzf hdf5-1.8.18.tar.gz && mv hdf5-1.8.18 hdf5 && cd hdf5 && ./configure --prefix=$HOME/chime --enable-cxx && make all install); fi
+    #- tar xzf hdf5-1.8.18.tar.gz
+    #- cd hdf5-1.8.18
+    #- ./configure --prefix=$HOME/chime --enable-cxx
+    #- make all install > log 2>&1
 
     - cd
     - git clone https://github.com/CHIMEFRB/ch_frb_io.git
     - cd ch_frb_io
-    ### TEMP
-    - git checkout webapp
     - ln -s site/Makefile.local.travis Makefile.local
     - pwd
     - make
@@ -80,13 +82,12 @@ before_script:
     - cd
     - mv include/* chime/include/
 
-    - python -c "import distutils.sysconfig; print(distutils.sysconfig.get_python_inc())"
-    #- dpkg -L python-numpy
-    - python -c "import sys; print('\n'.join(sys.path))"
+    # - python -c "import distutils.sysconfig; print(distutils.sysconfig.get_python_inc())"
+    # #- dpkg -L python-numpy
+    # - python -c "import sys; print('\n'.join(sys.path))"
     - export PYTHONPATH=${PYTHONPATH}:/usr/lib/python2.7/dist-packages
-    - python -c "import numpy; print(numpy.get_include())"
-    - pip install --user Cython
-    - cython --version
+    # - python -c "import numpy; print(numpy.get_include())"
+    # - cython --version
 
     - cd
     #- git clone https://github.com/kmsmith137/simpulse.git
@@ -113,8 +114,6 @@ before_script:
     ### TEMP
     ###- git checkout travis
     - mkdir bonsai
-    ###- wget http://broiler.astrometry.net/~dstn/temp/bonsai.tar.gz
-    ###- tar xzf bonsai.tar.gz
     - wget http://broiler.astrometry.net/~dstn/temp/bonsai-v10.tar.gz
     - tar xzf bonsai-v10.tar.gz
     - ln -s site/Makefile.local.travis Makefile.local
@@ -156,7 +155,7 @@ after_success:
 addons:
   apt:
     packages:
-#      - libhdf5-serial-dev   # need newer version
+#      - libhdf5-serial-dev   # need newer version for sp_hdf5
       - liblz4-dev
       - libyaml-cpp-dev
       - libboost-dev
@@ -168,9 +167,9 @@ addons:
 
 # Version in trusty is too old (2.1 vs current = 4.2.0)
 #      - libzmq-dev
-
 # see ch_frb_io re: libmsgpack-dev
 
 cache:
   directories:
   - $HOME/libzmq
+  - $HOME/hdf5
