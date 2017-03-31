@@ -103,7 +103,8 @@ before_script:
     - git clone https://github.com/dstndstn/rf_pipelines.git
     - cd rf_pipelines
     ### TEMP
-    - git checkout hdf5conv-2
+    #- git checkout hdf5conv-2
+    - git checkout hf5conv-2+v15
     - ln -s site/Makefile.local.travis Makefile.local
     - make
     - make install
