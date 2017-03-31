@@ -1,5 +1,13 @@
 # Travis-CI.org build script
 
+
+# To merge:
+#   https://github.com/kmsmith137/simpulse/pull/2
+#   https://github.com/kmsmith137/simd_helpers/pull/1
+#   https://github.com/CHIMEFRB/bonsai/pull/2
+#   https://github.com/kmsmith137/rf_pipelines/pull/16
+
+
 # "trusty" is Ubuntu 14.04.5 LTS
 # gcc 4.8.4
 

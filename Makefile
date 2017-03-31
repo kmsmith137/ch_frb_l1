@@ -63,6 +63,9 @@ IO_OBJS := \
 CPP_CFLAGS ?=
 CPP_CFLAGS += -I$(CPPZMQ_INC_DIR) -I$(MSGPACK_INC_DIR)
 
+dependencies.png: dependencies.dot
+	dot -Tpng $< -o $@
+
 %.o: %.cpp $(INCFILES)
 	$(CPP) -c -o $@ $< $(CPP_CFLAGS)
 
