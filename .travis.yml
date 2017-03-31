@@ -75,7 +75,7 @@ before_script:
     - cd simd_helpers
     ## Goes with bonsai v10
     - git checkout v4_devel
-- ln -s site/Makefile.local.norootprivs Makefile.local
+    - ln -s site/Makefile.local.norootprivs Makefile.local
     - make install
     - cd
     - mv include/* chime/include/
