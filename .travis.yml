@@ -73,7 +73,9 @@ before_script:
     - cd
     - git clone https://github.com/kmsmith137/simd_helpers.git
     - cd simd_helpers
-    - ln -s site/Makefile.local.norootprivs Makefile.local
+    ## Goes with bonsai v10
+    - git checkout v4_devel
+- ln -s site/Makefile.local.norootprivs Makefile.local
     - make install
     - cd
     - mv include/* chime/include/
@@ -121,7 +123,8 @@ before_script:
     ### TEMP
     ###- git checkout travis
     - mkdir bonsai
-    - wget http://broiler.astrometry.net/~dstn/temp/bonsai.tar.gz
+    ###- wget http://broiler.astrometry.net/~dstn/temp/bonsai.tar.gz
+    - wget http://broiler.astrometry.net/~dstn/temp/bonsai-v10.tar.gz
     - tar xzf bonsai.tar.gz
     - ln -s site/Makefile.local.travis Makefile.local
     - make
