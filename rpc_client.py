@@ -2,6 +2,7 @@ from __future__ import print_function
 import zmq
 import msgpack
 import time
+import numpy as np
 
 '''
 Python client for the L1 RPC service.
@@ -13,6 +14,76 @@ results.
 
 This client can talk to multiple RPC servers at once.
 '''
+
+class AssembledChunk(object):
+    def __init__(self, msgpacked_chunk):
+        c = msgpacked_chunk
+        # print('header', c[0])
+        version = c[1]
+        assert(version == 1)
+        # print('version', version)
+        compressed = c[2]
+        # print('compressed?', compressed)
+        compressed_size = c[3]
+        # print('compressed size', compressed_size)
+        self.beam = c[4]
+        self.nupfreq = c[5]
+        self.nt_per_packet = c[6]
+        self.fpga_counts_per_sample = c[7]
+        self.nt_coarse = c[8]
+        self.nscales = c[9]
+        self.ndata   = c[10]
+        self.fpga0   = c[11]
+        self.fpgaN   = c[12]
+        self.binning = c[13]
+
+        self.nt = self.nt_coarse * self.nt_per_packet
+
+        scales  = c[14]
+        offsets = c[15]
+        data    = c[16]
+
+        if compressed:
+           import pybitshuffle
+           data = pybitshuffle.decompress(data, self.ndata)
+
+        # Convert to numpy arrays
+        self.scales  = np.fromstring(scales , dtype='<f4')
+        self.offsets = np.fromstring(offsets, dtype='<f4')
+        self.scales  = self.scales .reshape((-1, self.nt_coarse))
+        self.offsets = self.offsets.reshape((-1, self.nt_coarse))
+        self.data = np.frombuffer(data, dtype=np.uint8)
+        self.data = self.data.reshape((-1, self.nt))
+
+    def decode(self):
+        # Returns (intensities,weights) as floating-point
+        nf = self.data.shape[1]
+
+        #intensities = np.zeros((nf, self.nt), np.float32)
+        #weights     = np.zeros((nf, self.nt), np.float32)
+        #weights[(self.data > 0) * (self.data < 255)] = 1.
+
+        # print('Data shape:', self.data.shape)
+        # print('Scales shape:', self.scales.shape)
+        # print('nupfreq:', self.nupfreq)
+        # print('nt_per_packet:', self.nt_per_packet)
+
+        intensities = (self.offsets.repeat(self.nupfreq, axis=0).repeat(self.nt_per_packet, axis=1) +
+                       self.data * self.scales.repeat(self.nupfreq, axis=0).repeat(self.nt_per_packet, axis=1)).astype(np.float32)
+
+        weights = ((self.data > 0) * (self.data < 255)) * np.float32(1.0)
+
+        return intensities,weights
+        
+
+def read_msgpack_file(fn):
+    f = open(fn, 'rb')
+    m = msgpack.unpackb(f.read())
+    return AssembledChunk(m)
+
+# c = read_msgpack_file('chunk-beam0077-chunk00000094+01.msgpack')
+# print('Got', c)
+
 
 class WriteChunkReply(object):
     '''
@@ -92,7 +163,7 @@ class RpcClient(object):
     def list_chunks(self, servers=None, wait=True, timeout=-1):
         '''
         Retrieves lists of chunks held by each server.
-        Return value is one list per server, containing a list of [beam, fpga0, fpga1] entries.
+        Return value is one list per server, containing a list of [beam, fpga0, fpga1, bitmask] entries.
         '''
         if servers is None:
             servers = self.servers.keys()
@@ -366,6 +437,11 @@ if __name__ == '__main__':
                         help='Send shutdown RPC message?')
     parser.add_argument('--log', action='store_true',
                         help='Start up chlog server?')
+    parser.add_argument('--write', '-w', nargs=4, metavar='x',#['<comma-separated beams>', '<minfpga>', '<maxfpga>', '<filename-pattern>'],
+                        help='Send write_chunks command: <comma-separated beams> <minfpga> <maxfpga> <filename-pattern>', action='append',
+        default=[])
+    parser.add_argument('--list', action='store_true', default=False,
+                        help='Just send list_chunks command and exit.')
     parser.add_argument('ports', nargs='*',
                         help='Addresses or port numbers of RPC servers to contact')
     opt = parser.parse_args()
@@ -392,6 +468,32 @@ if __name__ == '__main__':
         logger = ChLogServer()
         addr = logger.address
         client.start_logging(addr)
+
+    doexit = False
+
+    if opt.list:
+        chunks = client.list_chunks()
+        print('Received chunk list:', len(chunks))
+        for chunklist in chunks:
+            for beam,f0,f1,where in chunklist:
+                print('  beam %4i, FPGA range %i to %i' % (beam, f0, f1))
+        doexit = True
+
+    if len(opt.write):
+        for beams, f0, f1, fnpat in opt.write:
+            beams = beams.split(',')
+            beams = [int(b,10) for b in beams]
+            f0 = int(f0, 10)
+            f1 = int(f1, 10)
+            R = client.write_chunks(beams, f0, f1, fnpat)
+            print('Results:')
+            if R is not None:
+                for r in R:
+                    print('  ', r)
+        doexit = True
+
+    if doexit:
+        sys.exit(0)
     
     print('get_statistics()...')
     stats = client.get_statistics(timeout=3000)

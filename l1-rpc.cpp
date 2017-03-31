@@ -5,6 +5,7 @@
 #include <msgpack.hpp>
 
 #include "ch_frb_io.hpp"
+#include "l1-ringbuf.hpp"
 
 #include "l1-rpc.hpp"
 #include "rpc.hpp"
@@ -142,6 +143,9 @@ public:
             // Drop this chunk so its memory can be reclaimed
             w->chunk.reset();
 
+            // Testing :)
+            //sleep(3);
+
             // Format the reply sent to the client(s).
             msgpack::sbuffer buffer;
             msgpack::pack(buffer, rep);
@@ -236,6 +240,17 @@ write_chunk_request* L1RpcServer::pop_write_request() {
     return wreq;
 }
 
+void L1RpcServer::enqueue_write_request(std::shared_ptr<ch_frb_io::assembled_chunk> chunk,
+                                        std::string filename,
+                                        int priority) {
+    write_chunk_request* w = new write_chunk_request();
+    w->filename = filename;
+    w->priority = priority;
+    w->chunk = chunk;
+    _add_write_request(w);
+}
+
+
 // Main thread for L1 RPC server.
 void L1RpcServer::run() {
     chime_log_set_thread_name("L1-RPC-server");
@@ -287,7 +302,11 @@ void L1RpcServer::run() {
             chlog("error in poll: " << e.what());
             // This can happen when the main thread exits, L1RpcServer
             // destructor gets called, zmq context destroyed...
-            _do_shutdown();
+            //_do_shutdown();
+            ulock u(_q_mutex);
+            _shutdown = true;
+            u.unlock();
+            _q_cond.notify_all();
             break;
         }
 
@@ -468,23 +487,38 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
        // No input arguments, so don't unpack anything more.
 
         // Grab snapshot of all ringbufs...
-        vector<tuple<uint64_t, uint64_t, uint64_t> > allchunks;
+        vector<tuple<uint64_t, uint64_t, uint64_t, uint64_t> > allchunks;
 
         intensity_network_stream::initializer ini = _stream->get_initializer();
         for (auto beamit = ini.beam_ids.begin(); beamit != ini.beam_ids.end(); beamit++) {
-            // yuck, convert vector<int> to vector<uint64_t>...
+            // Retrieve one beam at a time
             int beam = *beamit;
             vector<uint64_t> beams;
             beams.push_back(beam);
-            vector<vector<shared_ptr<assembled_chunk> > > chunks = _stream->get_ringbuf_snapshots(beams);
+            vector<vector<pair<shared_ptr<assembled_chunk>, uint64_t> > > chunks = _stream->get_ringbuf_snapshots(beams);
             // iterate over beams (we only requested one)
             for (auto it1 = chunks.begin(); it1 != chunks.end(); it1++) {
                 // iterate over chunks
                 for (auto it2 = (*it1).begin(); it2 != (*it1).end(); it2++) {
-                    allchunks.push_back(tuple<uint64_t, uint64_t, uint64_t>((*it2)->beam_id, (*it2)->fpgacounts_begin(), (*it2)->fpgacounts_end()));
+                    allchunks.push_back(make_tuple((uint64_t)it2->first->beam_id,
+                                                   it2->first->fpgacounts_begin(),
+                                                   it2->first->fpgacounts_end(),
+                                                   it2->second));
                 }
             }
         }
+        // Add any messages queued for writing by the RPC worker threads.
+        {
+            ulock u(_q_mutex);
+            for (auto it=_write_reqs.begin(); it!=_write_reqs.end(); it++) {
+                shared_ptr<assembled_chunk> ch = (*it)->chunk;
+                allchunks.push_back(make_tuple((uint64_t)ch->beam_id,
+                                               ch->fpgacounts_begin(),
+                                               ch->fpgacounts_end(),
+                                               L1RB_WRITEQUEUE));
+            }
+        }
+
         msgpack::sbuffer buffer;
         msgpack::pack(buffer, allchunks);
         zmq::message_t* reply = sbuffer_to_message(buffer);
@@ -658,11 +692,13 @@ void L1RpcServer::_add_write_request(write_chunk_request* req) {
 void L1RpcServer::_get_chunks(vector<uint64_t> &beams,
                             uint64_t min_fpga, uint64_t max_fpga,
                             vector<shared_ptr<assembled_chunk> > &chunks) {
-    vector<vector<shared_ptr<assembled_chunk> > > ch;
+    vector<vector<pair<shared_ptr<assembled_chunk>, uint64_t> > > ch;
     ch = _stream->get_ringbuf_snapshots(beams, min_fpga, max_fpga);
     // collapse vector-of-vectors to vector.
     for (auto beamit = ch.begin(); beamit != ch.end(); beamit++) {
-        chunks.insert(chunks.end(), beamit->begin(), beamit->end());
+        for (auto it2 = beamit->begin(); it2 != beamit->end(); it2++) {
+            chunks.push_back(it2->first);
+        }
     }
 }
 

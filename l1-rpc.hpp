@@ -38,6 +38,11 @@ public:
     // called by RPC worker threads.
     write_chunk_request* pop_write_request();
 
+    // For testing: enqueue the given chunk for writing.
+    void enqueue_write_request(std::shared_ptr<ch_frb_io::assembled_chunk>,
+                               std::string filename,
+                               int priority = 0);
+
 protected:
     // responds to the given RPC request, either sending immediate
     // reply or queuing work for worker threads.

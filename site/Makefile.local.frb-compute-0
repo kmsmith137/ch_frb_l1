@@ -1,22 +1,14 @@
-# Makefile.local for frb1.physics.mcgill.ca
-
-JSONCPP_INCDIR=/usr/include/jsoncpp
+# Makefile.local for frb.compute-X
 
 # Directory where executables will be installed
 BINDIR=$(HOME)/bin
-
-# Directory where C++ libraries will be installed
-LIBDIR=$(HOME)/lib
-
-# Directory where C++ header files will be installed
-INCDIR=$(HOME)/include
 
 #
 # C++ command line
 # Don't forget -std=c++11 -pthread -fPIC
 # Don't forget -march=native, since __AVX2__ is tested
 #
-CPP=g++ -std=c++11 -pthread -fPIC -Wall -O3 -march=native -ffast-math -funroll-loops -I. -I$(INCDIR) -I$(JSONCPP_INCDIR)
+CPP=g++ -std=c++11 -pthread -fPIC -Wall -O3 -march=native -ffast-math -funroll-loops -I. -I/usr/include/jsoncpp -I$(HOME)/include
 
 # Any C++ flags which should only be specified when linking 
 # Don't forget to put -L. and -L$(LIBDIR) on the command line (in this order)

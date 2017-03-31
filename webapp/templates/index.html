@@ -1,0 +1,301 @@
+<!doctype html>
+<html>
+<head>
+<title>CHIME FRB L1 node status</title>
+
+<script type="text/javascript" src="{{ url_for('static', filename='jquery.js') }}"></script>
+<script type="text/javascript" src="{{ url_for('static', filename='d3.min.js') }}"></script>
+
+</head>
+
+<body id="thebody">
+
+<style>
+
+.chart rect {
+    fill: steelblue;
+    //stroke: gray;
+    // alpha:25%";
+}
+
+.chart text {
+    fill: black;
+    font: 10px sans-serif;
+    text-anchor: begin;
+}
+
+</style>
+<script type="text/javascript">
+
+// Decode the "where" bitmask from the list_chunks RPC --
+// HACK -- it's a bitmask, but we treat it here as
+// a discrete value.
+var colormap = { 1:   "forestgreen",
+                 2:   "steelblue",
+                 4:   "steelblue",
+                 8:   "steelblue",
+                 16:  "steelblue",
+                 32:  "gray",
+                 64:  "gray",
+                 128: "gray",
+                 256: "cornflowerblue" };
+
+var heightmap = {
+    // RPC queued write request
+    256: 0,
+    // Downstream
+    1: 1,
+    // Level 1
+    2:  2,
+    32: 2,
+    // Level 2
+    4:  3,
+    64: 3,
+    // Level 3
+    8:   4,
+    128: 4,
+    // Level 4
+    16: 5,
+};
+
+var margin = {top: 20, right: 30, bottom: 30, left: 40};
+var width  = 800 - margin.left - margin.right;
+var height = 150 - margin.top - margin.bottom;
+
+// We keep all the per-chart data in this dictionary.
+var chartdata = {};
+
+// Initialize the chart as soon as the page is ready
+// The chart hierarchy is:
+// #node_chunks_i
+// -- g              = chart
+// ---- g            = chartbody     body
+// ------ [g for each bar]
+// --------[ rect for each bar ]
+// --------[ text for each bar ]
+// ---- g            = xaxisbox
+// ------ [xaxis]
+
+var init_plot = function() {
+
+    for (var i=0; i<1; i++) {
+        var chart = d3.select('#node_chunks_' + i)
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+        var chartbody = chart.append("g")
+            .attr("class", "chart body");
+
+        var xscale = d3.scaleLinear()
+            .domain([0, 10])
+            .range([0, width]);
+        var xaxis = d3.axisBottom(xscale);
+
+        var xaxisbox = chart.append("g")
+            .attr("class", "xaxis")
+            .attr("transform", "translate(0," + height + ")")
+            .call(xaxis);
+
+        chartdata[i] = { 'xscale': xscale, 'xaxis': xaxis,
+                         'body': chartbody, 'xaxisbox': xaxisbox };
+    }
+}
+
+var add_commas = function(s) {
+  outs = '';
+  while (s.length > 3) {
+    outs = ',' + s.substring(s.length - 3, s.length) + outs;
+    s = s.substring(0, s.length - 3);
+  }
+  outs = s + outs;
+  return outs;
+}
+
+// Called to update the chart when a JSON response is received
+var loaded = function(result) {
+    //console.log('JSON loaded: ' + result);
+    for (var i=0, len=result.length; i<len; i++) {
+        node = result[i];
+        //console.log('node ' + node);
+
+        stats = node['stats'];
+        //console.log('stats:' + stats);
+        // stats is a list: [0] is per-L1 node
+        // [1] is per-node packet counts from L0 hosts
+        // [2...] are per-beam stats
+        nodestats = stats[0];
+        console.log('nodestats: ' + nodestats);
+
+        for (var key in nodestats) {
+            console.log('  ' + key + ' = ' + nodestats[key]);
+        }
+        //node['status']
+        var working = nodestats['network_thread_working_usec'];
+        var waiting = nodestats['network_thread_waiting_usec'];
+        var npct = (1.0 * working) / (working + waiting + 1);
+        working = nodestats['assembler_thread_working_usec'];
+        waiting = nodestats['assembler_thread_waiting_usec'];
+        var apct = (1.0 * working) / (working + waiting + 1);
+
+        nbytes = nodestats['count_bytes_received'];
+        npackets = nodestats['count_packets_received'];
+        npgood = nodestats['count_packets_good'];
+        npbad = nodestats['count_packets_bad'];
+        npdrop = nodestats['count_packets_dropped'];
+        nbytesq = nodestats['count_bytes_queued'];
+        udpringsize = nodestats['udp_ringbuf_size'];
+        udpringmax  = nodestats['udp_ringbuf_maxsize'];
+
+        st = 'Network thread: ' + npct.toFixed(2) + ' core.';
+        st += '<br>Assembler thread: ' + apct.toFixed(2) + ' core.';
+        st += '<br>Received: ' + (nbytes * 1e-9).toFixed(3) + ' GB';
+        st += ', ' + add_commas(npackets.toString()) + ' packets, ';
+        st += ((100.0 * npgood) / npackets).toFixed(1) + '% good, ';
+        st += ((100.0 * npbad ) / npackets).toFixed(1) + '% bad, ';
+        st += ((100.0 * npdrop ) / npackets).toFixed(1) + '% dropped.';
+        st += '  Socket queued: ' + add_commas(nbytesq.toString()) + ' bytes.';
+        st += '<br>UDP buffer btw network & assembler threads: ' + udpringsize
+            + ' of ' + udpringmax + ' packets';
+        $('#node_status_' + i).html(st);
+
+        ch = node['chunks'];
+        if (ch == null)
+            continue;
+
+        // Show chunk numbers, not fpga counts.
+        var Nchunk = 1024 * 400;
+
+        // How much space to leave between bars, in *pixels*
+        //var barspacer = 1;
+        var barspacer = 2;
+
+        var chunk_lo = [];
+        var chunk_hi = [];
+        var chunks = [];
+        for (var j=0; j<ch.length; j++) {
+            var lo = ch[j][1] / Nchunk;
+            var hi = ch[j][2] / Nchunk;
+            var wh = ch[j][3];
+            //console.log('Chunk ' + lo + '+' + (hi-lo) + ' from ' + wh);
+            chunk_lo.push(lo);
+            chunk_hi.push(hi);
+            chunks.push([lo, hi, wh]);
+        }
+        var lolo = d3.min(chunk_lo);
+        var hihi = d3.max(chunk_hi);
+        //console.log('overall range: ' + lolo + ' to ' + hihi);
+
+        thischart = chartdata[i];
+
+        // Set x scale, update axis
+        thischart.xscale.domain([lolo, hihi]);
+        thischart.xaxisbox
+            .call(thischart.xaxis);
+
+        // Set y scale
+        var y = d3.scaleLinear()
+            .domain([0, 6])
+            .range([0, height]);
+        var barHeight = y(1) - y(0);
+
+        var body = thischart.body;
+        // General update pattern
+        var bar = body.selectAll("g")
+            .data(chunks);
+        bar.exit().remove();
+        var newbar = bar.enter().append("g");
+        newbar.append("rect").style("fill", "green");
+        //newbar.append("text");
+        var bar = newbar.merge(bar);
+
+        // Set the positions of the bars
+        bar.attr("transform", function(d) {
+            return "translate(" + thischart.xscale(d[0]) + "," +
+                y(heightmap[d[2]]) + ")"; });
+
+        // Set the sizes of the bars
+        var rect = bar.select("rect")
+            .attr("width", function(d) {
+                return thischart.xscale(d[1]) - thischart.xscale(d[0])
+                    - barspacer; })
+            .attr("height", barHeight - 1)
+            .style("fill", function(d) { return colormap[d[2]]; });
+
+        // Label the bars with their chunk numbers
+        //bar.select("text")
+        //    .attr("x", 0)
+        //    .attr("y", barHeight / 2)
+        //    .attr("dy", ".35em")
+        //    .text(function(d) { return d[0]; });
+
+        setTimeout(load_status, 3000);
+    }
+  };
+
+  $(document).ready(function() {
+      init_plot();
+
+      load_status();
+      //setTimeout(fake_loaded, 1000);
+  });
+
+  var load_status = function() {
+    $.getJSON('{{ node_status_url }}', loaded);
+  };
+
+  // For testing: load some fake data
+  var fake_loaded = function() {
+      var Nchunk = 1024 * 400;
+
+      result = [{'chunks': [
+          [ 77,  0*Nchunk,  8*Nchunk, 16],
+          [ 77,  8*Nchunk, 16*Nchunk, 16],
+          [ 77, 16*Nchunk, 24*Nchunk, 16],
+      ]}];
+      loaded(result);
+
+      setTimeout(fake_loaded_2, 1000);
+  };
+
+  var fake_loaded_2 = function() {
+      var Nchunk = 1024 * 400;
+
+      result = [{'chunks': [
+          [ 77,  0*Nchunk,  8*Nchunk, 16],
+          [ 77,  8*Nchunk, 16*Nchunk, 16],
+          [ 77, 16*Nchunk, 24*Nchunk, 16],
+          [ 77, 24*Nchunk, 32*Nchunk, 16],
+      ]}];
+      loaded(result);
+
+      setTimeout(fake_loaded_3, 1000);
+  };
+
+  var fake_loaded_3 = function() {
+      var Nchunk = 1024 * 400;
+
+      result = [{'chunks': [
+          [ 77,  8*Nchunk, 16*Nchunk, 16],
+          [ 77, 16*Nchunk, 24*Nchunk, 16],
+          [ 77, 24*Nchunk, 32*Nchunk, 16],
+      ]}];
+      loaded(result);
+  };
+
+
+</script>
+
+<h3>CHIME FRB L1 node status</h3>
+
+{% for i,node in nodes %}
+<div>
+  <p>{{ node }}</p>
+  <div id="node_status_{{i}}"></div>
+  <svg class="chart" id="node_chunks_{{i}}" />
+</div>
+{% endfor %}
+
+</body>
+</html>

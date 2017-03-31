@@ -1,0 +1,81 @@
+digraph {
+
+node [ shape="rectangle" ];
+
+# system modules
+subgraph cluster_1 {
+  node [style=filled];
+  color = white;
+  # color=blue;
+  hdf5;
+  lz4;
+  jsoncpp;
+  numpy;
+  yaml;
+  boost;
+  msgpack;
+  zmqpp;
+  zmq;
+  fftw3;
+  cython;
+};
+
+ch_frb_io [ label="ch_frb_io\n https://github.com/CHIMEFRB/ch_frb_io" ];
+
+ch_frb_l1 [ label="ch_frb_l1\n https://github.com/kmsmith137/ch_frb_l1" ];
+
+rf_pipelines [ label="rf_pipelines\n https://github.com/kmsmith137/rf_pipelines" ];
+
+simd_helpers [ label="simd_helpers\n https://github.com/kmsmith137/simd_helpers" ];
+
+simpulse [ label="simpulse\n https://github.com/kmsmith137/simpulse" ];
+
+bonsai [ label="bonsai\n https://github.com/kmsmith137/bonsai" ];
+
+sp_hdf5 [ label="sp_hdf5\n https://github.com/kmsmith137/sp_hdf5" ];
+
+hdf5 [ label="hdf5 >= 1.8.12\n apt-get install libhdf5-serial-dev" ];
+lz4  [ label="lz4\n apt-get install liblz4-dev" ];
+jsoncpp [ label="jsoncpp\n apt-get install libjsoncpp-dev" ];
+numpy [ label="numpy\n apt-get install python-numpy" ];
+yaml [ label="yaml\n apt-get install libyaml-cpp-dev" ];
+zmqpp [ label="cppzmq\n https://raw.githubusercontent.com/zeromq/cppzmq/master/zmq.hpp" ];
+zmq [ label="zmq\n https://github.com/zeromq/libzmq/releases/download/v4.2.1/zeromq-4.2.1.tar.gz" ];
+msgpack [ label="msgpack\n https://github.com/msgpack/msgpack-c/releases/download/cpp-2.1.0/msgpack-2.1.0.tar.gz" ];
+boost [ label="boost\n apt-get install libboost-dev" ];
+fftw3 [ label="fftw3\n apt-get install libfftw3-dev" ];
+cython [ label="cython (0.25.2 works; 0.20.1 doesn't) \n apt-get install cython / pip install Cython" ];
+
+yaml -> boost;
+zmqpp -> zmq;
+sp_hdf5 -> hdf5;
+
+rf_pipelines -> hdf5 ;
+rf_pipelines -> lz4;
+rf_pipelines -> jsoncpp;
+rf_pipelines -> numpy;
+rf_pipelines -> simd_helpers;
+rf_pipelines -> simpulse;
+rf_pipelines -> bonsai;
+
+ch_frb_l1 -> rf_pipelines;
+ch_frb_l1 -> yaml;
+ch_frb_l1 -> ch_frb_io;
+ch_frb_l1 -> bonsai;
+ch_frb_l1 -> msgpack;
+ch_frb_l1 -> zmqpp;
+
+ch_frb_io -> msgpack;
+ch_frb_io -> zmqpp;
+
+simpulse -> fftw3;
+simpulse -> numpy;
+simpulse -> cython
+
+bonsai -> sp_hdf5;
+bonsai -> simd_helpers;
+bonsai -> simpulse;
+
+}
+
+

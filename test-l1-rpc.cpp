@@ -8,15 +8,23 @@
 using namespace std;
 using namespace ch_frb_io;
 
+void write_chunk(L1RpcServer* rpc, shared_ptr<assembled_chunk> chunk) {
+    string filename = chunk->format_filename("chunk-(BEAM)-(CHUNK)+(NCHUNK).msgpack");
+    chlog("Enqueuing for write:" << filename);
+    rpc->enqueue_write_request(chunk, filename);
+}
+
 int main(int argc, char** argv) {
     int beam = 77;
     string port = "";
     int portnum = 0;
     int udpport = 0;
     int wait = 0;
+    float chunksleep = 0;
+    int nchunks = 100;
 
     int c;
-    while ((c = getopt(argc, argv, "a:p:b:u:wh")) != -1) {
+    while ((c = getopt(argc, argv, "a:p:b:u:ws:n:h")) != -1) {
         switch (c) {
         case 'a':
             port = string(optarg);
@@ -38,10 +46,18 @@ int main(int argc, char** argv) {
             wait = 1;
             break;
 
+        case 's':
+            chunksleep = atof(optarg);
+            break;
+
+        case 'n':
+            nchunks = atoi(optarg);
+            break;
+
         case 'h':
         case '?':
         default:
-            cout << string(argv[0]) << ": [-a <address>] [-p <port number>] [-b <beam id>] [-u <L1 udp-port>] [-w to wait indef] [-h for help]" << endl;
+            cout << string(argv[0]) << ": [-a <address>] [-p <port number>] [-b <beam id>] [-u <L1 udp-port>] [-w to wait indef] [-s <sleep between chunks>] [-n <N chunks>] [-h for help]" << endl;
             cout << "eg,  -a tcp://127.0.0.1:5555" << endl;
             cout << "     -p 5555" << endl;
             cout << "     -b 78" << endl;
@@ -76,6 +92,8 @@ int main(int argc, char** argv) {
     L1RpcServer rpc(stream, port);
     rpc.start();
 
+    stream->add_assembled_chunk_callback(std::bind(write_chunk, &rpc, std::placeholders::_1));
+
     int nupfreq = 4;
     int nt_per = 16;
     int fpga_per = 400;
@@ -87,31 +105,69 @@ int main(int argc, char** argv) {
     rng.seed(42);
     std::uniform_int_distribution<> rando(0,1);
 
-    for (int i=0; i<100; i++) {
+    std::vector<int> consumed_chunks;
+
+    int backlog = 0;
+    int failed_push = 0;
+
+    for (int i=0; i<nchunks; i++) {
         ch = new assembled_chunk(beam, nupfreq, nt_per, fpga_per, i);
-        chlog("Pushing " << i);
-        stream->inject_assembled_chunk(ch);
-        chlog("Pushed " << i);
+        chlog("Injecting " << i);
+        if (stream->inject_assembled_chunk(ch))
+            chlog("Injected " << i);
+        else {
+            chlog("Inject failed (ring buffer full)");
+            failed_push++;
+        }
 
         // downstream thread consumes with a lag of 2...
         if (i >= 2) {
             // Randomly consume 0 to 2 chunks
-            if (rando(rng)) {
-                chlog("Downstream consumes a chunk");
-                stream->get_assembled_chunk(0, false);
+            shared_ptr<assembled_chunk> ach;
+            if ((backlog > 0) && rando(rng)) {
+                cout << "Downstream consumes a chunk (backlog)" << endl;
+                ach = stream->get_assembled_chunk(0, false);
+                if (ach) {
+                    cout << "  (chunk " << ach->ichunk << ")" << endl;
+                    consumed_chunks.push_back(ach->ichunk);
+                    backlog--;
+                }
             }
             if (rando(rng)) {
                 chlog("Downstream consumes a chunk");
-                stream->get_assembled_chunk(0, false);
+                ach = stream->get_assembled_chunk(0, false);
+                if (ach) {
+                    chlog("  (chunk " << ach->ichunk << ")");
+                    consumed_chunks.push_back(ach->ichunk);
+                } else
+                    backlog++;
+            }
+            if (rando(rng)) {
+                chlog("Downstream consumes a chunk");
+                ach = stream->get_assembled_chunk(0, false);
+                if (ach) {
+                    chlog("  (chunk " << ach->ichunk << ")");
+                    consumed_chunks.push_back(ach->ichunk);
+                } else
+                    backlog++;
             }
         }
+
+        cout << endl;
+        stream->print_state();
+        cout << endl;
+
+
+        if (chunksleep)
+            usleep(int(chunksleep * 1000000));
+
     }
 
     //cout << "End state:" << endl;
     //rb->print();
     //cout << endl;
 
-    vector<vector<shared_ptr<assembled_chunk> > > chunks;
+    vector<vector<pair<shared_ptr<assembled_chunk>, uint64_t> > > chunks;
     chlog("Test retrieving chunks...");
     //rb->retrieve(30000000, 50000000, chunks);
     vector<uint64_t> beams;
@@ -124,6 +180,23 @@ int main(int argc, char** argv) {
     }
     string s = ss.str();
     chlog(s);
+
+
+    int Nchunk = 1024 * 400;
+    for (auto it = chunks.begin(); it != chunks.end(); it++) {
+        cout << "[" << endl;
+        for (auto it2 = it->begin(); it2 != it->end(); it2++) {
+            shared_ptr<assembled_chunk> ch = it2->first;
+            cout << "  chunk " << (ch->fpgacounts_begin() / Nchunk) << " to " <<
+                (ch->fpgacounts_end() / Nchunk) << ", N chunks " <<
+                (ch->fpgacounts_N() / Nchunk) << endl;
+        }
+        cout << "]" << endl;
+    }
+
+    cout << "State:" << endl;
+    stream->print_state();
+
 
     for (int nwait=0;; nwait++) {
         if (rpc.is_shutdown())
