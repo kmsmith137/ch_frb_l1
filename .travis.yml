@@ -58,7 +58,7 @@ before_script:
     - tar xzf hdf5-1.8.18.tar.gz
     - cd hdf5-1.8.18
     - ./configure --prefix=$HOME/chime --enable-cxx
-    - make all install > log
+    - make all install > log 2>&1
 
     - cd
     - git clone https://github.com/CHIMEFRB/ch_frb_io.git
@@ -124,8 +124,9 @@ before_script:
     ###- git checkout travis
     - mkdir bonsai
     ###- wget http://broiler.astrometry.net/~dstn/temp/bonsai.tar.gz
+    ###- tar xzf bonsai.tar.gz
     - wget http://broiler.astrometry.net/~dstn/temp/bonsai-v10.tar.gz
-    - tar xzf bonsai.tar.gz
+    - tar xzf bonsai-v10.tar.gz
     - ln -s site/Makefile.local.travis Makefile.local
     - make
     - make install
