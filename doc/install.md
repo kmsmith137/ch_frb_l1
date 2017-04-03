@@ -1,7 +1,32 @@
-Here are some toplevel instructions for building the CHIMEFRB pipeline.
+### INSTALLATION INSTRUCTIONS FOR L1 PIPELINE
+
+Here are the "long-form" instructions for compiling the CHIMEFRB L1 code.
+
+If you're compiling on one of the CHIME machines, then you can use the
+"quick-start" installation instructions instead:
+
+  - [Installing from scratch on frb1.physics.mcgill.ca](./quick_install_frb1.md)
+  - [Installing from scratch on an frb-compute-X compute node](./quick_install_l1_node.md)
 
 Warning: the following instructions may be out-of-date or incomplete.
 If you run into problems or have suggestions, let me know!
+
+### LIST OF EXTERNAL DEPENDENCIES
+
+  - A gcc which is recent enough that C++11 and AVX2 are supported.  I know that gcc 4.8.1 works, and that 4.4.7 is too old.
+  - A very recent cython.  I know that cython 0.24 works, and cython 0.20 is too old.  (Edit: this used to be true, but I
+    suspect older versions of cython will work now.)
+  - numpy/scipy/matplotlib
+  - hdf5 version 1.8.11 or later
+  - h5py version 2.4.0 or later
+  - FFTW3 (http://fftw.org)
+  - The 'PIL' python imaging library.  If you need to install it, I recommend the Pillow variant ('pip install Pillow')
+  - lz4
+  - msgpack
+  - zeromq
+  - cppzmq (C++ bindings for zeromq, header-only, https://github.com/zeromq)
+  - jsoncpp
+  - yaml-cpp
 
 ### INSTALLING EXTERNAL DEPENDENCIES
 
@@ -32,14 +57,21 @@ If you run into problems or have suggestions, let me know!
   make install
   ```
 
-- lz4.  On CentOS this is a one-liner: `sudo yum install lz4-devel`.
+- lz4.  
+
+  In CentOS this is a one-liner: `sudo yum install lz4-devel`.
+
   (TODO: osx install instructions here.)
 
-- msgpack.  In CentOS this is a one-liner: `sudo yum install msgpack-devel.x86_64`.
+- msgpack.  
+
+  In CentOS this is a one-liner: `sudo yum install msgpack-devel.x86_64`.
 
   In osx, this is also a one-liner: `brew install msgpack`.
 
-- zeromq and cppzmq.  In CentOS, both can be installed with `sudo yum install cppzmq-devel.x86_64`.
+- zeromq and cppzmq.  
+
+  In CentOS, both can be installed with `sudo yum install cppzmq-devel.x86_64`.
 
   In osx, zeromq can be installed with `brew install zeromq`, but you'll need to install cppzmq by hand.
   Since it's a header-only library with two source files, I just ignored the build system and did:
@@ -51,9 +83,9 @@ If you run into problems or have suggestions, let me know!
 
 - jsoncpp (https://github.com/open-source-parsers/jsoncpp)
 
-  On osx, you can probably install with: `brew install jsoncpp`
+  In CentOS, you can probably install with `yum install jsoncpp-devel`
 
-  In linux, you can probably install with `yum install jsoncpp-devel`
+  In osx, you can probably install with: `brew install jsoncpp`
 
   Building jsoncpp from scratch is a pain, but the following procedure worked for me:
   ```
@@ -66,11 +98,10 @@ If you run into problems or have suggestions, let me know!
 
  - yaml-cpp (https://github.com/jbeder/yaml-cpp)
 
-  On osx, you can probably install with: `brew install yaml-cpp`.
+  In CentOS, you can probably install with `yum install yaml-cpp-devel`.
 
-  On CentOS, you can probably install with `yum install yaml-cpp-devel`.
+  In osx, you can probably install with: `brew install yaml-cpp`.
 
-   
 
 ### INSTALLING BITSHUFFLE (optional but recommended)
 
@@ -102,12 +133,22 @@ If you run into problems or have suggestions, let me know!
 
 These instructions apply to the following github repos:
 
-   - https://github.com/kmsmith137/simd_helpers
-   - https://github.com/kmsmith137/simpulse
-   - https://github.com/CHIMEFRB/ch_frb_io
-   - https://github.com/CHIMEFRB/bonsai
-   - https://github.com/kmsmith137/rf_pipelines
-   - https://github.com/kmsmith137/ch_frb_l1 (whose INSTALL.md you're reading right now)
+  - [kmsmith137/simd_helpers](https://github.com/kmsmith137/simd_helpers):
+    header-only library for writing x86 assembly language kernels.
+  - [kmsmith137/sp_hdf5](https://github.com/kmsmith137/sp_hdf5):
+    header-only library for reading/writing hdf5 from C++.
+  - [kmsmith137/simpulse](https://github.com/kmsmith137/simpulse):
+    library for simulating FRB's and pulsars.
+  - [CHIMEFRB/ch_frb_io](https://github.com/CHIMEFRB/ch_frb_io):
+    networking code, CHIME-specific file formats.
+  - [CHIMEFRB/bonsai](https://github.com/CHIMEFRB/bonsai):
+    fast tree dedispersion on x86.
+  - [kmsmith137/rf_pipelines](https://github.com/kmsmith137/rf_pipelines):
+    plugin-based radio astronomy pipelines.
+  - [mrafieir/ch_frb_rfi](https://github.com/mrafieir/ch_frb_rfi):
+    scritping framework for RFI removal and offline L1 analysis.  **(frb1 only)**
+  - [kmsmith137/ch_frb_l1](https://github.com/kmsmith137/ch_frb_l1):
+    toplevel repo, whose README you're reading right now.
 
 They use a klunky build procedure which we should improve some day!
 
