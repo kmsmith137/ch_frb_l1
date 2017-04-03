@@ -70,7 +70,7 @@ l1_params::l1_params(const string &filename)
     this->nbeams = p.read_scalar<int> ("nbeams");
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
-    this->rpc_address = p.read_vector<int> ("rpc_address");
+    this->rpc_address = p.read_vector<string> ("rpc_address");
     
     if ((ipaddr.size() == 1) && (port.size() > 1))
 	this->ipaddr = vector<string> (port.size(), ipaddr[0]);
@@ -175,7 +175,7 @@ shared_ptr<bonsai::trigger_output_stream> l1_params::make_output_stream(int ibea
     return make_shared<bonsai::trigger_output_stream> ();
 }
 
-shared_ptr<L1Rpcserver> l1_params::make_l1rpc_server(int istream, shared_ptr<ch_frb_io::intensity_network_stream>) {
+shared_ptr<L1RpcServer> l1_params::make_l1rpc_server(int istream, shared_ptr<ch_frb_io::intensity_network_stream> stream) {
 
     shared_ptr<L1RpcServer> rpc = make_shared<L1RpcServer>(stream, rpc_address[istream]);
     return rpc;
