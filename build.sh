@@ -3,6 +3,7 @@
 # stop on any error
 set -e
 
+# echo commands
 set -x
 
 # check out repositories
@@ -30,6 +31,9 @@ if [ ! -d ch_frb_rfi ]; then
 fi
 if [ ! -d ch_frb_l1 ]; then
   git clone https://github.com/kmsmith137/ch_frb_l1
+fi
+if [ ! -d toy_network_codes ]; then
+  git clone https://github.com/kmsmith137/toy_network_codes
 fi
 
 # Setup remote branches -- HACKily
@@ -165,3 +169,8 @@ export HAVE_BONSAI=y
     git checkout master &&
     make)
 
+(cd toy_network_codes &&
+        git fetch &&
+        git checkout master &&
+        make &&
+        make install)
