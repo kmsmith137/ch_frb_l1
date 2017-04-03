@@ -43,6 +43,8 @@ before_script:
     - export NUMPY_INCDIR=/usr/lib/python2.7/dist-packages/numpy/core/include
     - export JSONCPP_INC_DIR=/usr/include/jsoncpp
 
+    - export PYTHONPATH=${PYTHONPATH}:/usr/lib/python2.7/dist-packages
+
     - cd
     - wget https://github.com/msgpack/msgpack-c/releases/download/cpp-2.1.0/msgpack-2.1.0.tar.gz
     - tar xzf msgpack-2.1.0.tar.gz
@@ -99,13 +101,10 @@ before_script:
     - git checkout v4_devel
     - ln -s site/Makefile.local.norootprivs Makefile.local
     - make install
-    - cd
-    - mv include/* chime/include/
 
     # - python -c "import distutils.sysconfig; print(distutils.sysconfig.get_python_inc())"
     # #- dpkg -L python-numpy
     # - python -c "import sys; print('\n'.join(sys.path))"
-    - export PYTHONPATH=${PYTHONPATH}:/usr/lib/python2.7/dist-packages
     # - python -c "import numpy; print(numpy.get_include())"
     # - cython --version
 
