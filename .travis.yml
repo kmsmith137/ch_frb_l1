@@ -31,6 +31,18 @@ before_script:
     - BUILD_DIR=$(pwd)
     - export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:~/chime/lib
 
+    # Environment variables respected by (some) Makefile.local files
+    - export LIBDIR=~/chime/lib
+    - export INCDIR=~/chime/include
+    - export BINDIR=~/chime/bin
+    - export HAVE_PSRFITS=n
+    - export HAVE_CH_FRB_IO=y
+    - export HAVE_BONSAI=y
+    - export PYDIR=~/chime/lib/python2.7/site-packages
+    - export PYTHON_INCDIR=/usr/include/python2.7
+    - export NUMPY_INCDIR=/usr/lib/python2.7/dist-packages/numpy/core/include
+    - export JSONCPP_INC_DIR=/usr/include/jsoncpp
+
     - cd
     - wget https://github.com/msgpack/msgpack-c/releases/download/cpp-2.1.0/msgpack-2.1.0.tar.gz
     - tar xzf msgpack-2.1.0.tar.gz
