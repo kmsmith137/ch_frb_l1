@@ -1,9 +1,36 @@
 ### ch_frb_l1 
 
-Toplevel repository for the CHIMEFRB L1 node, containing master executables, bonsai configs, etc.
+Toplevel repository for the CHIMEFRB L1 code, containing master executables, bonsai configs, etc.
 
-This is a work in progress!
+The L1 code consists of the following git repositories.
+Depending on what you're doing, you may only need a subset of these!
+In particular, the modules marked "frb1 only" include hardcoded pathnames on
+frb1.physics.mcgill.ca, and probably won't be useful on other machines.
+For a dependency graph, see [dependencies.png](./dependencies.png).
 
+  - [kiyo-masui/bitshuffle](https://github.com/kiyo-masui/bitshuffle):
+    "bitwise" compression algorithm used throughout CHIME.
+  - [kmsmith137/simd_helpers](https://github.com/kmsmith137/simd_helpers):
+    header-only library for writing x86 assembly language kernels.
+  - [kmsmith137/sp_hdf5](https://github.com/kmsmith137/sp_hdf5):
+    header-only library for reading/writing hdf5 from C++.
+  - [kmsmith137/simpulse](https://github.com/kmsmith137/simpulse):
+    library for simulating FRB's and pulsars.
+  - [CHIMEFRB/ch_frb_io](https://github.com/CHIMEFRB/ch_frb_io):
+    networking code, CHIME-specific file formats.
+  - [CHIMEFRB/bonsai](https://github.com/CHIMEFRB/bonsai):
+    fast tree dedispersion on x86.
+  - [kmsmith137/rf_pipelines](https://github.com/kmsmith137/rf_pipelines):
+    plugin-based radio astronomy pipelines.
+  - [mrafieir/ch_frb_rfi](https://github.com/mrafieir/ch_frb_rfi):
+    scritping framework for RFI removal and offline L1 analysis.  **(frb1 only)**
+  - [mburhanpurkar/web_viewer](https://github.com/mburhanpurkar/web_viewer):
+    web-based visualization of L1 pipeline outputs.  **(frb1 only)**
+  - [kmsmith137/ch_frb_l1](https://github.com/kmsmith137/ch_frb_l1):
+    toplevel repo, whose README you're reading right now.
+
+There are a lot of external dependencies!
+For a list, see [doc/install.md](doc/install.md).
 
 ### QUICK-START INSTALLATION ON CHIME MACHINES
 
@@ -29,44 +56,22 @@ update from git, and rebuild everything from scratch.
 
 ### INSTALLATION (NON-QUICK-START VERSION)
 
-The CHIMEFRB pipeline currently consists of the following external dependencies.
-
-  - A gcc which is recent enough that C++11 and AVX2 are supported.  I know that gcc 4.8.1 works, and that 4.4.7 is too old.
-  - A very recent cython.  I know that cython 0.24 works, and cython 0.20 is too old.
-  - numpy/scipy/matplotlib
-  - hdf5 version 1.8.11 or later
-  - h5py version 2.4.0 or later
-  - FFTW3 (http://fftw.org)
-  - The 'PIL' python imaging library.  If you need to install it, I recommend the Pillow variant ('pip install Pillow')
-  - lz4
-  - msgpack
-  - zeromq
-  - cppzmq (C++ bindings for zeromq, header-only, https://github.com/zeromq)
-  - jsoncpp
-  - yaml-cpp
-
-plus the following components:
-
-  - bitshuffle (https://github.com/kiyo-masui/bitshuffle)
-  - simd_helpers (https://github.com/kmsmith137/simd_helpers)
-  - sp_hdf5 (https://github.com/kmsmith137/sp_hdf5)
-  - simpulse (https://github.com/kmsmith137/simpulse)
-  - ch_frb_io (https://github.com/CHIMEFRB/ch_frb_io)
-  - bonsai (https://github.com/CHIMEFRB/bonsai)
-  - rf_pipelines (https://github.com/kmsmith137/rf_pipelines)
-  - ch_frb_rfi (https://github.com/mrafieir/ch_frb_rfi)
-  - ch_frb_l1, whose README.md you're reading right now (https://github.com/kmsmith137/ch_frb_l1)
-
-For detailed instructions on how to build these packages, see [INSTALL.md] (./INSTALL.md).
+If you're not installing on a CHIME machine, then the installation process
+is more involved.  You'll probably need to write some Makefile include files
+("Makefile.local" files).  We hope to streamline this process at some point!
+For now, please see instructions in [doc/install.md] (./doc/install.md).
 
 
 ### THE DOCUMENTATION EASTER EGG HUNT
 
-Documentation for the CHIMEFRB pipeline is currently not very systematic!
-The total documentation available is not bad, but it's scattered all over the
-place (e.g. in code comments or Python docstrings).
+The bad news: documentation for the L1 pipeline is hit-or-miss, and scattered
+all over the place (e.g. in code comments or Python docstrings).
 
-Here are some links to get you started on the "Documentation Easter Egg Hunt":
+We'll do a sytematic "documentation pass" at some point, but I think it will make
+more sense to do this when the code is a bit more converged.
+
+In the meantime, here are some links to get you started on the 
+"Documentation Easter Egg Hunt":
 
   - ch_frb_io
      - There are some PDF slides in [ch_frb_io/docs] (https://github.com/CHIMEFRB/ch_frb_io/tree/master/docs).
@@ -81,6 +86,8 @@ Here are some links to get you started on the "Documentation Easter Egg Hunt":
        [rf_pipelines/examples/example5_network] (https://github.com/kmsmith137/rf_pipelines/tree/master/examples/example5_network).
 
   - rf_pipelines
+
+     - Warning: this core library is under-documented, and improving this is our highest documentation priority!
      - There are some PDF slides in [rf_pipelines/docs] (https://github.com/kmsmith137/rf_pipelines/tree/master/docs).
      - The rf_pipelines package is best "documented by example", so I recommend looking at
        [rf_pipelines/examples] (https://github.com/kmsmith137/rf_pipelines/tree/master/examples) next.
@@ -101,4 +108,15 @@ Here are some links to get you started on the "Documentation Easter Egg Hunt":
        should be a pretty readable overview of the rf_pipelines C++ api.
 
   - bonsai
-     - The bonsai package now has lots of documentation, just start with bonsai/README.md.
+
+     - The bonsai package now has lots of documentation!  Just start with 
+       [bonsai/README.md](https://github.com/CHIMEFRB/bonsai/blob/master/README.md)
+       and follow links from there.
+
+  - ch_frb_rfi
+
+     - Not much documentation yet, but the example scripts
+       [ch_frb_rfi/example.py](https://github.com/mrafieir/ch_frb_rfi/blob/master/example.py) and
+       [ch_frb_rfi/example2.py](https://github.com/mrafieir/ch_frb_rfi/blob/master/example2.py)
+       should give a pretty good idea of how this library is used.
+
