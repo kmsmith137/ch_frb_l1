@@ -114,6 +114,9 @@ clean:
 install:
 	echo 'Nothing to install here!'
 
+uninstall:
+	echo 'Nothing to uninstall here!'
+
 flask:
 	FLASK_APP=webapp.webapp FLASK_DEBUG=1 flask run --host 0.0.0.0
 .PHONY: flask
