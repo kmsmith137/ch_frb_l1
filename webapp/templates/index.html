@@ -181,6 +181,11 @@ var loaded = function(result) {
                 cpu = rate('cpu_1');
                 st += ', Nice: ' + (cpu).toFixed(1);
                 st += '<br/>';
+                r = rate('intr_0');
+                st += 'Interrupts: ' + (r).toFixed(0) + '/sec';
+                r = rate('ctxt_0');
+                st += ', Context switches: ' + (r).toFixed(0) + '/sec';
+                st += '<br/>';
             }
 
             procstat_last[addr] = nodestats;
@@ -292,7 +297,7 @@ var loaded = function(result) {
         //    .text(function(d) { return d[0]; });
 
     }
-    setTimeout(load_status, 3000);
+    setTimeout(load_status, 2000);
   };
 
   $(document).ready(function() {
