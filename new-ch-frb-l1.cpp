@@ -22,6 +22,7 @@
 #include <ch_frb_io.hpp>
 #include <rf_pipelines.hpp>
 #include <bonsai.hpp>
+#include <l1-rpc.hpp>
 
 #include "ch_frb_l1.hpp"
 
@@ -45,6 +46,9 @@ struct l1_params {
     // Output stream object writes coarse-grained triggers to grouping/sifting code.
     shared_ptr<bonsai::trigger_output_stream> make_output_stream(int ibeam);
 
+    // L1-RPC object
+    shared_ptr<L1RpcServer> make_l1rpc_server(int istream, shared_ptr<ch_frb_io::intensity_network_stream>);
+
     // nstreams is automatically determined by the number of (ipaddr, port) pairs.
     // There will be one (network_thread, assembler_thread) pair for each stream.
     int nbeams = 0;
@@ -53,6 +57,9 @@ struct l1_params {
     // Both vectors have length nstream.
     vector<string> ipaddr;
     vector<int> port;
+
+    // One L1-RPC per stream
+    vector<string> rpc_address;
 };
 
 
@@ -63,6 +70,7 @@ l1_params::l1_params(const string &filename)
     this->nbeams = p.read_scalar<int> ("nbeams");
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
+    this->rpc_address = p.read_vector<int> ("rpc_address");
     
     if ((ipaddr.size() == 1) && (port.size() > 1))
 	this->ipaddr = vector<string> (port.size(), ipaddr[0]);
@@ -78,6 +86,7 @@ l1_params::l1_params(const string &filename)
     assert(nstreams > 0);
     assert(ipaddr.size() == (unsigned int)nstreams);
     assert(port.size() == (unsigned int)nstreams);
+    assert(rpc_address.size() == (unsigned int)nstreams);
 
     if (nbeams % nstreams) {
 	throw runtime_error(filename + " nbeams (=" + to_string(nbeams) + ") must be a multiple of nstreams (="
@@ -164,6 +173,12 @@ shared_ptr<bonsai::trigger_output_stream> l1_params::make_output_stream(int ibea
 {
     assert(ibeam >= 0 && ibeam < nbeams);
     return make_shared<bonsai::trigger_output_stream> ();
+}
+
+shared_ptr<L1Rpcserver> l1_params::make_l1rpc_server(int istream, shared_ptr<ch_frb_io::intensity_network_stream>) {
+
+    shared_ptr<L1RpcServer> rpc = make_shared<L1RpcServer>(stream, rpc_address[istream]);
+    return rpc;
 }
 
 
@@ -260,11 +275,17 @@ int main(int argc, char **argv)
 
     vector<shared_ptr<ch_frb_io::intensity_network_stream>> input_streams(nstreams);
     vector<shared_ptr<bonsai::trigger_output_stream>> output_streams(nbeams);
+    vector<shared_ptr<L1RpcServer> > rpc_servers(nbeams);
     vector<std::thread> threads(nbeams);
-
 
     for (int istream = 0; istream < nstreams; istream++)
 	input_streams[istream] = l1_config.make_input_stream(istream);
+
+    for (int istream = 0; istream < nstreams; istream++) {
+	rpc_servers[istream] = l1_config.make_l1rpc_server(istream, input_streams[istream]);
+        // returns std::thread
+        rpc_servers[istream]->start();
+    }
 
     for (int ibeam = 0; ibeam < nbeams; ibeam++)
 	output_streams[ibeam] = l1_config.make_output_stream(ibeam);
