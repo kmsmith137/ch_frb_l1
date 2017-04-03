@@ -1,5 +1,8 @@
 Broken pipeline?  The following sequence of commands will put all modules on their master branches,
 update from git, and rebuild everything.
+
+If you don't have all of these modules installed (e.g. you may not need simpulse, ch_frb_rfi, or ch_frb_l1,
+depending on what you're doing), then you can probably just skip the uninstalled ones.
 ```
 cd simd_helpers
 git checkout master
