@@ -53,8 +53,8 @@ def node_status():
     #         Nchunk = 1024 * 400
     #         print('  beam', b, 'chunk', f0/Nchunk, '+', (f1-f0)/Nchunk, 'from', w)
 
-    #print('Stats:', stats)
-    
+    #print('Stats[0]:', stats[0])
+
     stat = [ dict(addr=k, status='ok', chunks=chi, stats=st) for k,chi,st in zip(app.nodes, ch, stats) ]
     j = json.dumps(stat)
     # print('JSON:', j)

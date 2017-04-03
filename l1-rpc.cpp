@@ -1,4 +1,6 @@
+#include <fstream>
 #include <unistd.h>
+#include <sys/time.h>
 #include <thread>
 
 #include <zmq.hpp>
@@ -183,6 +185,18 @@ private:
     L1RpcServer* _server;
 };
 
+inline struct timeval get_time()
+{
+    struct timeval ret;
+    if (gettimeofday(&ret, NULL) < 0)
+	throw std::runtime_error("gettimeofday() failed");
+    return ret;
+}
+inline double time_diff(const struct timeval &tv1, const struct timeval &tv2)
+{
+    return (tv2.tv_sec - tv1.tv_sec) + 1.0e-6 * (tv2.tv_usec - tv1.tv_usec);
+}
+
 L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
                          const string &port,
                          zmq::context_t *ctx) :
@@ -198,11 +212,14 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
     else
         _port = "tcp://*:" + std::to_string(default_port_l1_rpc);
 
+    _time0 = get_time();
+
     // Set my identity
     _frontend.setsockopt(ZMQ_IDENTITY, _port);
     // Require messages sent on the frontend socket to have valid addresses.
     _frontend.setsockopt(ZMQ_ROUTER_MANDATORY, 1);
 }
+
 
 L1RpcServer::~L1RpcServer() {
     _frontend.close();
@@ -467,6 +484,42 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
         // Gather stats...
         vector<unordered_map<string, uint64_t> > stats = _stream->get_statistics();
+
+        {
+            // This is a bit of a HACK!
+            // read and parse /proc/stat, add to stats[0].
+            ifstream s("/proc/stat");
+            string key;
+            int arrayi;
+
+            double dt = time_diff(_time0, get_time());
+            // /proc/stat values are in "jiffies"?
+            stats[0]["procstat_time"] = dt * 100;
+
+            for (;;) {
+                string word;
+                s >> word;
+                if ((word.size() == 0) && (s.eof()))
+                    break;
+                if (key.size() == 0) {
+                    key = word;
+                    arrayi = 0;
+                } else {
+                    uint64_t ival = stoll(word);
+                    // HACK -- skip 0 values.
+                    if (ival) {
+                        string fullkey = "procstat_" + key + "_" + to_string(arrayi);
+                        stats[0][fullkey] = ival;
+                    }
+                    arrayi++;
+                    //cout << "set: " << fullkey << " = " << ival << endl;
+                }
+                if (s.peek() == '\n') {
+                    key = "";
+                }
+            }
+        }
+
         msgpack::sbuffer buffer;
         msgpack::pack(buffer, stats);
         //  Send reply back to client.

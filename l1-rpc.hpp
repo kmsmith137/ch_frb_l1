@@ -89,6 +89,9 @@ private:
 
     // the stream we are serving RPC requests for.
     std::shared_ptr<ch_frb_io::intensity_network_stream> _stream;
+
+    // server start time
+    struct timeval _time0;
 };
 
 

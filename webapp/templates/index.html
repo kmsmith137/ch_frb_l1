@@ -113,6 +113,8 @@ var add_commas = function(s) {
   return outs;
 }
 
+var procstat_last = {};
+
 // Called to update the chart when a JSON response is received
 var loaded = function(result) {
     //console.log('JSON loaded: ' + result);
@@ -121,16 +123,69 @@ var loaded = function(result) {
         //console.log('node ' + node);
 
         stats = node['stats'];
+        if (stats == null)
+            continue;
+        addr = node['addr'];
         //console.log('stats:' + stats);
         // stats is a list: [0] is per-L1 node
         // [1] is per-node packet counts from L0 hosts
         // [2...] are per-beam stats
         nodestats = stats[0];
-        console.log('nodestats: ' + nodestats);
+        //console.log('nodestats: ' + nodestats);
 
+        // HTML status string
+        st = '';
+
+        /*
         for (var key in nodestats) {
             console.log('  ' + key + ' = ' + nodestats[key]);
         }
+        */
+
+        if ('procstat_time' in nodestats) {
+            t = nodestats['procstat_time'];
+            console.log('/proc/stat at ' + t + ' for ' + addr);
+            //for (var key in nodestats) {
+            //if (key.startsWith('procstat_')) {
+            if (addr in procstat_last) {
+                lastproc = procstat_last[addr];
+                console.log('Previous /proc/stats: ' + lastproc['procstat_time']);
+
+                dt = t - lastproc['procstat_time'];
+
+                var rate = function(k) {
+                    v2 = 0;
+                    k = 'procstat_' + k;
+                    if (k in nodestats)
+                        v2 = nodestats[k];
+                    v1 = 0;
+                    if (k in lastproc)
+                        v1 = lastproc[k];
+                    return (v2 - v1) / dt;
+                    //return (nodestats['procstat_' + k] - lastproc['procstat_' + k])/ dt;
+                };
+                // http://www.linuxhowtos.org/System/procstat.htm
+                st += 'CPU cores: ';
+                cpu = rate('cpu_0');
+                st += 'User: ' + (cpu).toFixed(1);
+                cpu = rate('cpu_2');
+                st += ', Sys: ' + (cpu).toFixed(1);
+                cpu = rate('cpu_3');
+                st += ', Idle: ' + (cpu).toFixed(1);
+                cpu = rate('cpu_4');
+                st += ', Iowait: ' + (cpu).toFixed(1);
+                cpu = rate('cpu_5');
+                st += ', IRQ: ' + (cpu).toFixed(1);
+                cpu = rate('cpu_6');
+                st += ', SoftIRQ: ' + (cpu).toFixed(1);
+                cpu = rate('cpu_1');
+                st += ', Nice: ' + (cpu).toFixed(1);
+                st += '<br/>';
+            }
+
+            procstat_last[addr] = nodestats;
+        }
+
         //node['status']
         var working = nodestats['network_thread_working_usec'];
         var waiting = nodestats['network_thread_waiting_usec'];
@@ -148,7 +203,7 @@ var loaded = function(result) {
         udpringsize = nodestats['udp_ringbuf_size'];
         udpringmax  = nodestats['udp_ringbuf_maxsize'];
 
-        st = 'Network thread: ' + npct.toFixed(2) + ' core.';
+        st += 'Network thread: ' + npct.toFixed(2) + ' core.';
         st += '<br>Assembler thread: ' + apct.toFixed(2) + ' core.';
         st += '<br>Received: ' + (nbytes * 1e-9).toFixed(3) + ' GB';
         st += ', ' + add_commas(npackets.toString()) + ' packets, ';
