@@ -1,12 +1,33 @@
-ch_frb_l1: this will eventually be the toplevel repository for the CHIMEFRB L1 node,
-containing master executables, bonsai configs, etc.
+### ch_frb_l1 
 
-Right now it's a placeholder which just contains:
-  - "global" instructions for compiling the chimefrb pipeline ([INSTALL.md] (./INSTALL.md))
-  - pointers to scattered documentation
-  - some toy programs for timing the chimefrb networking code
+Toplevel repository for the CHIMEFRB L1 node, containing master executables, bonsai configs, etc.
 
-### INSTALLATION
+This is a work in progress!
+
+
+### QUICK-START INSTALLATION ON CHIME MACHINES
+
+
+If you're using one of the CHIME machines (frb1, frb-compute-X), then all
+external dependencies should already be installed, and you can use one of the
+following "cheat sheets" to install the L1 pipeline from scratch.
+
+  - [Installing from scratch on frb1.physics.mcgill.ca](./doc/quick_install_frb1.md)
+  - [Installing from scratch on an frb-compute-X compute node](./doc/quick_install_l1_node.md)
+
+
+### HELP! MY PIPELINE IS BROKEN
+
+Since the pipeline is under continuous development, and updates to pipeline
+modules depend on each other, at some point you may find yourself with an 
+inconsistent set of modules.  In this case, you can use the following
+"cheat sheet" to put all pipeline modules on their master branches,
+update from git, and rebuild everything from scratch.
+
+   - [Rebuilding the pipeline](./doc/rebuilding_pipeline.md)
+
+
+### INSTALLATION (NON-QUICK-START VERSION)
 
 The CHIMEFRB pipeline currently consists of the following external dependencies.
 
@@ -28,10 +49,12 @@ plus the following components:
 
   - bitshuffle (https://github.com/kiyo-masui/bitshuffle)
   - simd_helpers (https://github.com/kmsmith137/simd_helpers)
+  - sp_hdf5 (https://github.com/kmsmith137/sp_hdf5)
   - simpulse (https://github.com/kmsmith137/simpulse)
   - ch_frb_io (https://github.com/CHIMEFRB/ch_frb_io)
   - bonsai (https://github.com/CHIMEFRB/bonsai)
   - rf_pipelines (https://github.com/kmsmith137/rf_pipelines)
+  - ch_frb_rfi (https://github.com/mrafieir/ch_frb_rfi)
   - ch_frb_l1, whose README.md you're reading right now (https://github.com/kmsmith137/ch_frb_l1)
 
 For detailed instructions on how to build these packages, see [INSTALL.md] (./INSTALL.md).
