@@ -155,11 +155,11 @@ script:
     - cd $BUILD_DIR
     - pwd
     - ln -s site/Makefile.local.travis Makefile.local
-    - ls ~/chime/lib
-    - ls ~/chime/include
-    - ls ~/lib
-    - ls ~/include
-    - nm -CD ~/chime/lib/librf_pipelines.so
+    # - ls ~/chime/lib
+    # - ls ~/chime/include
+    # - ls ~/lib
+    # - ls ~/include
+    # - nm -CD ~/chime/lib/librf_pipelines.so
     
     - make COVERAGE=yes OPTIMIZE=no
     # run some, ahem, unit tests...
