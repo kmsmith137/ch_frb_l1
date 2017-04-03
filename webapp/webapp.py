@@ -19,6 +19,7 @@ client = None
 @app.route('/')
 def index():
     return render_template('index.html', nodes=list(enumerate(app.nodes)),
+                           nnodes = len(app.nodes),
                            node_status_url='/node-status')
 
 @app.route('/2')
@@ -35,13 +36,12 @@ def node_status():
     if client is None:
         client = RpcClient(dict([(''+str(i), k) for i,k in enumerate(app.nodes)]))
 
-    #ch = client.list_chunks(timeout=3.)
-
-    ### HACK -- no timeouts here -- will wait forever!
     # Make RPC requests for list_chunks and get_statistics asynchronously
+    timeout = 5.
+
     ltokens = client.list_chunks(wait=False)
-    stats = client.get_statistics()
-    ch = client.wait_for_tokens(ltokens)
+    stats = client.get_statistics(timeout=timeout)
+    ch = client.wait_for_tokens(ltokens, timeout=timeout)
     ch = [msgpack.unpackb(p[0]) if p is not None else None
           for p in ch]
     
