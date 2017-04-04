@@ -73,7 +73,7 @@ ch_frb_io: listening for packets, ip_addr=10.0.3.204, udp_port=10252
 The L1 server is ready to receive packets!  Now go to **frb-compute-0** and start the L0 simulator.
 The last command-line argument is the number of seconds of data to simulate.
 ```
-# on frb-compute-1
+# on frb-compute-0
 cd ch_frb_l1
 ./ch-frb-simulate-l0 l0_configs/l0_nobond.yaml 60
 ```

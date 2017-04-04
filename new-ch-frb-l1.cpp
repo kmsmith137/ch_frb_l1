@@ -32,9 +32,7 @@ using namespace ch_frb_l1;
 // -------------------------------------------------------------------------------------------------
 //
 // More config parameters to come:
-//  - Parameters needed for RPC's (e.g. RPC port number)
 //  - Parameters defining location of sifting/grouping code (e.g. local socket)
-
 
 struct l1_params {
     l1_params(const string &filename);
