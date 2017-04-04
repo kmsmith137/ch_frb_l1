@@ -2,7 +2,6 @@
 //
 //   - RFI removal is a placeholder
 //   - Alex Josephy's grouping/sifting code is not integrated
-//   - RPC threads currently are not spawned
 //   - Distributed logging is not integrated
 //
 // Currently hardcoded to assume the NUMA setup of the CHIMEFRB L1 nodes:
