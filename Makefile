@@ -75,7 +75,7 @@ rpc-client: rpc_client.o
 ch-frb-l1: ch-frb-l1.o $(L1_OBJS)
 	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lch_frb_io -lzmq
 
-new-ch-frb-l1: new-ch-frb-l1.o yaml_paramfile.o $(L1_OBJS)
+new-ch-frb-l1: new-ch-frb-l1.o yaml_paramfile.o l1-parts.o $(L1_OBJS)
 	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lrf_pipelines -lbonsai -lch_frb_io -lzmq -lyaml-cpp
 
 ch-frb-l1-debug: ch-frb-l1.cpp $(L1_OBJS) $(IO_OBJS)
@@ -100,8 +100,8 @@ test-l1-rpc: test-l1-rpc.cpp $(L1_OBJS)
 hdf5-stream: hdf5-stream.cpp
 	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $< -lrf_pipelines -lch_frb_io $(LIBS)
 
-terminus-l1: terminus-l1.cpp $(L1_OBJS)
-	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lrf_pipelines -lch_frb_io $(LIBS) -lsimpulse -lzmq
+terminus-l1: terminus-l1.o l1-parts.o $(L1_OBJS)
+	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lrf_pipelines -lbonsai -lch_frb_io $(LIBS) -lsimpulse -lzmq
 
 clean:
 	rm -f *.o *~ $(BINARIES)

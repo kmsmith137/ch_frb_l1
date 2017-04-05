@@ -1,5 +1,7 @@
 *~
 *.o
+*.pyc
+*.dSYM
 Makefile.local
 ch-frb-l1
 new-ch-frb-l1
@@ -12,3 +14,4 @@ test-l1-rpc
 l1-rpc.o
 rpc_client.o
 test-l1-rpc
+terminus-l1
