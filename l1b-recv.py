@@ -41,9 +41,9 @@ class BonsaiCoarseTrigger(object):
 if __name__ == '__main__':
     context = zmq.Context()
     socket = context.socket(zmq.SUB)
-    socket.subscribe('')
     addr = 'tcp://127.0.0.1:6666'
     socket.bind(addr)
+    socket.subscribe('')
 
     i = 0
     while True:
