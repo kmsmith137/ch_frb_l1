@@ -27,6 +27,7 @@
 
 #include "ch_frb_l1.hpp"
 #include "chlog.hpp"
+#include "l1-parts.hpp"
 
 using namespace std;
 using namespace ch_frb_l1;
@@ -168,159 +169,17 @@ shared_ptr<ch_frb_io::intensity_network_stream> l1_params::make_input_stream(int
     return ch_frb_io::intensity_network_stream::make(ini_params);
 }
 
-class my_coarse_trigger_set { //: public bonsai::coarse_trigger_set {
-public:
-    //my_coarse_trigger_set(const bonsai::coarse_trigger_set &t);
-    my_coarse_trigger_set();
-
-    // The coarse DM index 'i' corresponds to DM range:
-    //    i * (max_dm/ndm_coarse) <= DM <= (i+1) * (max_dm/ndm_coarse)
-
-    // The time index needs a little more explanation.  For purposes of triggering, the "arrival time"
-    // of an FRB is the time when it arrives in the lowest frequency band.  Additionally, the trigger
-    // has a small time offset applied (the trigger is slightly delayed relative to the FRB) for
-    // technical convenience in the assembly language kernels.  This time offset is usually less than
-    // one coarse-grained trigger.
-
-    // The coarse time index 'i' corresponds to pulse arrival time range (relative to the
-    // beginning of the chunk):
-    //
-    //    i*dt0 - trigger_lag_dt  <= t <= (i+1)*dt0 - trigger_lag_dt
-    //
-    // where dt0 = (nt_chunk * dt_sample) / nt_coarse_per_chunk is the time duration of one
-    // coarse-grained trigger.
-    
-    int version;
-    double t0;
-    uint64_t fpgacounts0;
-    float max_dm;
-    float dt_sample;
-    float trigger_lag_dt;
-    int nt_chunk;
-    int dm_coarse_graining_factor;
-    int ndm_coarse;
-    int ndm_fine;
-    int nt_coarse_per_chunk;
-    int nsm;
-    int nbeta;
-    int tm_stride_dm;
-    int tm_stride_sm;
-    int tm_stride_beta;
-    int ntr_tot;
-    std::vector<float> trigger_vec;
-
-    MSGPACK_DEFINE(version, t0, fpgacounts0, max_dm, dt_sample, trigger_lag_dt,
-                   nt_chunk, dm_coarse_graining_factor,
-                   ndm_coarse, ndm_fine, nt_coarse_per_chunk, nsm, nbeta,
-                   tm_stride_dm, tm_stride_sm, tm_stride_beta, ntr_tot, trigger_vec);
-};
-
-my_coarse_trigger_set::my_coarse_trigger_set() {}
-
-/*
-my_coarse_trigger_set::my_coarse_trigger_set(const bonsai::coarse_trigger_set& t) :
-    dm_coarse_graining_factor(t.dm_coarse_graining_factor)
-{}
- */
-
-class l1b_trigger_stream : public bonsai::trigger_output_stream {
-public:
-    l1b_trigger_stream(zmq::context_t* ctx, string addr,
-                       bonsai::config_params bc);
-    virtual ~l1b_trigger_stream();
-
-    virtual void start_processor() override { }
-    virtual void process_triggers(const std::vector<std::shared_ptr<bonsai::coarse_trigger_set>> &triggers, int ichunk) override;
-    virtual void end_processor() override { }
-protected:
-    zmq::context_t* zmqctx;
-    zmq::socket_t socket;
-    bonsai::config_params bonsai_config;
-};
-
-l1b_trigger_stream::l1b_trigger_stream(zmq::context_t* ctx, string addr,
-                                       bonsai::config_params bc) :
-    zmqctx(ctx ? NULL : new zmq::context_t()),
-    socket(*zmqctx, ZMQ_PUB),
-    bonsai_config(bc)
-{
-    cout << "Connecting socket to L1b at " << addr << endl;
-    socket.connect(addr);
-}
-
-l1b_trigger_stream::~l1b_trigger_stream() {
-    socket.close();
-    if (zmqctx)
-        delete zmqctx;
-}
-
-// helper for the next function
-static void myfree(void* p, void*) {
-    ::free(p);
-}
-// Convert a msgpack buffer to a ZeroMQ message; the buffer is released.
-static zmq::message_t* sbuffer_to_message(msgpack::sbuffer &buffer) {
-    zmq::message_t* msg = new zmq::message_t(buffer.data(), buffer.size(), myfree);
-    buffer.release();
-    return msg;
-}
-
-void l1b_trigger_stream::process_triggers(const std::vector<std::shared_ptr<bonsai::coarse_trigger_set> > &triggers, int ichunk) {
-    msgpack::sbuffer buffer;
-    assert(triggers.size() == bonsai_config.trigger_lag_dt.size());
-    vector<my_coarse_trigger_set> mytriggers;
-    int i=0;
-    for (auto it=triggers.begin(); it != triggers.end();
-         it++, i++) {
-        my_coarse_trigger_set mt;
-        mt.version = 1;
-        mt.t0 = (*it)->t0;
-        mt.fpgacounts0 = mt.t0 / rf_pipelines::constants::chime_seconds_per_fpga_count;
-        mt.max_dm = bonsai_config.max_dm[i];
-        mt.dt_sample = bonsai_config.dt_sample;
-        mt.trigger_lag_dt = bonsai_config.trigger_lag_dt[i];
-        mt.nt_chunk = bonsai_config.nt_chunk;
-        mt.dm_coarse_graining_factor = (*it)->dm_coarse_graining_factor;
-        mt.ndm_coarse = (*it)->ndm_coarse;
-        mt.ndm_fine = (*it)->ndm_fine;
-        mt.nt_coarse_per_chunk = (*it)->nt_coarse_per_chunk;
-        mt.nsm = (*it)->nsm;
-        mt.nbeta = (*it)->nbeta;
-        mt.tm_stride_dm = (*it)->tm_stride_dm;
-        mt.tm_stride_sm = (*it)->tm_stride_sm;
-        mt.tm_stride_beta = (*it)->tm_stride_beta;
-        mt.ntr_tot = mt.ndm_coarse * mt.nsm * mt.nbeta * mt.nt_coarse_per_chunk;
-        mt.trigger_vec = vector<float>(mt.ntr_tot);
-
-        float* triggers_data = &mt.trigger_vec[0];
-        memcpy(triggers_data, (*it)->triggers, mt.ntr_tot * sizeof(float));
-        mytriggers.push_back(mt);
-        //chlog("First trigger: " << (*it)->triggers[0]);
-    }
-    msgpack::pack(buffer, mytriggers);
-    //msgpack::pack(buffer, triggers);
-    zmq::message_t* reply = sbuffer_to_message(buffer);
-
-    chlog("Sending message of size: " << reply->size() << " to L1b");
-
-    socket.send(*reply);
-}
-
-
 // l1_params::make_output_stream(): returns the stream object which will send coarse-grained
 // triggers to the sifting/grouping code.
 //
-// Currently a placeholder, since the "output stream" object doesn't send the triggers
-// anywhere, it just keeps a count of chunks processed.
-
 shared_ptr<bonsai::trigger_output_stream> l1_params::make_output_stream(int ibeam, bonsai::config_params bonsai_config)
 {
     assert(ibeam >= 0 && ibeam < nbeams);
     return make_shared<l1b_trigger_stream>((zmq::context_t*)NULL, l1b_address[ibeam], bonsai_config);
 }
 
-shared_ptr<L1RpcServer> l1_params::make_l1rpc_server(int istream, shared_ptr<ch_frb_io::intensity_network_stream> stream) {
-
+shared_ptr<L1RpcServer> l1_params::make_l1rpc_server(int istream, shared_ptr<ch_frb_io::intensity_network_stream> stream)
+{
     shared_ptr<L1RpcServer> rpc = make_shared<L1RpcServer>(stream, rpc_address[istream]);
     return rpc;
 }
@@ -329,38 +188,6 @@ shared_ptr<L1RpcServer> l1_params::make_l1rpc_server(int istream, shared_ptr<ch_
 // -------------------------------------------------------------------------------------------------
 
 
-// make_rfi_chain(): currently a placeholder which returns an arbitrarily constructed transform chain.
-//
-// The long-term plan here is:
-//   - keep developing RFI removal, until all transforms are C++
-//   - write code to serialize a C++ transform chain to yaml
-//   - add a command-line argument <transform_chain.yaml> to ch-frb-l1 
-
-
-static vector<shared_ptr<rf_pipelines::wi_transform>> make_rfi_chain()
-{
-    int nt_chunk = 1024;
-    int polydeg = 2;
-
-    auto t1 = rf_pipelines::make_polynomial_detrender(nt_chunk, rf_pipelines::AXIS_FREQ, polydeg);
-    auto t2 = rf_pipelines::make_polynomial_detrender(nt_chunk, rf_pipelines::AXIS_TIME, polydeg);
-    
-    return { t1, t2 };
-}
-
-
-// A little helper routine to make the bonsai_dedisperser 
-// (Returns the rf_pipelines::wi_transform wrapper object, not the bonsai::dedisperser)
-static shared_ptr<rf_pipelines::wi_transform> make_dedisperser(const bonsai::config_params &cp, const shared_ptr<bonsai::trigger_output_stream> &tp)
-{
-    bonsai::dedisperser::initializer ini_params;
-    ini_params.verbosity = 0;
-    
-    auto d = make_shared<bonsai::dedisperser> (cp, ini_params);
-    d->add_processor(tp);
-
-    return rf_pipelines::make_bonsai_dedisperser(d);
-}
 
 
 // -------------------------------------------------------------------------------------------------
