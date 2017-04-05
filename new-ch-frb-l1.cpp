@@ -192,6 +192,7 @@ public:
     
     int version;
     double t0;
+    uint64_t fpgacounts0;
     float max_dm;
     float dt_sample;
     float trigger_lag_dt;
@@ -208,7 +209,7 @@ public:
     int ntr_tot;
     std::vector<float> trigger_vec;
 
-    MSGPACK_DEFINE(version, t0, max_dm, dt_sample, trigger_lag_dt,
+    MSGPACK_DEFINE(version, t0, fpgacounts0, max_dm, dt_sample, trigger_lag_dt,
                    nt_chunk, dm_coarse_graining_factor,
                    ndm_coarse, ndm_fine, nt_coarse_per_chunk, nsm, nbeta,
                    tm_stride_dm, tm_stride_sm, tm_stride_beta, ntr_tot, trigger_vec);
@@ -274,6 +275,7 @@ void l1b_trigger_stream::process_triggers(const std::vector<std::shared_ptr<bons
         my_coarse_trigger_set mt;
         mt.version = 1;
         mt.t0 = (*it)->t0;
+        mt.fpgacounts0 = mt.t0 / rf_pipelines::constants::chime_seconds_per_fpga_count;
         mt.max_dm = bonsai_config.max_dm[i];
         mt.dt_sample = bonsai_config.dt_sample;
         mt.trigger_lag_dt = bonsai_config.trigger_lag_dt[i];
