@@ -59,6 +59,9 @@ struct l1_params {
 
     // One L1-RPC per stream
     vector<string> rpc_address;
+
+    // One L1b address per beam
+    vector<string> l1b_address;
 };
 
 
@@ -70,6 +73,7 @@ l1_params::l1_params(const string &filename)
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
     this->rpc_address = p.read_vector<string> ("rpc_address");
+    this->l1b_address = p.read_vector<string> ("l1b_address");
     
     if ((ipaddr.size() == 1) && (port.size() > 1))
 	this->ipaddr = vector<string> (port.size(), ipaddr[0]);
@@ -86,6 +90,7 @@ l1_params::l1_params(const string &filename)
     assert(ipaddr.size() == (unsigned int)nstreams);
     assert(port.size() == (unsigned int)nstreams);
     assert(rpc_address.size() == (unsigned int)nstreams);
+    assert(l1b_address.size() == (unsigned int)nbeams);
 
     if (nbeams % nstreams) {
 	throw runtime_error(filename + " nbeams (=" + to_string(nbeams) + ") must be a multiple of nstreams (="
@@ -161,13 +166,31 @@ shared_ptr<ch_frb_io::intensity_network_stream> l1_params::make_input_stream(int
     return ch_frb_io::intensity_network_stream::make(ini_params);
 }
 
-/*
-class my_coarse_trigger_set : public bonsai::coarse_trigger_set {
+class my_coarse_trigger_set { //: public bonsai::coarse_trigger_set {
 public:
-    my_coarse_trigger_set(const bonsai::coarse_trigger_set &t);
-    MSGPACK_DEFINE(trigger_vec);
+    //my_coarse_trigger_set(const bonsai::coarse_trigger_set &t);
+    my_coarse_trigger_set();
+
+    int dm_coarse_graining_factor;
+    int ndm_coarse;
+    int ndm_fine;
+    int nt_coarse_per_chunk;
+    int nsm;
+    int nbeta;
+    int tm_stride_dm;
+    int tm_stride_sm;
+    int tm_stride_beta;
+    int ntr_tot;
+    std::vector<float> trigger_vec;
+
+    MSGPACK_DEFINE(dm_coarse_graining_factor,
+                   ndm_coarse, ndm_fine, nt_coarse_per_chunk, nsm, nbeta,
+                   tm_stride_dm, tm_stride_sm, tm_stride_beta, ntr_tot, trigger_vec);
 };
 
+my_coarse_trigger_set::my_coarse_trigger_set() {}
+
+/*
 my_coarse_trigger_set::my_coarse_trigger_set(const bonsai::coarse_trigger_set& t) :
     dm_coarse_graining_factor(t.dm_coarse_graining_factor)
 {}
@@ -175,19 +198,28 @@ my_coarse_trigger_set::my_coarse_trigger_set(const bonsai::coarse_trigger_set& t
 
 class l1b_trigger_stream : public bonsai::trigger_output_stream {
 public:
-    l1b_trigger_stream();
+    l1b_trigger_stream(zmq::context_t* ctx, string addr);
     virtual ~l1b_trigger_stream();
 
     virtual void start_processor() override { }
     virtual void process_triggers(const std::vector<std::shared_ptr<bonsai::coarse_trigger_set>> &triggers, int ichunk) override;
     virtual void end_processor() override { }
+protected:
+    zmq::context_t* zmqctx;
+    zmq::socket_t socket;
 };
 
-l1b_trigger_stream::l1b_trigger_stream() {
-    cout << "Hello I am an l1b_trigger_stream" << endl;
+l1b_trigger_stream::l1b_trigger_stream(zmq::context_t* ctx, string addr) :
+    zmqctx(ctx ? NULL : new zmq::context_t()),
+    socket(*zmqctx, ZMQ_PUB) {
+    cout << "Connecting socket to L1b at " << addr << endl;
+    socket.connect(addr);
 }
 
 l1b_trigger_stream::~l1b_trigger_stream() {
+    socket.close();
+    if (zmqctx)
+        delete zmqctx;
 }
 
 // helper for the next function
@@ -202,16 +234,34 @@ static zmq::message_t* sbuffer_to_message(msgpack::sbuffer &buffer) {
 }
 
 void l1b_trigger_stream::process_triggers(const std::vector<std::shared_ptr<bonsai::coarse_trigger_set>> &triggers, int ichunk) {
-    cout << "l1b_trigger_stream" << endl;
-    
     msgpack::sbuffer buffer;
-    msgpack::pack(buffer, triggers);
+    vector<my_coarse_trigger_set> mytriggers;
+    for (auto it=triggers.begin(); it != triggers.end(); it++) {
+        my_coarse_trigger_set mt;
+        mt.dm_coarse_graining_factor = (*it)->dm_coarse_graining_factor;
+        mt.ndm_coarse = (*it)->ndm_coarse;
+        mt.ndm_fine = (*it)->ndm_fine;
+        mt.nt_coarse_per_chunk = (*it)->nt_coarse_per_chunk;
+        mt.nsm = (*it)->nsm;
+        mt.nbeta = (*it)->nbeta;
+        mt.tm_stride_dm = (*it)->tm_stride_dm;
+        mt.tm_stride_sm = (*it)->tm_stride_sm;
+        mt.tm_stride_beta = (*it)->tm_stride_beta;
+        mt.ntr_tot = mt.ndm_coarse * mt.nsm * mt.nbeta * mt.nt_coarse_per_chunk;
+        mt.trigger_vec = vector<float>(mt.ntr_tot);
+
+        float* triggers_data = &mt.trigger_vec[0];
+        memcpy(triggers_data, (*it)->triggers, mt.ntr_tot * sizeof(float));
+        mytriggers.push_back(mt);
+        chlog("First trigger: " << (*it)->triggers[0]);
+    }
+    msgpack::pack(buffer, mytriggers);
+    //msgpack::pack(buffer, triggers);
     zmq::message_t* reply = sbuffer_to_message(buffer);
 
-    cout << "msgpack buffer: " << reply->size() << endl;
-    //for (auto it=triggers.begin(); it != triggers.end(); it++)
-    //my_coarse_trigger_set mytrig(*(*it));
-    //mytrig.copy_triggers_from(*(*it));
+    chlog("Sending message of size: " << reply->size() << " to L1b");
+
+    socket.send(*reply);
 }
 
 
@@ -224,8 +274,7 @@ void l1b_trigger_stream::process_triggers(const std::vector<std::shared_ptr<bons
 shared_ptr<bonsai::trigger_output_stream> l1_params::make_output_stream(int ibeam)
 {
     assert(ibeam >= 0 && ibeam < nbeams);
-    //return make_shared<bonsai::trigger_output_stream> ();
-    return make_shared<l1b_trigger_stream> ();
+    return make_shared<l1b_trigger_stream>((zmq::context_t*)NULL, l1b_address[ibeam]);
 }
 
 shared_ptr<L1RpcServer> l1_params::make_l1rpc_server(int istream, shared_ptr<ch_frb_io::intensity_network_stream> stream) {
