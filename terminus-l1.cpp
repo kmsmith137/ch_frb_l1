@@ -233,7 +233,7 @@ int main(int argc, char **argv) {
     for (size_t ibeam = 0; ibeam < nbeams; ibeam++)
         // Note: the processing thread gets 'ibeam', not the beam id,
         // because that is what get_assembled_chunk() takes
-        processing_threads.push_back(std::thread(std::bind(processing_thread_main, instream, ibeam, bonsai_config, output_stream)));
+        processing_threads.push_back(std::thread(std::bind(processing_thread_main, instream, ini_params.beam_ids[ibeam], bonsai_config, output_stream)));
 
     if ((rpc_port.length() == 0) && (rpc_portnum == 0))
         rpc_port = "tcp://127.0.0.1:5555";
@@ -257,13 +257,13 @@ int main(int argc, char **argv) {
 }
 
 static void processing_thread_main(shared_ptr<ch_frb_io::intensity_network_stream> instream,
-                                   int ibeam,
+                                   int beam_id,
                                    const bonsai::config_params &cp,
                                    const shared_ptr<bonsai::trigger_output_stream> &tp) {
-    chime_log_set_thread_name("proc-" + std::to_string(ibeam));
-    chlog("Processing thread main: beam " << ibeam);
+    chime_log_set_thread_name("proc-" + std::to_string(beam_id));
+    chlog("Processing thread main: beam " << beam_id);
 
-    auto stream = rf_pipelines::make_chime_network_stream(instream, ibeam);
+    auto stream = rf_pipelines::make_chime_network_stream(instream, beam_id);
     auto transform_chain = make_rfi_chain();
     auto dedisperser = make_dedisperser(cp, tp);
     transform_chain.push_back(dedisperser);
