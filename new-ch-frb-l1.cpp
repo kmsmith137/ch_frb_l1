@@ -295,7 +295,7 @@ void l1b_trigger_stream::process_triggers(const std::vector<std::shared_ptr<bons
         float* triggers_data = &mt.trigger_vec[0];
         memcpy(triggers_data, (*it)->triggers, mt.ntr_tot * sizeof(float));
         mytriggers.push_back(mt);
-        chlog("First trigger: " << (*it)->triggers[0]);
+        //chlog("First trigger: " << (*it)->triggers[0]);
     }
     msgpack::pack(buffer, mytriggers);
     //msgpack::pack(buffer, triggers);

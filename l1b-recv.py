@@ -30,10 +30,20 @@ if __name__ == '__main__':
     addr = 'tcp://127.0.0.1:6666'
     socket.bind(addr)
 
+    i = 0
     while True:
         parts = socket.recv_multipart()
         print('Received:', len(parts), 'parts:', [len(p) for p in parts])
         p = parts[0]
+        print('Type:', type(p))
+        # 'p' is a string
+        fn = 'msg-%04i.msgpack' % i
+        i += 1
+        f = open(fn, 'wb')
+        f.write(p)
+        f.close()
+        print('Wrote', fn)
+
         msg = msgpack.unpackb(p)
         print('Message:', len(msg))
         for m in msg:
