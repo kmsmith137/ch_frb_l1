@@ -50,6 +50,7 @@ if __name__ == '__main__':
         parts = socket.recv_multipart()
         print('Received:', len(parts), 'parts:', [len(p) for p in parts])
         p = parts[0]
+
         # 'p' is a string
         fn = 'msg-%04i.msgpack' % i
         i += 1
