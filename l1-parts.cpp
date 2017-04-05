@@ -43,8 +43,11 @@ my_coarse_trigger_set::my_coarse_trigger_set(const bonsai::coarse_trigger_set& t
 
 l1b_trigger_stream::l1b_trigger_stream(zmq::context_t* ctx, string addr,
                                        bonsai::config_params bc) :
+  // If "ctx" is not NULL, use that to create the socket, but don't keep track of it.
+  // otherwise, create our own zmq context and use that to create the socket; save it
+  // as zmqctx so we can delete it upon deletion of this object.
     zmqctx(ctx ? NULL : new zmq::context_t()),
-    socket(*zmqctx, ZMQ_PUB),
+    socket((ctx ? *ctx : *zmqctx), ZMQ_PUB),
     bonsai_config(bc)
 {
     cout << "Connecting socket to L1b at " << addr << endl;
