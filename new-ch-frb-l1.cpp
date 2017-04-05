@@ -26,6 +26,7 @@
 #include <msgpack.hpp>
 
 #include "ch_frb_l1.hpp"
+#include "chlog.hpp"
 
 using namespace std;
 using namespace ch_frb_l1;
