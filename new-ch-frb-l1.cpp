@@ -22,6 +22,8 @@
 #include <rf_pipelines.hpp>
 #include <bonsai.hpp>
 #include <l1-rpc.hpp>
+#include <zmq.hpp>
+#include <msgpack.hpp>
 
 #include "ch_frb_l1.hpp"
 
@@ -159,6 +161,59 @@ shared_ptr<ch_frb_io::intensity_network_stream> l1_params::make_input_stream(int
     return ch_frb_io::intensity_network_stream::make(ini_params);
 }
 
+/*
+class my_coarse_trigger_set : public bonsai::coarse_trigger_set {
+public:
+    my_coarse_trigger_set(const bonsai::coarse_trigger_set &t);
+    MSGPACK_DEFINE(trigger_vec);
+};
+
+my_coarse_trigger_set::my_coarse_trigger_set(const bonsai::coarse_trigger_set& t) :
+    dm_coarse_graining_factor(t.dm_coarse_graining_factor)
+{}
+ */
+
+class l1b_trigger_stream : public bonsai::trigger_output_stream {
+public:
+    l1b_trigger_stream();
+    virtual ~l1b_trigger_stream();
+
+    virtual void start_processor() override { }
+    virtual void process_triggers(const std::vector<std::shared_ptr<bonsai::coarse_trigger_set>> &triggers, int ichunk) override;
+    virtual void end_processor() override { }
+};
+
+l1b_trigger_stream::l1b_trigger_stream() {
+    cout << "Hello I am an l1b_trigger_stream" << endl;
+}
+
+l1b_trigger_stream::~l1b_trigger_stream() {
+}
+
+// helper for the next function
+static void myfree(void* p, void*) {
+    ::free(p);
+}
+// Convert a msgpack buffer to a ZeroMQ message; the buffer is released.
+static zmq::message_t* sbuffer_to_message(msgpack::sbuffer &buffer) {
+    zmq::message_t* msg = new zmq::message_t(buffer.data(), buffer.size(), myfree);
+    buffer.release();
+    return msg;
+}
+
+void l1b_trigger_stream::process_triggers(const std::vector<std::shared_ptr<bonsai::coarse_trigger_set>> &triggers, int ichunk) {
+    cout << "l1b_trigger_stream" << endl;
+    
+    msgpack::sbuffer buffer;
+    msgpack::pack(buffer, triggers);
+    zmq::message_t* reply = sbuffer_to_message(buffer);
+
+    cout << "msgpack buffer: " << reply->size() << endl;
+    //for (auto it=triggers.begin(); it != triggers.end(); it++)
+    //my_coarse_trigger_set mytrig(*(*it));
+    //mytrig.copy_triggers_from(*(*it));
+}
+
 
 // l1_params::make_output_stream(): returns the stream object which will send coarse-grained
 // triggers to the sifting/grouping code.
@@ -169,7 +224,8 @@ shared_ptr<ch_frb_io::intensity_network_stream> l1_params::make_input_stream(int
 shared_ptr<bonsai::trigger_output_stream> l1_params::make_output_stream(int ibeam)
 {
     assert(ibeam >= 0 && ibeam < nbeams);
-    return make_shared<bonsai::trigger_output_stream> ();
+    //return make_shared<bonsai::trigger_output_stream> ();
+    return make_shared<l1b_trigger_stream> ();
 }
 
 shared_ptr<L1RpcServer> l1_params::make_l1rpc_server(int istream, shared_ptr<ch_frb_io::intensity_network_stream> stream) {
