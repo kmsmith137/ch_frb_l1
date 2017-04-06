@@ -228,12 +228,15 @@ int main(int argc, char **argv) {
     
     bonsai::config_params bonsai_config(bonsai_config_file);
 
-    shared_ptr<bonsai::trigger_output_stream> output_stream = make_shared<l1b_trigger_stream>(&zmqctx, l1b_address, bonsai_config);
+    // different bonsai dispersers apparently can't share triggers.
+    vector<shared_ptr<bonsai::trigger_output_stream> > output_streams;
+    for (size_t ibeam = 0; ibeam < nbeams; ibeam++)
+      output_streams.push_back(make_shared<l1b_trigger_stream>(&zmqctx, l1b_address, bonsai_config));
     
     for (size_t ibeam = 0; ibeam < nbeams; ibeam++)
         // Note: the processing thread gets 'ibeam', not the beam id,
         // because that is what get_assembled_chunk() takes
-        processing_threads.push_back(std::thread(std::bind(processing_thread_main, instream, ini_params.beam_ids[ibeam], bonsai_config, output_stream)));
+        processing_threads.push_back(std::thread(std::bind(processing_thread_main, instream, ini_params.beam_ids[ibeam], bonsai_config, output_streams[ibeam])));
 
     if ((rpc_port.length() == 0) && (rpc_portnum == 0))
         rpc_port = "tcp://127.0.0.1:5555";
