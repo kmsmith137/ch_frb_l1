@@ -1,6 +1,10 @@
+#ifndef CH_FRB_L1_PARTS_H
+#define CH_FRB_L1_PARTS_H
+
 #include <string>
 #include <vector>
 
+#include <msgpack.hpp>
 #include <zmq.hpp>
 
 #include <rf_pipelines.hpp>
@@ -74,3 +78,5 @@ std::vector<std::shared_ptr<rf_pipelines::wi_transform> > make_rfi_chain();
 
 std::shared_ptr<rf_pipelines::wi_transform> make_dedisperser(const bonsai::config_params &cp, const std::shared_ptr<bonsai::trigger_output_stream> &tp);
 
+
+#endif

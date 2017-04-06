@@ -38,6 +38,10 @@ class BonsaiCoarseTrigger(object):
         self.trigger = self.trigger.reshape((self.ndm_coarse, self.nsm, self.nbeta,
                                              self.nt_coarse_per_chunk))
 
+    def __repr__(self):
+        return 'BonsaiCoarseTrigger: FPGAcounts %i, trigger array shape %s' % (self.fpgacounts0, self.trigger.shape)
+
+        
 if __name__ == '__main__':
     context = zmq.Context()
     socket = context.socket(zmq.SUB)
@@ -51,6 +55,8 @@ if __name__ == '__main__':
         print('Received:', len(parts), 'parts:', [len(p) for p in parts])
         p = parts[0]
         # 'p' is a string
+
+        # For debugging/testing: write msgpack binaries to files.
         fn = 'msg-%04i.msgpack' % i
         i += 1
         f = open(fn, 'wb')
@@ -59,14 +65,11 @@ if __name__ == '__main__':
         print('Wrote', fn)
 
         msg = msgpack.unpackb(p)
-        print('Message:', len(msg))
+        print('Received', len(msg), 'triggers:')
         for m in msg:
-            #print('  type', type(m), len(m))
             t = BonsaiCoarseTrigger(m)
-            print('  trigger', t)
-            print('  t0', t.t0)
-            print('  fpgacounts:', t.fpgacounts0)
-            print('  ', t.trigger.shape)
-            print('  val', t.trigger.ravel()[0])
+            print('  ', t)
+            print('    t0', t.t0)
+            print('    first value:', t.trigger.ravel()[0])
 
 
