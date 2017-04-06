@@ -41,7 +41,7 @@ class BonsaiCoarseTrigger(object):
     def __repr__(self):
         return 'BonsaiCoarseTrigger: FPGAcounts %i, trigger array shape %s' % (self.fpgacounts0, self.trigger.shape)
 
-        
+
 if __name__ == '__main__':
     context = zmq.Context()
     socket = context.socket(zmq.SUB)
