@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 #include <msgpack.hpp>
 #include <zmq.hpp>
@@ -57,6 +58,33 @@ public:
                    tm_stride_dm, tm_stride_sm, tm_stride_beta, ntr_tot, trigger_vec);
 };
 
+class msgpack_config_serializer : public bonsai::config_serializer {
+public:
+    msgpack_config_serializer();
+    virtual ~msgpack_config_serializer();
+
+    virtual void write_param(const std::string &key, int val);
+    virtual void write_param(const std::string &key, double val);
+    virtual void write_param(const std::string &key, const std::string &val);
+    virtual void write_param(const std::string &key, const std::vector<int> &val);
+    virtual void write_param(const std::string &key, const std::vector<double> &val);
+    virtual void write_param(const std::string &key, const std::vector<std::string> &val);
+    virtual void write_analytic_variance(const float *in, const std::vector<int> &shape, int itree);
+    
+    int size();
+
+    void pack(msgpack::sbuffer &buffer, int index);
+    
+protected:
+    // All arrays are assumed to be the same size.
+    int sz;
+    std::unordered_map<std::string, int> vals_i;
+    std::unordered_map<std::string, double> vals_d;
+    std::unordered_map<std::string, std::string> vals_s;
+    std::unordered_map<std::string, std::vector<int> > vals_ivec;
+    std::unordered_map<std::string, std::vector<double> > vals_dvec;
+    std::unordered_map<std::string, std::vector<std::string> > vals_svec;
+};
 
 class l1b_trigger_stream : public bonsai::trigger_output_stream {
 public:
@@ -71,6 +99,7 @@ protected:
     zmq::context_t* zmqctx;
     zmq::socket_t socket;
     bonsai::config_params bonsai_config;
+    msgpack_config_serializer config_headers;
 };
 
 

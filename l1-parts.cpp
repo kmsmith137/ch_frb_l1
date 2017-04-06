@@ -41,6 +41,103 @@ my_coarse_trigger_set::my_coarse_trigger_set() {}
 my_coarse_trigger_set::my_coarse_trigger_set(const bonsai::coarse_trigger_set& t)
  */
 
+msgpack_config_serializer::msgpack_config_serializer() :
+    bonsai::config_serializer("msgpack_config_serializer", false),
+    sz(0)
+{
+}
+
+msgpack_config_serializer::~msgpack_config_serializer() {}
+
+void msgpack_config_serializer::write_param(const std::string &key, int val) {
+    vals_i[key] = val;
+}
+void msgpack_config_serializer::write_param(const std::string &key, double val) {
+    vals_d[key] = val;
+}
+void msgpack_config_serializer::write_param(const std::string &key, const std::string &val) {
+    vals_s[key] = val;
+}
+void msgpack_config_serializer::write_param(const std::string &key, const std::vector<int> &val) {
+    if (sz == 0)
+        sz = val.size();
+    else
+        assert(val.size() == sz);
+    vals_ivec[key] = val;
+}
+void msgpack_config_serializer::write_param(const std::string &key, const std::vector<double> &val) {
+    if (sz == 0)
+        sz = val.size();
+    else
+        assert(val.size() == sz);
+    vals_dvec[key] = val;
+}
+void msgpack_config_serializer::write_param(const std::string &key, const std::vector<string> &val) {
+    if (sz == 0)
+        sz = val.size();
+    else
+        assert(val.size() == sz);
+    vals_svec[key] = val;
+}
+void msgpack_config_serializer::write_analytic_variance(const float *in, const std::vector<int> &shape, int itree) {
+}
+
+int msgpack_config_serializer::size() {
+    return sz;
+}
+void msgpack_config_serializer::pack(msgpack::sbuffer &buffer, int index) {
+    assert(index >= 0);
+    assert(index < sz);
+    /*
+     // copy the scalar values
+     unordered_map<string, int> myvals_i(vals_i);
+     // add the appropriate value pulled from the array values
+     for (auto it=vals_ivec.begin(); it!=vals_ivec.end(); it++)
+     myvals_i[it->first] = it->second[index];
+     buffer.pack(myvals_i);
+     // same for doubles
+     unordered_map<string, double> myvals_d(vals_d);
+     for (auto it=vals_dvec.begin(); it!=vals_dvec.end(); it++)
+     myvals_d[it->first] = it->second[index];
+     buffer.pack(myvals_d);
+     // same for strings
+     unordered_map<string, string> myvals_s(vals_s);
+     // add the appropriate value pulled from the array values
+     for (auto it=vals_svec.begin(); it!=vals_svec.end(); it++)
+     myvals_s[it->first] = it->second[index];
+     buffer.pack(myvals_s);
+     */
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_map(vals_i.size() + vals_d.size() + vals_s.size() +
+                vals_ivec.size() + vals_dvec.size() + vals_svec.size());
+    for (auto it=vals_i.begin(); it!=vals_i.end(); it++) {
+        pk.pack(it->first);
+        pk.pack(it->second);
+    }
+    for (auto it=vals_ivec.begin(); it!=vals_ivec.end(); it++) {
+        pk.pack(it->first);
+        pk.pack(it->second[index]);
+    }
+    for (auto it=vals_d.begin(); it!=vals_d.end(); it++) {
+        pk.pack(it->first);
+        pk.pack(it->second);
+    }
+    for (auto it=vals_dvec.begin(); it!=vals_dvec.end(); it++) {
+        pk.pack(it->first);
+        pk.pack(it->second[index]);
+    }
+    for (auto it=vals_s.begin(); it!=vals_s.end(); it++) {
+        pk.pack(it->first);
+        pk.pack(it->second);
+    }
+    for (auto it=vals_svec.begin(); it!=vals_svec.end(); it++) {
+        pk.pack(it->first);
+        pk.pack(it->second[index]);
+    }
+}
+
+
+
 l1b_trigger_stream::l1b_trigger_stream(zmq::context_t* ctx, string addr,
                                        bonsai::config_params bc) :
   // If "ctx" is not NULL, use that to create the socket, but don't keep track of it.
@@ -48,10 +145,13 @@ l1b_trigger_stream::l1b_trigger_stream(zmq::context_t* ctx, string addr,
   // as zmqctx so we can delete it upon deletion of this object.
     zmqctx(ctx ? NULL : new zmq::context_t()),
     socket((ctx ? *ctx : *zmqctx), ZMQ_PUB),
-    bonsai_config(bc)
+    bonsai_config(bc),
+    config_headers()
 {
     cout << "Connecting socket to L1b at " << addr << endl;
     socket.connect(addr);
+
+    bonsai_config.write(config_headers, true);
 }
 
 l1b_trigger_stream::~l1b_trigger_stream() {
@@ -74,10 +174,20 @@ static zmq::message_t* sbuffer_to_message(msgpack::sbuffer &buffer) {
 void l1b_trigger_stream::process_triggers(const std::vector<std::shared_ptr<bonsai::coarse_trigger_set> > &triggers, int ichunk) {
     msgpack::sbuffer buffer;
     assert(triggers.size() == bonsai_config.trigger_lag_dt.size());
-    vector<my_coarse_trigger_set> mytriggers;
+    assert(triggers.size() == config_headers.size());
+
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+
+    //vector<my_coarse_trigger_set> mytriggers;
+    pk.pack_array(triggers.size() * 2);
+
     int i=0;
     for (auto it=triggers.begin(); it != triggers.end();
          it++, i++) {
+
+        // ?
+        config_headers.pack(buffer, i);
+
         my_coarse_trigger_set mt;
         mt.version = 1;
         mt.t0 = (*it)->t0;
@@ -100,9 +210,11 @@ void l1b_trigger_stream::process_triggers(const std::vector<std::shared_ptr<bons
 
         float* triggers_data = &mt.trigger_vec[0];
         memcpy(triggers_data, (*it)->triggers, mt.ntr_tot * sizeof(float));
-        mytriggers.push_back(mt);
+        //mytriggers.push_back(mt);
+
+        pk.pack(mt);
     }
-    msgpack::pack(buffer, mytriggers);
+    //msgpack::pack(buffer, mytriggers);
     zmq::message_t* reply = sbuffer_to_message(buffer);
     chlog("Sending message of size: " << reply->size() << " to L1b");
     socket.send(*reply);

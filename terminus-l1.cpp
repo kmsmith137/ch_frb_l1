@@ -64,7 +64,9 @@ static void usage() {
 static void processing_thread_main(shared_ptr<ch_frb_io::intensity_network_stream> stream, int ithread,
                                    const bonsai::config_params &cp,
                                    const shared_ptr<bonsai::trigger_output_stream> &tp);
-                                   
+
+
+
 int main(int argc, char **argv) {
 
     string dest = "127.0.0.1:10252";
@@ -228,6 +230,8 @@ int main(int argc, char **argv) {
     
     bonsai::config_params bonsai_config(bonsai_config_file);
 
+    bonsai_config.write("bc.txt", "txt", true);
+    
     // different bonsai dispersers apparently can't share triggers.
     vector<shared_ptr<bonsai::trigger_output_stream> > output_streams;
     for (size_t ibeam = 0; ibeam < nbeams; ibeam++)
