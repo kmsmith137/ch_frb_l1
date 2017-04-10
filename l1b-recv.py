@@ -19,19 +19,19 @@ class BonsaiCoarseTrigger(object):
     def __init__(self, msg):
         '''
         *msg*: msgpack-unpacked data to be interpreted.  This will be
-         a list; this code unpacks elements from that list.
+         a 3-element list whose first element is a version number,
+        second a dictionary of header values, and
+        third is the trigger array (vector of floats).
         '''
         self.version = msg[0]
-        assert(self.version == 1)
-        msg = msg[1:]
-        (self.t0, self.fpgacounts0,
-         self.max_dm, self.dt_sample, self.trigger_lag_dt,
-         self.nt_chunk, self.dm_coarse_graining_factor, self.ndm_coarse,
-         self.ndm_fine, self.nt_coarse_per_chunk, self.nsm,
-         self.nbeta, self.tm_stride_dm, self.tm_stride_sm, self.tm_stride_beta,
-         self.ntr_tot) = msg[:16]
-        msg = msg[16:]
-        trigger_vec = msg[0]
+        assert(self.version == 2)
+        header = msg[1]
+        for k in ['t0', 'fpgacounts0', 'max_dm', 'dt_sample',
+                  'trigger_lag_dt', 'nt_chunk', 'ndm_coarse',
+                  'ndm_fine', 'nt_coarse_per_chunk', 'nsm', 'nbeta',
+                  'ntr_tot']:
+            setattr(self, k, header[k])
+        trigger_vec = msg[2]
         # if packed as binary...
         #self.trigger = np.fromstring(trigger_vec, dtype='<f4')
         self.trigger = np.array(trigger_vec)

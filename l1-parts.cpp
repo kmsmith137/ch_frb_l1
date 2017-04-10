@@ -162,13 +162,13 @@ void l1b_trigger_stream::process_triggers(const std::vector<std::shared_ptr<bons
     for (auto it=triggers.begin(); it != triggers.end();
          it++, i++) {
 
-        pk.pack_array(2);
-        
-        config_headers.pack(pk, i, 5);
-        // Add parameters to config_headers
-        int version = 1;
-        pk.pack("version");
+        pk.pack_array(3);
+
+        int version = 2;
         pk.pack(version);
+
+        config_headers.pack(pk, i, 4);
+        // Add parameters to config_headers
         double t0 = (*it)->t0;
         pk.pack("t0");
         pk.pack(t0);
