@@ -167,7 +167,7 @@ void l1b_trigger_stream::process_triggers(const std::vector<std::shared_ptr<bons
         int version = 2;
         pk.pack(version);
 
-        config_headers.pack(pk, i, 4);
+        config_headers.pack(pk, i, 5);
         // Add parameters to config_headers
         double t0 = (*it)->t0;
         pk.pack("t0");
@@ -175,6 +175,8 @@ void l1b_trigger_stream::process_triggers(const std::vector<std::shared_ptr<bons
         uint64_t fpgacounts0 = t0 / rf_pipelines::constants::chime_seconds_per_fpga_count;
         pk.pack("fpgacounts0");
         pk.pack(fpgacounts0);
+        pk.pack("chime_seconds_per_fpgacount");
+        pk.pack(rf_pipelines::constants::chime_seconds_per_fpga_count);
         pk.pack("ndm_fine");
         pk.pack((*it)->ndm_fine);
         size_t ntr_tot = (*it)->ntr_tot;
