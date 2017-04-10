@@ -76,11 +76,11 @@ void msgpack_config_serializer::write_param(const std::string &key, const std::v
 void msgpack_config_serializer::write_analytic_variance(const float *in, const std::vector<int> &shape, int itree) {
 }
 
-int msgpack_config_serializer::size() {
+size_t msgpack_config_serializer::size() {
     return sz;
 }
 void msgpack_config_serializer::pack(msgpack::packer<msgpack::sbuffer> &pk,
-                                     int index, int nextra) {
+                                     size_t index, size_t nextra) {
     assert(index >= 0);
     assert(index < sz);
 

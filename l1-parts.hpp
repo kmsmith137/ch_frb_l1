@@ -24,13 +24,13 @@ public:
     virtual void write_param(const std::string &key, const std::vector<std::string> &val);
     virtual void write_analytic_variance(const float *in, const std::vector<int> &shape, int itree);
     
-    int size();
+    size_t size();
 
-    void pack(msgpack::packer<msgpack::sbuffer> &packer, int index, int nextra);
+    void pack(msgpack::packer<msgpack::sbuffer> &packer, size_t index, size_t nextra);
     
 protected:
     // All arrays are assumed to be the same size.
-    int sz;
+    size_t sz;
     std::unordered_map<std::string, int> vals_i;
     std::unordered_map<std::string, double> vals_d;
     std::unordered_map<std::string, std::string> vals_s;
