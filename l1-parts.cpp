@@ -35,12 +35,6 @@ vector<shared_ptr<rf_pipelines::wi_transform>> make_rfi_chain()
     return { t1, t2 };
 }
 
-my_coarse_trigger_set::my_coarse_trigger_set() {}
-
-/*
-my_coarse_trigger_set::my_coarse_trigger_set(const bonsai::coarse_trigger_set& t)
- */
-
 msgpack_config_serializer::msgpack_config_serializer() :
     bonsai::config_serializer("msgpack_config_serializer", false),
     sz(0)
@@ -85,31 +79,15 @@ void msgpack_config_serializer::write_analytic_variance(const float *in, const s
 int msgpack_config_serializer::size() {
     return sz;
 }
-void msgpack_config_serializer::pack(msgpack::sbuffer &buffer, int index) {
+void msgpack_config_serializer::pack(msgpack::packer<msgpack::sbuffer> &pk,
+                                     int index, int nextra) {
     assert(index >= 0);
     assert(index < sz);
-    /*
-     // copy the scalar values
-     unordered_map<string, int> myvals_i(vals_i);
-     // add the appropriate value pulled from the array values
-     for (auto it=vals_ivec.begin(); it!=vals_ivec.end(); it++)
-     myvals_i[it->first] = it->second[index];
-     buffer.pack(myvals_i);
-     // same for doubles
-     unordered_map<string, double> myvals_d(vals_d);
-     for (auto it=vals_dvec.begin(); it!=vals_dvec.end(); it++)
-     myvals_d[it->first] = it->second[index];
-     buffer.pack(myvals_d);
-     // same for strings
-     unordered_map<string, string> myvals_s(vals_s);
-     // add the appropriate value pulled from the array values
-     for (auto it=vals_svec.begin(); it!=vals_svec.end(); it++)
-     myvals_s[it->first] = it->second[index];
-     buffer.pack(myvals_s);
-     */
-    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+
+    // Pack heterogeneous dictionary from scalar and array values (indexed by 'index')
     pk.pack_map(vals_i.size() + vals_d.size() + vals_s.size() +
-                vals_ivec.size() + vals_dvec.size() + vals_svec.size());
+                vals_ivec.size() + vals_dvec.size() + vals_svec.size()
+                + nextra);
     for (auto it=vals_i.begin(); it!=vals_i.end(); it++) {
         pk.pack(it->first);
         pk.pack(it->second);
@@ -178,43 +156,38 @@ void l1b_trigger_stream::process_triggers(const std::vector<std::shared_ptr<bons
 
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
 
-    //vector<my_coarse_trigger_set> mytriggers;
-    pk.pack_array(triggers.size() * 2);
+    pk.pack_array(triggers.size());
 
     int i=0;
     for (auto it=triggers.begin(); it != triggers.end();
          it++, i++) {
 
-        // ?
-        config_headers.pack(buffer, i);
+        pk.pack_array(2);
+        
+        config_headers.pack(pk, i, 5);
+        // Add parameters to config_headers
+        int version = 1;
+        pk.pack("version");
+        pk.pack(version);
+        double t0 = (*it)->t0;
+        pk.pack("t0");
+        pk.pack(t0);
+        uint64_t fpgacounts0 = t0 / rf_pipelines::constants::chime_seconds_per_fpga_count;
+        pk.pack("fpgacounts0");
+        pk.pack(fpgacounts0);
+        pk.pack("ndm_fine");
+        pk.pack((*it)->ndm_fine);
+        size_t ntr_tot = (*it)->ntr_tot;
+        pk.pack("ntr_tot");
+        pk.pack(ntr_tot);
 
-        my_coarse_trigger_set mt;
-        mt.version = 1;
-        mt.t0 = (*it)->t0;
-        mt.fpgacounts0 = mt.t0 / rf_pipelines::constants::chime_seconds_per_fpga_count;
-        mt.max_dm = bonsai_config.max_dm[i];
-        mt.dt_sample = bonsai_config.dt_sample;
-        mt.trigger_lag_dt = bonsai_config.trigger_lag_dt[i];
-        mt.nt_chunk = bonsai_config.nt_chunk;
-        mt.dm_coarse_graining_factor = (*it)->dm_coarse_graining_factor;
-        mt.ndm_coarse = (*it)->ndm_coarse;
-        mt.ndm_fine = (*it)->ndm_fine;
-        mt.nt_coarse_per_chunk = (*it)->nt_coarse_per_chunk;
-        mt.nsm = (*it)->nsm;
-        mt.nbeta = (*it)->nbeta;
-        mt.tm_stride_dm = (*it)->tm_stride_dm;
-        mt.tm_stride_sm = (*it)->tm_stride_sm;
-        mt.tm_stride_beta = (*it)->tm_stride_beta;
-        mt.ntr_tot = mt.ndm_coarse * mt.nsm * mt.nbeta * mt.nt_coarse_per_chunk;
-        mt.trigger_vec = vector<float>(mt.ntr_tot);
-
-        float* triggers_data = &mt.trigger_vec[0];
-        memcpy(triggers_data, (*it)->triggers, mt.ntr_tot * sizeof(float));
-        //mytriggers.push_back(mt);
-
-        pk.pack(mt);
+        // Create vector<float> for msgpack serialization.
+        vector<float> trigger_vec(ntr_tot);
+        float* triggers_data = &trigger_vec[0];
+        memcpy(triggers_data, (*it)->triggers, ntr_tot * sizeof(float));
+        pk.pack(trigger_vec);
     }
-    //msgpack::pack(buffer, mytriggers);
+
     zmq::message_t* reply = sbuffer_to_message(buffer);
     chlog("Sending message of size: " << reply->size() << " to L1b");
     socket.send(*reply);

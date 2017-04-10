@@ -11,53 +11,6 @@
 #include <rf_pipelines.hpp>
 #include <bonsai.hpp>
 
-class my_coarse_trigger_set { //: public bonsai::coarse_trigger_set {
-public:
-    //my_coarse_trigger_set(const bonsai::coarse_trigger_set &t);
-    my_coarse_trigger_set();
-
-    // The coarse DM index 'i' corresponds to DM range:
-    //    i * (max_dm/ndm_coarse) <= DM <= (i+1) * (max_dm/ndm_coarse)
-
-    // The time index needs a little more explanation.  For purposes of triggering, the "arrival time"
-    // of an FRB is the time when it arrives in the lowest frequency band.  Additionally, the trigger
-    // has a small time offset applied (the trigger is slightly delayed relative to the FRB) for
-    // technical convenience in the assembly language kernels.  This time offset is usually less than
-    // one coarse-grained trigger.
-
-    // The coarse time index 'i' corresponds to pulse arrival time range (relative to the
-    // beginning of the chunk):
-    //
-    //    i*dt0 - trigger_lag_dt  <= t <= (i+1)*dt0 - trigger_lag_dt
-    //
-    // where dt0 = (nt_chunk * dt_sample) / nt_coarse_per_chunk is the time duration of one
-    // coarse-grained trigger.
-    
-    int version;
-    double t0;
-    uint64_t fpgacounts0;
-    float max_dm;
-    float dt_sample;
-    float trigger_lag_dt;
-    int nt_chunk;
-    int dm_coarse_graining_factor;
-    int ndm_coarse;
-    int ndm_fine;
-    int nt_coarse_per_chunk;
-    int nsm;
-    int nbeta;
-    int tm_stride_dm;
-    int tm_stride_sm;
-    int tm_stride_beta;
-    int ntr_tot;
-    std::vector<float> trigger_vec;
-
-    MSGPACK_DEFINE(version, t0, fpgacounts0, max_dm, dt_sample, trigger_lag_dt,
-                   nt_chunk, dm_coarse_graining_factor,
-                   ndm_coarse, ndm_fine, nt_coarse_per_chunk, nsm, nbeta,
-                   tm_stride_dm, tm_stride_sm, tm_stride_beta, ntr_tot, trigger_vec);
-};
-
 class msgpack_config_serializer : public bonsai::config_serializer {
 public:
     msgpack_config_serializer();
@@ -73,7 +26,7 @@ public:
     
     int size();
 
-    void pack(msgpack::sbuffer &buffer, int index);
+    void pack(msgpack::packer<msgpack::sbuffer> &packer, int index, int nextra);
     
 protected:
     // All arrays are assumed to be the same size.

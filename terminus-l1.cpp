@@ -58,14 +58,12 @@ static void usage() {
 
  */
 
-// this function is required to pull assembled_chunks from the end of
-// the L1 pipeline.  These would go on to RFI removal and Bonsai
-// dedispersion in real life L1...
-static void processing_thread_main(shared_ptr<ch_frb_io::intensity_network_stream> stream, int ithread,
+// this pulls assembled_chunks from the L1 network receiver and
+// performs RFI removal and Bonsai dedispersion on them.
+static void processing_thread_main(shared_ptr<ch_frb_io::intensity_network_stream> stream,
+                                   int ithread,
                                    const bonsai::config_params &cp,
                                    const shared_ptr<bonsai::trigger_output_stream> &tp);
-
-
 
 int main(int argc, char **argv) {
 

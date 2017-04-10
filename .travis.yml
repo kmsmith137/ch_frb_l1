@@ -1,11 +1,5 @@
 # Travis-CI.org build script
 
-# To merge:
-#   https://github.com/kmsmith137/simpulse/pull/2
-#   https://github.com/kmsmith137/simd_helpers/pull/1
-#   https://github.com/CHIMEFRB/bonsai/pull/2
-#   https://github.com/kmsmith137/rf_pipelines/pull/16
-
 # "trusty" is Ubuntu 14.04.5 LTS
 # gcc 4.8.4
 
@@ -35,16 +29,10 @@ before_script:
 
     - cd
     - ls
-    #- git clone https://github.com/zeromq/libzmq.git
-    #- git checkout v4.2.1
-    #- ./autogen.sh
+    # We cache the "libzmq" directory -- does it exist & is it a valid git repo?
     - if [ -d "libzmq" ]; then (cd libzmq && git describe) || rm -R libzmq; fi
     - if [ ! -d "libzmq" ]; then (git clone https://github.com/zeromq/libzmq.git && cd libzmq && git checkout v4.2.1 && ./autogen.sh); fi
     - cd libzmq
-    #- git pull
-    # - wget https://github.com/zeromq/libzmq/releases/download/v4.2.0/zeromq-4.2.0.tar.gz
-    # - tar xzf zeromq-4.2.0.tar.gz
-    # - cd zeromq-4.2.0
     - ./configure --prefix=${HOME}/zmq --disable-perf --disable-curve -disable-curve-keygen --without-docs
     - make
     - make install
@@ -71,7 +59,7 @@ before_script:
 
     - export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:~/chime/lib
 
-    # Environment variables respected by (some) Makefile.local files
+    # Environment variables respected by (some) CHIME Makefile.local files
     - export LIBDIR=~/chime/lib
     - export INCDIR=~/chime/include
     - export BINDIR=~/chime/bin
@@ -95,23 +83,12 @@ before_script:
     - cd
     - git clone https://github.com/kmsmith137/simd_helpers.git
     - cd simd_helpers
-    ## Goes with bonsai v10
-    - git checkout v4_devel
     - ln -s site/Makefile.local.norootprivs Makefile.local
     - make install
 
-    # - python -c "import distutils.sysconfig; print(distutils.sysconfig.get_python_inc())"
-    # #- dpkg -L python-numpy
-    # - python -c "import sys; print('\n'.join(sys.path))"
-    # - python -c "import numpy; print(numpy.get_include())"
-    # - cython --version
-
     - cd
-    #- git clone https://github.com/kmsmith137/simpulse.git
-    - git clone https://github.com/dstndstn/simpulse.git
+    - git clone https://github.com/kmsmith137/simpulse.git
     - cd simpulse
-    ### TEMP
-    - git checkout travis
     - ln -s site/Makefile.local.travis Makefile.local
     - make
     - make install
@@ -126,24 +103,17 @@ before_script:
 
     - cd
     ###- git clone https://github.com/CHIMEFRB/bonsai.git
-    ###- git clone https://github.com/dstndstn/bonsai.git
     ###- cd bonsai
-    ### TEMP
-    ###- git checkout travis
     - mkdir bonsai
-    - wget http://broiler.astrometry.net/~dstn/temp/bonsai-v10.tar.gz
-    - tar xzf bonsai-v10.tar.gz
+    - wget -O bonsai.tgz http://broiler.astrometry.net/~dstn/temp/bonsai-master-2017-04-10.tgz
+    - tar xzf bonsai.tgz
     - ln -s site/Makefile.local.travis Makefile.local
     - make
     - make install
 
     - cd
-    ###- git clone https://github.com/kmsmith137/rf_pipelines.git
-    - git clone https://github.com/dstndstn/rf_pipelines.git
+    - git clone https://github.com/kmsmith137/rf_pipelines.git
     - cd rf_pipelines
-    ### TEMP
-    #- git checkout hdf5conv-2
-    - git checkout hf5conv-2+v15
     - ln -s site/Makefile.local.travis Makefile.local
     - make
     - make install
