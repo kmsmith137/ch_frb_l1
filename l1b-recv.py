@@ -25,12 +25,13 @@ class BonsaiCoarseTrigger(object):
         '''
         self.version = msg[0]
         assert(self.version == 2)
-        header = msg[1]
+        self.header = msg[1]
+        # Pull a set of key values out of the header for easier use
         for k in ['t0', 'fpgacounts0', 'max_dm', 'dt_sample',
                   'trigger_lag_dt', 'nt_chunk', 'ndm_coarse',
                   'ndm_fine', 'nt_coarse_per_chunk', 'nsm', 'nbeta',
                   'ntr_tot']:
-            setattr(self, k, header[k])
+            setattr(self, k, self.header[k])
         trigger_vec = msg[2]
         # if packed as binary...
         #self.trigger = np.fromstring(trigger_vec, dtype='<f4')
@@ -71,5 +72,6 @@ if __name__ == '__main__':
             print('  ', t)
             print('    t0', t.t0)
             print('    first value:', t.trigger.ravel()[0])
+            print('    header:', t.header)
 
 
