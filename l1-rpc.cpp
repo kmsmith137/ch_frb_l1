@@ -163,14 +163,10 @@ public:
                     thisreply = new zmq::message_t();
                     thisreply->copy(reply);
                 }
-                try {
-                    if (!(_socket.send(*client, ZMQ_SNDMORE) &&
-                          _socket.send(*token_to_message(token), ZMQ_SNDMORE) &&
-                          _socket.send(*thisreply))) {
-                        chlog("ERROR: sending RPC reply: " << strerror(zmq_errno()));
-                    }
-                } catch (const zmq::error_t& e) {
-		    chlog("ERROR: sending RPC reply: " << e.what());
+                if (!(_socket.send(*client, ZMQ_SNDMORE) &&
+                      _socket.send(*token_to_message(token), ZMQ_SNDMORE) &&
+                      _socket.send(*thisreply))) {
+                    chlog("ERROR: sending RPC reply: " << strerror(zmq_errno()));
                 }
                 delete client;
                 delete thisreply;
