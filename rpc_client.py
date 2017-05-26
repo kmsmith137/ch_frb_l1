@@ -219,7 +219,7 @@ class RpcClient(object):
         return self.wait_for_all_writes(chunklists, tokens,
                                         timeout=timeout)
 
-    def wait_for_all_writes(chunklists, tokens, timeout=-1):
+    def wait_for_all_writes(self, chunklists, tokens, timeout=-1):
         ## Wait for notification that all writes have completed.
         results = []
         if timeout > 0:
