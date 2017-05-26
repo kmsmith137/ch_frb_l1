@@ -214,21 +214,23 @@ class RpcClient(object):
                       for p in parts]
         #print('Lists of chunks expected:', chunklists)
         if not waitAll:
-            return chunklists
+            return chunklists, tokens
 
+        return self.wait_for_all_writes(chunklists, tokens,
+                                        timeout=timeout)
+
+    def wait_for_all_writes(chunklists, tokens, timeout=-1):
         ## Wait for notification that all writes have completed.
         results = []
         if timeout > 0:
             t0 = time.time()
-        for k,token,chunklist in zip(servers, tokens, chunklists):
-            #print('Waiting for', N, 'chunks from', k, ', token', token)
+        for token,chunklist in zip(tokens, chunklists):
             if chunklist is None:
                 # Did not receive a reply from this server.
                 continue
             N = len(chunklist)
             n = 0
             while n < N:
-                #print('Waiting for', n, 'chunks from', k, ', token', token, 'got', len(rr))
                 [p] = self.wait_for_tokens([token], timeout=timeout)
                 # adjust timeout
                 if timeout > 0:
@@ -245,7 +247,6 @@ class RpcClient(object):
                 [beam, fpga0, fpgaN, filename, success, err] = chunk
                 res = WriteChunkReply(beam, fpga0, fpgaN, filename, success, err)
                 results.append(res)
-
         return results
 
     def shutdown(self, servers=None):
@@ -439,6 +440,9 @@ if __name__ == '__main__':
                         help='Start up chlog server?')
     parser.add_argument('--write', '-w', nargs=4, metavar='x',#['<comma-separated beams>', '<minfpga>', '<maxfpga>', '<filename-pattern>'],
                         help='Send write_chunks command: <comma-separated beams> <minfpga> <maxfpga> <filename-pattern>', action='append',
+                        default=[])
+    parser.add_argument('--awrite', nargs=4, metavar='x',
+                        help='Send async write_chunks command: <comma-separated beams> <minfpga> <maxfpga> <filename-pattern>', action='append',
         default=[])
     parser.add_argument('--list', action='store_true', default=False,
                         help='Just send list_chunks command and exit.')
@@ -486,6 +490,20 @@ if __name__ == '__main__':
             f0 = int(f0, 10)
             f1 = int(f1, 10)
             R = client.write_chunks(beams, f0, f1, fnpat)
+            print('Results:')
+            if R is not None:
+                for r in R:
+                    print('  ', r)
+        doexit = True
+
+    # Async write requests
+    if len(opt.awrite):
+        for beams, f0, f1, fnpat in opt.awrite:
+            beams = beams.split(',')
+            beams = [int(b,10) for b in beams]
+            f0 = int(f0, 10)
+            f1 = int(f1, 10)
+            R = client.write_chunks(beams, f0, f1, fnpat, waitAll=False)
             print('Results:')
             if R is not None:
                 for r in R:
