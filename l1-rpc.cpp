@@ -170,7 +170,7 @@ public:
                         chlog("ERROR: sending RPC reply: " << strerror(zmq_errno()));
                     }
                 } catch (const zmq::error_t& e) {
-                    chlog("ERROR sending RPC reply: " << e.what());
+		    chlog("ERROR: sending RPC reply: " << e.what());
                 }
                 delete client;
                 delete thisreply;
@@ -377,6 +377,7 @@ void L1RpcServer::run() {
                     chlog("  failed to un-msgpack message");
                 }
             }
+
             if (_shutdown)
                 break;
         }
@@ -402,7 +403,10 @@ void L1RpcServer::run() {
             assert(ok);
             more = _backend.getsockopt<int>(ZMQ_RCVMORE);
             assert(!more);
-            //cout << "  client: " << msg_string(client) << endl;
+
+	    //cout << "client: " << client.size() << " bytes" << endl;
+	    //// msg_string(client) << endl;
+            //cout << "token: " << token.size() << " bytes" << endl;
             //cout << "message: " << msg.size() << " bytes" << endl;
 
             // Don't need to unpack the message -- just pass it on to the client
@@ -412,16 +416,18 @@ void L1RpcServer::run() {
              msgpack::object obj = oh.get();
              cout << "  message: " << obj << endl;
              */
-            if (!(_frontend.send(client, ZMQ_SNDMORE) &&
-                  _frontend.send(token, ZMQ_SNDMORE) &&
-                  _frontend.send(msg))) {
+	    try {
+	      if (!(_frontend.send(client, ZMQ_SNDMORE) &&
+		    _frontend.send(token, ZMQ_SNDMORE) &&
+		    _frontend.send(msg))) {
                 chlog("ERROR: sending RPC reply: " << strerror(zmq_errno()));
-            }
+	      }
+	    } catch (const zmq::error_t& e) {
+	      // exception gets thrown if, eg, client disappears.
+	      chlog("ERROR: sending RPC reply: " << e.what());
+	    }
         }
     }
-
-
-
 
     chlog("L1 RPC server: broke out of main loop.  Joining workers...");
 
@@ -527,12 +533,16 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         zmq::message_t* reply = sbuffer_to_message(buffer);
         //cout << "  client: " << msg_string(*client) << endl;
 
-        if (!(_frontend.send(*client, ZMQ_SNDMORE) &&
-              _frontend.send(*token_to_message(token), ZMQ_SNDMORE) &&
-              _frontend.send(*reply))) {
-            chlog("ERROR: sending RPC reply: " << strerror(zmq_errno()));
-            return -1;
-        }
+	try {
+	  if (!(_frontend.send(*client, ZMQ_SNDMORE) &&
+		_frontend.send(*token_to_message(token), ZMQ_SNDMORE) &&
+		_frontend.send(*reply))) {
+              chlog("ERROR: sending RPC reply: " << strerror(zmq_errno()));
+              return -1;
+	  }
+	} catch (const zmq::error_t& e) {
+	  chlog("ERROR: sending RPC reply: " << e.what());
+	}
         //cout << "Sent stats reply!" << endl;
         return 0;
 
@@ -576,18 +586,22 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         msgpack::pack(buffer, allchunks);
         zmq::message_t* reply = sbuffer_to_message(buffer);
         //  Send reply back to client.
-        if (!(_frontend.send(*client, ZMQ_SNDMORE) &&
-              _frontend.send(*token_to_message(token), ZMQ_SNDMORE) &&
-              _frontend.send(*reply))) {
+	try {
+	  if (!(_frontend.send(*client, ZMQ_SNDMORE) &&
+		_frontend.send(*token_to_message(token), ZMQ_SNDMORE) &&
+		_frontend.send(*reply))) {
             chlog("ERROR: sending RPC reply: " << strerror(zmq_errno()));
             return -1;
-        }
+	  }
+	} catch (const zmq::error_t& e) {
+	  chlog("ERROR: sending RPC reply: " << e.what());
+	}
         return 0;
 
         /*
          The get_chunks() RPC is disabled for now.
     } else if (funcname == "get_chunks") {
-        cout << "RPC get_chunks() called" << endl;
+    //cout << "RPC get_chunks() called" << endl;
 
         // grab GetChunks_Request argument
         msgpack::object_handle oh =
@@ -621,6 +635,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         // Retrieve the chunks requested.
         vector<shared_ptr<assembled_chunk> > chunks;
         _get_chunks(req.beams, req.min_fpga, req.max_fpga, chunks);
+
         //cout << "get_chunks: got " << chunks.size() << " chunks" << endl;
 
         // Keep a list of the chunks to be written; we'll reply right away with this list.
@@ -655,12 +670,16 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         msgpack::pack(buffer, reply);
         zmq::message_t* replymsg = sbuffer_to_message(buffer);
 
-        if (!(_frontend.send(*client, ZMQ_SNDMORE) &&
-              _frontend.send(*token_to_message(token), ZMQ_SNDMORE) &&
-              _frontend.send(*replymsg))) {
+	try {
+	  if (!(_frontend.send(*client, ZMQ_SNDMORE) &&
+		_frontend.send(*token_to_message(token), ZMQ_SNDMORE) &&
+		_frontend.send(*replymsg))) {
             chlog("ERROR: sending RPC reply: " << strerror(zmq_errno()));
             return -1;
-        }
+	  }
+	} catch (const zmq::error_t& e) {
+	  chlog("ERROR: sending RPC reply: " << e.what());
+	}
 
         return 0;
     } else {
