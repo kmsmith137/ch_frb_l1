@@ -65,9 +65,13 @@ If you run into problems or have suggestions, let me know!
 
 - msgpack.  
 
-  In CentOS this is a one-liner: `sudo yum install msgpack-devel.x86_64`.
-
-  In osx, this is also a one-liner: `brew install msgpack`.
+    - In CentOS this is a one-liner: `sudo yum install msgpack-devel.x86_64`.
+    - In osx, this is also a one-liner: `brew install msgpack`.
+    - If you need to build from scratch, this is easy because we just use the header-only part of msgpack:
+      ```
+      git clone https://github.com/msgpack/msgpack-c
+      sudo cp -r msgpack-c/include/* /usr/local/include
+      ```
 
 - zeromq and cppzmq.  
 
