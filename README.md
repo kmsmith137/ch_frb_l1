@@ -30,7 +30,7 @@ For a dependency graph, see [dependencies.png](./dependencies.png).
     toplevel repo, whose README you're reading right now.
 
 There are a lot of external dependencies!
-For a list, see [doc/install.md](doc/install.md).
+For a list, see [doc/install.md](./doc/install.md).
 
 ### QUICK-START INSTALLATION ON CHIME MACHINES
 
