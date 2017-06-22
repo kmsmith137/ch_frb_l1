@@ -50,6 +50,11 @@ struct l0_params {
     int nfreq_coarse_per_packet = 0;
     int nt_per_packet = 0;
 
+    // If the optional parameter 'gbps_per_stream' is specified, then it determines the transmit rate.
+    // Otherwise, the transmit rate will be automatically determined by fpga_counts_per_sample.
+    // Note that a 'stream' is one (ipaddr, udp_port) pair!
+    double gbps_per_stream = 0.0;
+
     // Derived parameters
     int nbeams_per_stream = 0;
     int nthreads_per_stream = 0;
@@ -72,6 +77,8 @@ l0_params::l0_params(const string &filename)
 	this->fpga_counts_per_sample = p.read_scalar<int> ("fpga_counts_per_sample");
     if (p.has_param("max_packet_size"))
 	this->max_packet_size = p.read_scalar<int> ("max_packet_size");
+    if (p.has_param("gbps_per_stream"))
+	this->gbps_per_stream = p.read_scalar<double> ("gbps_per_stream");
 
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
@@ -95,6 +102,7 @@ l0_params::l0_params(const string &filename)
     assert(max_packet_size > 0);
     assert(ipaddr.size() == (unsigned int)nstreams);
     assert(port.size() == (unsigned int)nstreams);
+    assert(gbps_per_stream >= 0.0);
 
     for (int i = 0; i < nstreams; i++)
 	assert((port[i] > 0) && (port[i] < 65536));
@@ -197,6 +205,7 @@ shared_ptr<ch_frb_io::intensity_network_ostream> l0_params::make_ostream(int ith
     ini_params.nt_per_packet = nt_per_packet;
     ini_params.fpga_counts_per_sample = fpga_counts_per_sample;
     ini_params.print_status_at_end = false;
+    ini_params.target_gbps = this->gbps_per_stream;
 
     // only one distinguished thread will send end-of-stream packets
     ini_params.send_end_of_stream_packets = (jthread == nthreads_per_stream-1);
