@@ -34,6 +34,7 @@ using namespace ch_frb_l1;
 // More config parameters to come:
 //  - Parameters defining location of sifting/grouping code (e.g. local socket)
 
+
 struct l1_params {
     l1_params(const string &filename);
 
@@ -57,6 +58,9 @@ struct l1_params {
 
     // One L1-RPC per stream
     vector<string> rpc_address;
+
+    int assembled_chunk_ringbuf_capacity;
+    vector<int> telescoping_ringbuf_capacity;
 };
 
 
@@ -68,7 +72,9 @@ l1_params::l1_params(const string &filename)
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
     this->rpc_address = p.read_vector<string> ("rpc_address");
-    
+    this->assembled_chunk_ringbuf_capacity = p.read_scalar<int> ("assembled_chunk_ringbuf_capacity", 8);
+    this->telescoping_ringbuf_capacity = p.read_vector<int> ("telescoping_ringbuf_capacity", {});
+
     if ((ipaddr.size() == 1) && (port.size() > 1))
 	this->ipaddr = vector<string> (port.size(), ipaddr[0]);
     else if ((ipaddr.size() > 1) && (port.size() == 1))
@@ -89,6 +95,9 @@ l1_params::l1_params(const string &filename)
 	throw runtime_error(filename + " nbeams (=" + to_string(nbeams) + ") must be a multiple of nstreams (="
 			    + to_string(nstreams) + ", inferred from number of (ipaddr,port) pairs");
     }
+
+    assert(assembled_chunk_ringbuf_capacity > 0);
+    assert(telescoping_ringbuf_capacity.size() <= 4);
 
     p.check_for_unused_params();
 }
@@ -112,6 +121,10 @@ shared_ptr<ch_frb_io::intensity_network_stream> l1_params::make_input_stream(int
     ini_params.udp_port = port[istream];
     ini_params.beam_ids = vrange(4*istream, 4*(istream+1));
     ini_params.mandate_fast_kernels = true;
+
+    ini_params.assembled_ringbuf_capacity = this->assembled_chunk_ringbuf_capacity;
+    ini_params.assembled_ringbuf_nlevels = this->telescoping_ringbuf_capacity.size();
+    ini_params.ringbuf_n = this->telescoping_ringbuf_capacity;
     
     // Setting this flag means that an exception will be thrown if either:
     //
@@ -128,14 +141,6 @@ shared_ptr<ch_frb_io::intensity_network_stream> l1_params::make_input_stream(int
     // is something that we'll fix soon, but it's nontrivial.
     
     ini_params.throw_exception_on_buffer_drop = true;
-
-    // This disables the "telescoping" part of the telescoping ring buffers.
-    // Currently, the telescoping logic is too slow for real-time use.  (The
-    // symptom is that the assembler threads run slow, triggering condition (1)
-    // from the previous comment.)  We should be able to fix this by writing
-    // fancy assembly language kernels for the telescoping logic!
-
-    ini_params.assembled_ringbuf_nlevels = 1;
 
     // Note that processing threads 0-7 are pinned to cores 0-7 (on CPU1)
     // and cores 10-17 (on CPU2).  I decided to pin assembler threads to

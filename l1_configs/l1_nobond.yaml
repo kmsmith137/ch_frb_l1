@@ -2,3 +2,22 @@ nbeams: 16
 ipaddr: [ "10.0.0.201", "10.0.1.202", "10.0.2.203", "10.0.3.204" ]
 port: 10252
 rpc_address: [ "tcp://10.0.0.201:5555", "tcp://10.0.1.202:5555", "tcp://10.0.2.203:5555", "tcp://10.0.3.204:5555" ]
+
+
+# assembled_chunk_ringbuf_capacity
+#   (optional, default=8)
+#
+# This is the capacity of the ring buffer (in assembled_chunks, approximately 1 second each) between the assembler 
+# thread and the processing thread.  This buffer is logically separate from the telescoping_ring_buffer.
+# If the processing thread is running slow, this ring buffer will fill, and assembled_chunks will be dropped.
+
+assembled_chunk_ringbuf_capacity: 8
+
+
+# telescoping_ringbuf_capacity 
+#   (optional, default=[])
+#
+# This is a list of buffer lengths, starting from the least-downsampled level of the buffer, and ending in
+# in the most-downsampled level.
+
+telescoping_ringbuf_capacity: [ 8, 8, 8, 8 ]
