@@ -1,0 +1,22 @@
+# This is a config file for 'ch-frb-simulate-l0'.
+#
+# It is intended for a specific situation during Arun's visit:
+#    - L1 code is running on frb-compute-0
+#    - frb-compute-0 interfaces are configured as 10.0.0.10x, with no link bonding
+#    - L0 code is running on frb-l2l3, but for reasons we don't understand the 10 Gbps
+#      interface is throttled to 1 Gbps
+
+nbeams: 16
+nupfreq: 16
+
+# Divides data into four "streams", with four beams per stream.
+# In this 
+ipaddr: [ "10.0.0.101", "10.0.0.102", "10.0.0.103", "10.0.0.104" ]
+port: 6677
+
+# Four threads total (i.e. one per stream, it is possible to assign more)
+nthreads: 4
+
+# This optional parameter artificially throttles the packet output rate,
+# in this case to 0.2 Gbps/stream (i.e. 0.8 Gbps total).
+gbps_per_stream: 0.2
