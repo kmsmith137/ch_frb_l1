@@ -10,7 +10,7 @@ nbeams: 16
 nupfreq: 16
 
 # Divides data into four "streams", with four beams per stream.
-# In this 
+# In this configuration, each stream is on a different 1 Gbps interface, but a different UDP port.
 ipaddr: [ "10.0.0.101", "10.0.0.102", "10.0.0.103", "10.0.0.104" ]
 port: 6677
 
