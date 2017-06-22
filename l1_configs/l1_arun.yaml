@@ -1,0 +1,17 @@
+# This is a config file for 'new-ch-frb-l1'.
+#
+# It is intended for a specific situation during Arun's visit:
+#    - L1 code is running on frb-compute-0
+#    - frb-compute-0 interfaces are configured as 10.0.0.10x, with no link bonding
+#    - L0 code is running on frb-l2l3, but for reasons we don't understand the 10 Gbps
+#      interface is throttled to 1 Gbps
+
+nbeams: 16
+
+# Divides data into four "streams", with four beams per stream.
+# In this configuration, each stream is on a different 1 Gbps interface, but a different UDP port.
+ipaddr: [ "10.0.0.101", "10.0.0.102", "10.0.0.103", "10.0.0.104" ]
+port: 6677
+
+# RPC server locations for each stream.
+rpc_address: [ "tcp://10.0.0.101:5555", "tcp://10.0.0.102:5555", "tcp://10.0.0.103:5555", "tcp://10.0.0.104:5555" ]
