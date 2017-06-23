@@ -25,6 +25,7 @@ If you run into problems or have suggestions, let me know!
   - msgpack
   - zeromq
   - cppzmq (C++ bindings for zeromq, header-only, https://github.com/zeromq)
+  - pyzmq
   - jsoncpp
   - yaml-cpp
 
@@ -38,6 +39,7 @@ If you run into problems or have suggestions, let me know!
   pip install Pillow
   pip install h5py
   pip install Cython
+  pip install zmq
   ```
   To install without root privileges, do `pip install --user`.
   To upgrade a previous pip install, do `pip install --upgrade`.
@@ -155,10 +157,10 @@ These instructions apply to the following github repos:
     toplevel repo, whose README you're reading right now.
 
 They use a klunky build procedure which we should improve some day!
+Roughly, it works like this.  For each package, in the order above,
+you'll need to do the following:
 
-For each package, in the order above, do the following:
-
-   - You'll need to create a file Makefile.local in the toplevel directory which defines
+   - Create a file Makefile.local in the toplevel directory which defines
      a bunch of machine-dependent variables, such as compiler flags, install directories,
      and boolean flags indicating which optional dependencies are available.  
 
@@ -196,7 +198,7 @@ Some more notes on writing Makefile.local files:
     # This directory should contain e.g. Python.h
     PYTHON_INCDIR=/usr/include/python2.7
 
-   # This directory should contain e.g. numpy/arrayobject.h
+    # This directory should contain e.g. numpy/arrayobject.h
     NUMPY_INCDIR=/usr/lib64/python2.7/site-packages/numpy/core/include
 
     CPP=g++ -I$(PYTHON_INCDIR) -I$(NUMPY_INCDIR) ...
