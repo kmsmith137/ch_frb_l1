@@ -1,6 +1,6 @@
-//  ZeroMQ experiment, from "Hello World client in C++"
-//  Connects REQ socket to tcp://localhost:5555
-//  Sends "Hello" to server, expects "World" back
+// Toy C++ client which sends get_statistics RPC, and prints the result
+// (as a raw msgpack object without decoding, but it's vaguely human-readable)
+
 #include <zmq.hpp>
 #include <string>
 #include <iostream>
@@ -13,16 +13,29 @@
 
 using namespace std;
 
-int main() {
+int main(int argc, char **argv) 
+{
+    if (argc != 2) {
+	cerr << "usage: rpc-client <destination>\n"
+	     << "   where <destination> is a string such as tcp://10.0.0.101:5555\n"
+	     << "\n"
+	     << "This toy C++ client sends a get_statistics RPC, and prints ther result\n"
+	     << "(as a raw msgpack object without decoding, but it's vaguely human-readable)\n";
+
+	exit(2);
+    }
+    
+    const char *destination = argv[1];
+
     //  Prepare our context and socket
     zmq::context_t context(1);
     zmq::socket_t socket(context, ZMQ_DEALER);
     
-    cout << "Connecting to L1 RPC server..." << endl;
-    socket.connect("tcp://localhost:5555");
+    cout << "Connecting to L1 RPC server at..." << destination << endl;
+    socket.connect(destination);
     
     //  Do 10 requests, waiting each time for a response
-    for (int request_nbr = 0; request_nbr < 10; request_nbr++) {
+    for (int request_nbr = 0; request_nbr < 1; request_nbr++) {
 
         // RPC request buffer.
         msgpack::sbuffer buffer;
@@ -95,9 +108,7 @@ int main() {
             }
         }
          */
-
-        break;
-
     }
+
     return 0;
 }
