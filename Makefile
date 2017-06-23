@@ -96,10 +96,6 @@ install:
 uninstall:
 	echo 'Nothing to uninstall here!'
 
-flask:
-	PYTHONPATH=${PYTHONPATH}:. FLASK_APP=webapp.webapp FLASK_DEBUG=1 flask run --host 0.0.0.0
-.PHONY: flask
-
 
 # These are files; don't apply implicit make rules
 Makefile.local: ;
