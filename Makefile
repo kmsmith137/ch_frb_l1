@@ -34,7 +34,7 @@ endif
 #
 #
 
-BINARIES := ch-frb-l1 ch-frb-simulate-l0 rpc-client test-l1-rpc sim-l0-set hdf5-stream terminus-l1 new-ch-frb-l1
+BINARIES := ch-frb-l1 ch-frb-simulate-l0 rpc-client test-l1-rpc sim-l0-set hdf5-stream terminus-l1
 
 all: $(BINARIES) pybitshuffle.so
 .PHONY: all
@@ -56,10 +56,7 @@ dependencies.png: dependencies.dot
 rpc-client: rpc_client.o
 	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lch_frb_io -lzmq
 
-ch-frb-l1: ch-frb-l1.o $(L1_OBJS)
-	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lch_frb_io -lzmq
-
-new-ch-frb-l1: new-ch-frb-l1.o yaml_paramfile.o $(L1_OBJS)
+ch-frb-l1: ch-frb-l1.o yaml_paramfile.o $(L1_OBJS)
 	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lrf_pipelines -lbonsai -lch_frb_io -lzmq -lyaml-cpp
 
 sim-l0-set: sim-l0-set.cpp l0-sim.cpp

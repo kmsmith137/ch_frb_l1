@@ -61,7 +61,7 @@ using a relatively tame bonsai config (the dedispersion cores will be ~50% utili
 ```
 # on frb-compute-1
 cd ch_frb_l1
-./new-ch-frb-l1 l1_configs/l1_nobond.yaml bonsai_configs/benchmarks/params_noups_nbeta1.txt
+./ch-frb-l1 l1_configs/l1_nobond.yaml bonsai_configs/benchmarks/params_noups_nbeta1.txt
 ```
 After a few seconds, you should see 
 ```
@@ -86,7 +86,7 @@ After 60 seconds, you should see a dump of summary information on both nodes.
 
   - Right now there is basically no documentation!  But, I think if you read the simulation code 
     `ch-frb-simulate-l0.cpp` (which has been revamped relative to the master branch), and the L1 
-    server `new-ch-frb-l1.cpp` then I bet things will be pretty clear.
+    server `ch-frb-l1.cpp` then I bet things will be pretty clear.
 
   - The directory `ch_frb_l1/bonsai_configs/benchmarks` contains four bonsai config files.  The 
     computational cost of each can be measured with the command-line utility:
@@ -94,7 +94,7 @@ After 60 seconds, you should see a dump of summary information on both nodes.
     bonsai-time-dedisperser bonsai_configs/benchmarks/params_noups_nbeta1.txt 20
     ```
     This will run 20 copies of the dedisperser, one on each core, when it measures the running time.
-    In addition, the placeholder RFI removal in `new-ch-frb-l1.cpp` should take around 19% of a core.
+    In addition, the placeholder RFI removal in `ch-frb-l1.cpp` should take around 19% of a core.
     Using this procedure, I get the following timings:
     ```
     params_noups_nbeta1.txt: 0.38 + 0.19 = 0.57
@@ -110,7 +110,7 @@ After 60 seconds, you should see a dump of summary information on both nodes.
 
   - Another puzzle is that the UDP packet loss rate is around 10%.  This number was determined
     by comparing the output packet counts (which `ch-frb-simulate-l0` writes to stdout) with
-    the input packet counts (which `new-ch-frb-l1` writes to stdout via the `count_packets_good` 
+    the input packet counts (which `ch-frb-l1` writes to stdout via the `count_packets_good` 
     statistic).
 
     What makes this strange is that if I try a different test, namely maxing out every core with
