@@ -85,7 +85,7 @@ terminus-l1: terminus-l1.cpp $(L1_OBJS)
 
 # Python wrapper
 pybitshuffle.so: pybitshuffle.c
-	$(CC_PYMODULE) -o $@ $^ -lch_frb_io -lPython
+	$(CC_PYMODULE) -o $@ $^ -lch_frb_io
 
 clean:
 	rm -f *.o *~ $(BINARIES)

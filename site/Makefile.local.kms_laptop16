@@ -19,6 +19,6 @@ CPP_LFLAGS=-L. -L$(HOME)/lib
 # We use the C (not C++) compiler only once: to compile the 'pybitshuffle' python module.
 # We define a single Makefile variable CC_PYMODULE which contains the complete command line
 # needed to compile a python .so module, including the location of the python header files.
-# Note that you probably need the -shared flag here!
+# Note that you probably need the -shared flag here!  On osx/clang you'll also need -lPython.
 
-CC_PYMODULE=clang -std=c99 -shared -fPIC -I$(HOME)/include -I/usr/include/python2.7 -L$(HOME)/lib
+CC_PYMODULE=clang -std=c99 -shared -fPIC -I$(HOME)/include -I/usr/include/python2.7 -L$(HOME)/lib -lPython
