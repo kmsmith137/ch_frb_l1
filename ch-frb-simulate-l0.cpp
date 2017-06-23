@@ -60,8 +60,6 @@ struct l0_params {
     int nthreads_per_stream = 0;
     int nfreq_coarse_per_thread = 0;
     int packet_size = 0;
-    double gbps_per_thread = 0.0;
-    double gbps_tot = 0.0;
 };
 
 
@@ -170,13 +168,7 @@ l0_params::l0_params(const string &filename)
     else
 	throw runtime_error(filename + ": currently, either both parameters 'nfreq_coarse_per_packet', 'nt_per_packet' must be specified, or neither parameter");
 
-    // Derived parameters, part 2
     this->packet_size = ch_frb_io::intensity_packet::packet_size(nbeams_per_stream, nfreq_coarse_per_packet, nupfreq, nt_per_packet);
-
-    double num = (8.0e-9 * packet_size) * (nfreq_coarse_per_thread / double(nfreq_coarse_per_packet));
-    double den = (ch_frb_io::constants::dt_fpga * fpga_counts_per_sample * nt_per_packet);
-    this->gbps_per_thread = num/den;
-    this->gbps_tot = nthreads_tot * gbps_per_thread;
 
     p.check_for_unused_params();
 
@@ -233,9 +225,7 @@ void l0_params::write(ostream &os) const
        << "nbeams_per_stream = " << nbeams_per_stream << "\n"
        << "nthreads_per_stream = " << nthreads_per_stream << "\n"
        << "nfreq_coarse_per_thread = " << nfreq_coarse_per_thread << "\n"
-       << "packet_size = " << packet_size << "\n"
-       << "gbps_per_thread = " << gbps_per_thread << "\n"
-       << "gbps_tot = " << gbps_tot << "\n";
+       << "packet_size = " << packet_size << "\n";
 }
 
 
