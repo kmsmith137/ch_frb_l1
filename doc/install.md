@@ -63,67 +63,86 @@ If you run into problems or have suggestions, let me know!
 
 - lz4.  
 
-  In CentOS this is a one-liner: `sudo yum install lz4-devel`.
+   - osx one-liner: `brew install lz4`
 
-  (TODO: osx install instructions here.)
+   - centos one-liner: `sudo yum install lz4-devel`
+
+   - ubuntu one-liner: `sudo apt-get install liblz4-dev`
 
 - msgpack.  
 
-       - osx one-liner: `brew install msgpack`
+   - osx one-liner: `brew install msgpack`
 
-       - centos one-liner: `sudo yum install msgpack-devel.x86_64`
+   - centos one-liner: `sudo yum install msgpack-devel.x86_64`
 
-       - ubuntu: don't install the apt-get version, it is too old!  (e.g. it is missing /usr/include/msgpack/fbuffer.hpp)
+   - ubuntu: don't install the apt-get version, it is too old!  (e.g. it is missing /usr/include/msgpack/fbuffer.hpp)
 
-       - Building from scratch.  This is easy because we only use the msgpack headers, not the compiled library.
+   - Building from scratch.  This is easy because we only use the msgpack headers, not the compiled library.
        
-       	 Kendrick's procedure:
-         ```
-         git clone https://github.com/msgpack/msgpack-c
-         sudo cp -r msgpack-c/include/* /usr/local/include
-         ```
+     Kendrick's procedure:
+     ```
+     git clone https://github.com/msgpack/msgpack-c
+     sudo cp -r msgpack-c/include/* /usr/local/include
+     ```
 
-         Dustin's procedure: download the source package from, eg,
-         https://github.com/msgpack/msgpack-c/releases/download/cpp-2.1.0/msgpack-2.1.0.tar.gz
-         and then extract it and add the "msgpack-2.1.0/include" into the
-         include path.
+     Dustin's procedure: download the source package from, eg,
+     https://github.com/msgpack/msgpack-c/releases/download/cpp-2.1.0/msgpack-2.1.0.tar.gz
+     and then extract it and add the "msgpack-2.1.0/include" into the
+     include path.
 
 - zeromq and cppzmq.  
 
    - centos one-liner: `sudo yum install cppzmq-devel.x86_64`
 
-   - ubuntu one-liner: `sudo apt-get install libzmq-dev`
+   - ubuntu: don't use the apt-get packages, they are too old!.  You'll need to build both zeromq and cppzmq from scratch, see below.
 
-   - osx: zeromq can be installed with `brew install zeromq`, but you'll need to install cppzmq by hand.
+   - osx: zeromq can be installed with `brew install zeromq`, but you'll need to build cppzmq from scratch, see below.
    
-     Since it's a header-only library with two source files, I just ignored the build system and did:
+   - Building zmq from scratch: download from zeromq.org, and then do:
+     ```
+     ./configure --prefix=/usr/local
+     make
+     sudo make install
+     ```
+
+   - Building cppzmq from scratch: since it's a header-only library with two source files, I just ignored the build system and did:
      ```
      git clone https://github.com/zeromq/cppzmq.git
      cd cppzmq
-     cp zmq.hpp zmq_addon.hpp ~/include
+     sudo cp zmq.hpp zmq_addon.hpp /usr/local/include
      ```
 
 - jsoncpp (https://github.com/open-source-parsers/jsoncpp)
 
-  In CentOS, you can probably install with `yum install jsoncpp-devel`
+    - osx one-liner: `brew install jsoncpp`
 
-  In osx, you can probably install with: `brew install jsoncpp`
+    - centos one-liner: `sudo yum install jsoncpp-devel`
 
-  Building jsoncpp from scratch is a pain, but the following procedure worked for me:
-  ```
-  git clone https://github.com/open-source-parsers/jsoncpp
-  mkdir -p build/debug
-  cd build/debug
-  cmake -DCMAKE_INSTALL_PREFIX:PATH=$HOME -DCMAKE_CXX_FLAGS=-fPIC -DCMAKE_C_FLAGS=-fPIC -DCMAKE_BUILD_TYPE=debug -G "Unix Makefiles" ../..
-  make install
-  ```
+    - ubuntu one-liner: `sudo apt-get install libjsoncpp-dev`
+
+    - Building jsoncpp from scratch is a pain, but the following procedure worked for me:
+      ```
+      git clone https://github.com/open-source-parsers/jsoncpp
+      mkdir -p build/debug
+      cd build/debug
+      cmake -DCMAKE_INSTALL_PREFIX:PATH=$HOME -DCMAKE_CXX_FLAGS=-fPIC -DCMAKE_C_FLAGS=-fPIC -DCMAKE_BUILD_TYPE=debug -G "Unix Makefiles" ../..
+      make install
+      ```
 
  - yaml-cpp (https://github.com/jbeder/yaml-cpp)
 
-  In CentOS, you can probably install with `yum install yaml-cpp-devel`.
+    - osx one-liner: `brew install yaml-cpp`.
 
-  In osx, you can probably install with: `brew install yaml-cpp`.
+    - centos one-liner: `sudo yum install yaml-cpp-devel`.
 
+    - ubuntu two-liner: 
+      ```
+      sudo apt-get install libboost-all-dev    # overkill?
+      sudo apt-get install libyaml-cpp-dev
+      ```
+      Note: if only libyaml-cpp-dev is installed, then some necessary boost libraries will be missing.
+      Installing libboost-all-dev fixes this, but also installs around 200MB of software!  I didn't
+      bother trying to figure out exactly which boost libraries were needed.
 
 ### INSTALLING BITSHUFFLE (optional but recommended)
 
