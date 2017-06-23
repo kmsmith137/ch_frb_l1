@@ -40,6 +40,8 @@ If you run into problems or have suggestions, let me know!
   pip install h5py
   pip install Cython
   pip install zmq
+  pip install msgpack-python
+  pip install pyyaml
   ```
   To install without root privileges, do `pip install --user`.
   To upgrade a previous pip install, do `pip install --upgrade`.
@@ -67,25 +69,39 @@ If you run into problems or have suggestions, let me know!
 
 - msgpack.  
 
-    - In CentOS this is a one-liner: `sudo yum install msgpack-devel.x86_64`.
-    - In osx, this is also a one-liner: `brew install msgpack`.
-    - If you need to build from scratch, this is easy because we just use the header-only part of msgpack:
-      ```
-      git clone https://github.com/msgpack/msgpack-c
-      sudo cp -r msgpack-c/include/* /usr/local/include
-      ```
+       - osx one-liner: `brew install msgpack`
+
+       - centos one-liner: `sudo yum install msgpack-devel.x86_64`
+
+       - ubuntu: don't install the apt-get version, it is too old!  (e.g. it is missing /usr/include/msgpack/fbuffer.hpp)
+
+       - Building from scratch.  This is easy because we only use the msgpack headers, not the compiled library.
+       
+       	 Kendrick's procedure:
+         ```
+         git clone https://github.com/msgpack/msgpack-c
+         sudo cp -r msgpack-c/include/* /usr/local/include
+         ```
+
+         Dustin's procedure: download the source package from, eg,
+         https://github.com/msgpack/msgpack-c/releases/download/cpp-2.1.0/msgpack-2.1.0.tar.gz
+         and then extract it and add the "msgpack-2.1.0/include" into the
+         include path.
 
 - zeromq and cppzmq.  
 
-  In CentOS, both can be installed with `sudo yum install cppzmq-devel.x86_64`.
+   - centos one-liner: `sudo yum install cppzmq-devel.x86_64`
 
-  In osx, zeromq can be installed with `brew install zeromq`, but you'll need to install cppzmq by hand.
-  Since it's a header-only library with two source files, I just ignored the build system and did:
-  ```
-  git clone https://github.com/zeromq/cppzmq.git
-  cd cppzmq
-  cp zmq.hpp zmq_addon.hpp ~/include
-  ```
+   - ubuntu one-liner: `sudo apt-get install libzmq-dev`
+
+   - osx: zeromq can be installed with `brew install zeromq`, but you'll need to install cppzmq by hand.
+   
+     Since it's a header-only library with two source files, I just ignored the build system and did:
+     ```
+     git clone https://github.com/zeromq/cppzmq.git
+     cd cppzmq
+     cp zmq.hpp zmq_addon.hpp ~/include
+     ```
 
 - jsoncpp (https://github.com/open-source-parsers/jsoncpp)
 
