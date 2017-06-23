@@ -106,11 +106,13 @@ shared_ptr<ch_frb_io::intensity_network_stream> l1_params::make_input_stream(int
     if (nstreams % 2 == 1)
 	throw runtime_error("ch-frb-l1: nstreams must be even, in order to divide dedispersion threads evenly between the two CPUs");
 
+    int nbeams_per_stream = xdiv(nbeams, nstreams);
+    
     ch_frb_io::intensity_network_stream::initializer ini_params;
 
     ini_params.ipaddr = ipaddr[istream];
     ini_params.udp_port = port[istream];
-    ini_params.beam_ids = vrange(4*istream, 4*(istream+1));
+    ini_params.beam_ids = vrange(istream * nbeams_per_stream, (istream+1) * nbeams_per_stream);
     ini_params.mandate_fast_kernels = true;
     
     // Setting this flag means that an exception will be thrown if either:
@@ -231,7 +233,7 @@ static void dedispersion_thread_main(const l1_params &l1_config, const bonsai::c
 	    throw runtime_error("ch-frb-l1: this program is currently hardcoded to run on the 20-core chimefrb test nodes, and won't run on smaller machines");
 	
 	if (l1_config.nbeams != 16)
-	    throw runtime_error("ch-frb-l1: current core-pinning logic in dedispersion_thread_main() assumes 16 threads");
+	    throw runtime_error("ch-frb-l1: current core-pinning logic in dedispersion_thread_main() assumes 16 beams");
 	
 	int c = (ibeam / 8) * 10 + (ibeam % 8);
 	ch_frb_io::pin_thread_to_cores({c,c+20});
