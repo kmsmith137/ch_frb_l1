@@ -8,6 +8,10 @@ ifndef CPP
 $(error Fatal: Makefile.local must define CPP variable)
 endif
 
+ifndef CC_PYMODULE
+$(error Fatal: Makefile.local must define CC_PYMODULE variable)
+endif
+
 #
 # About the RPC subsystem: we're using ZeroMQ for the messaging
 # (sockets) and msgpack for the message encoding (wire format).  This
@@ -81,8 +85,7 @@ terminus-l1: terminus-l1.cpp $(L1_OBJS)
 
 # Python wrapper
 pybitshuffle.so: pybitshuffle.c
-	$(CC) -std=c99 -fPIC -c $^ $$(pkg-config --cflags python) -I$(INCDIR)
-	$(CC) -std=c99 -fPIC -o $@ -shared pybitshuffle.o $$(pkg-config --libs python) -L$(LIBDIR) -lch_frb_io
+	$(CC_PYMODULE) -o $@ $^ -lch_frb_io -lPython
 
 clean:
 	rm -f *.o *~ $(BINARIES)

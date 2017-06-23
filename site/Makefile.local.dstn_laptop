@@ -35,3 +35,11 @@ CPP_CFLAGS := -I. -I$(INCDIR) -I$(HDF5_INC_DIR)
 # Don't forget to put -L. and -L$(LIBDIR) on the command line (in this order)
 # Don't forget to add . and $(LIBDIR) in your LD_LIBRARY_PATH environment variable (in this order)
 CPP_LFLAGS=-L. -L$(LIBDIR) -L$(HDF5_LIB_DIR)
+
+
+# We use the C (not C++) compiler only once: to compile the 'pybitshuffle' python module.
+# We define a single Makefile variable CC_PYMODULE which contains the complete command line
+# needed to compile a python .so module, including the location of the python header files.
+# Note that you probably need the -shared flag here!
+
+CC_PYMODULE=$(CC) -std=c99 -shared -fPIC $$(pkg-config --cflags python) -I$(INCDIR) $$(pkg-config --libs python) -L$(LIBDIR)

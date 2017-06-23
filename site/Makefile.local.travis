@@ -36,3 +36,10 @@ CPP := $(CXX) -std=c++11 -pthread -fPIC -Wall $(OPT_FLAGS) -march=native -ffast-
 
 CPP_LFLAGS := -L. -L$(LIBDIR) -L$(ZMQ_LIB_DIR)
 
+
+# We use the C (not C++) compiler only once: to compile the 'pybitshuffle' python module.
+# We define a single Makefile variable CC_PYMODULE which contains the complete command line
+# needed to compile a python .so module, including the location of the python header files.
+# Note that you probably need the -shared flag here!
+
+CC_PYMODULE=$(CC) -std=c99 -shared -fPIC $$(pkg-config --cflags python) -I$(INCDIR) $$(pkg-config --libs python) -L$(LIBDIR)
