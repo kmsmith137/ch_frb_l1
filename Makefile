@@ -39,26 +39,6 @@ INCFILES := ch_frb_l1.hpp l1-rpc.hpp rpc.hpp
 
 L1_OBJS := l1-rpc.o
 
-# DEBUG -- objects from ch_frb_io
-IO_OBJS := \
-	../ch_frb_io/assembled_chunk.o \
-	../ch_frb_io/assembled_chunk_ringbuf.o \
-	../ch_frb_io/l1-ringbuf.o \
-	../ch_frb_io/avx2_kernels.o \
-	../ch_frb_io/hdf5.o \
-	../ch_frb_io/intensity_hdf5_file.o \
-	../ch_frb_io/intensity_hdf5_ofile.o \
-	../ch_frb_io/intensity_network_stream.o \
-	../ch_frb_io/intensity_network_ostream.o \
-	../ch_frb_io/intensity_packet.o \
-	../ch_frb_io/lexical_cast.o \
-	../ch_frb_io/udp_packet_list.o \
-	../ch_frb_io/udp_packet_ringbuf.o \
-	../ch_frb_io/bitshuffle/bitshuffle.o \
-	../ch_frb_io/bitshuffle/bitshuffle_core.o \
-	../ch_frb_io/bitshuffle/iochain.o \
-	../ch_frb_io/chlog.o
-
 # Append compile flags
 CPP_CFLAGS ?=
 CPP_CFLAGS += -I$(CPPZMQ_INC_DIR) -I$(MSGPACK_INC_DIR)
@@ -77,10 +57,6 @@ ch-frb-l1: ch-frb-l1.o $(L1_OBJS)
 
 new-ch-frb-l1: new-ch-frb-l1.o yaml_paramfile.o $(L1_OBJS)
 	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lrf_pipelines -lbonsai -lch_frb_io -lzmq -lyaml-cpp
-
-ch-frb-l1-debug: ch-frb-l1.cpp $(L1_OBJS) $(IO_OBJS)
-	cd ../ch_frb_io && make DEBUG=yes
-	$(CPP) -o $@ $(CPP_CFLAGS) $^ $(CPP_LFLAGS) -lzmq -lhdf5 -llz4
 
 sim-l0-set: sim-l0-set.cpp l0-sim.cpp
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io
