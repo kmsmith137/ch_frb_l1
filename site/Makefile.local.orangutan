@@ -1,4 +1,5 @@
-# Makefile.local for frb.compute-X
+# Makefile.local for orangutan.perimeterinstitute.ca
+# (a vintage-2017 ubuntu machine)
 
 # Directory where executables will be installed
 BINDIR=$(HOME)/bin

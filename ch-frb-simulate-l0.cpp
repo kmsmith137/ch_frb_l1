@@ -50,13 +50,16 @@ struct l0_params {
     int nfreq_coarse_per_packet = 0;
     int nt_per_packet = 0;
 
+    // If the optional parameter 'gbps_per_stream' is specified, then it determines the transmit rate.
+    // Otherwise, the transmit rate will be automatically determined by fpga_counts_per_sample.
+    // Note that a 'stream' is one (ipaddr, udp_port) pair!
+    double gbps_per_stream = 0.0;
+
     // Derived parameters
     int nbeams_per_stream = 0;
     int nthreads_per_stream = 0;
     int nfreq_coarse_per_thread = 0;
     int packet_size = 0;
-    double gbps_per_thread = 0.0;
-    double gbps_tot = 0.0;
 };
 
 
@@ -72,6 +75,8 @@ l0_params::l0_params(const string &filename)
 	this->fpga_counts_per_sample = p.read_scalar<int> ("fpga_counts_per_sample");
     if (p.has_param("max_packet_size"))
 	this->max_packet_size = p.read_scalar<int> ("max_packet_size");
+    if (p.has_param("gbps_per_stream"))
+	this->gbps_per_stream = p.read_scalar<double> ("gbps_per_stream");
 
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
@@ -95,6 +100,7 @@ l0_params::l0_params(const string &filename)
     assert(max_packet_size > 0);
     assert(ipaddr.size() == (unsigned int)nstreams);
     assert(port.size() == (unsigned int)nstreams);
+    assert(gbps_per_stream >= 0.0);
 
     for (int i = 0; i < nstreams; i++)
 	assert((port[i] > 0) && (port[i] < 65536));
@@ -162,13 +168,7 @@ l0_params::l0_params(const string &filename)
     else
 	throw runtime_error(filename + ": currently, either both parameters 'nfreq_coarse_per_packet', 'nt_per_packet' must be specified, or neither parameter");
 
-    // Derived parameters, part 2
     this->packet_size = ch_frb_io::intensity_packet::packet_size(nbeams_per_stream, nfreq_coarse_per_packet, nupfreq, nt_per_packet);
-
-    double num = (8.0e-9 * packet_size) * (nfreq_coarse_per_thread / double(nfreq_coarse_per_packet));
-    double den = (ch_frb_io::constants::dt_fpga * fpga_counts_per_sample * nt_per_packet);
-    this->gbps_per_thread = num/den;
-    this->gbps_tot = nthreads_tot * gbps_per_thread;
 
     p.check_for_unused_params();
 
@@ -197,6 +197,7 @@ shared_ptr<ch_frb_io::intensity_network_ostream> l0_params::make_ostream(int ith
     ini_params.nt_per_packet = nt_per_packet;
     ini_params.fpga_counts_per_sample = fpga_counts_per_sample;
     ini_params.print_status_at_end = false;
+    ini_params.target_gbps = this->gbps_per_stream;
 
     // only one distinguished thread will send end-of-stream packets
     ini_params.send_end_of_stream_packets = (jthread == nthreads_per_stream-1);
@@ -224,9 +225,7 @@ void l0_params::write(ostream &os) const
        << "nbeams_per_stream = " << nbeams_per_stream << "\n"
        << "nthreads_per_stream = " << nthreads_per_stream << "\n"
        << "nfreq_coarse_per_thread = " << nfreq_coarse_per_thread << "\n"
-       << "packet_size = " << packet_size << "\n"
-       << "gbps_per_thread = " << gbps_per_thread << "\n"
-       << "gbps_tot = " << gbps_tot << "\n";
+       << "packet_size = " << packet_size << "\n";
 }
 
 
