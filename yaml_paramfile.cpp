@@ -69,20 +69,24 @@ bool yaml_paramfile::has_param(const string &k) const
 
 void yaml_paramfile::check_for_unused_params(bool fatal) const
 {
-    bool flag = false;
+    vector<string> unused_keys;
+
+    for (const string &k: all_keys)
+	if (requested_keys.count(k) == 0)
+	    unused_keys.push_back(k);
+    
+    if (unused_keys.size() == 0)
+	return;
     
     stringstream ss;
-    ss << filename << "unrecognized params";
+    ss << ((unused_keys.size() > 1) ? "unused parameters " : "unused parameter ");
 
-    for (const string &k: all_keys) {
-	if (requested_keys.count(k) == 0) {
-	    ss << (flag ? ", " : " ") << k;
-	    flag = true;
-	}
+    for (unsigned int i = 0; i < unused_keys.size(); i++) {
+	if (i > 0)
+	    ss << ", ";
+	ss << "'" << unused_keys[i] << "'";
     }
 
-    if (!flag)
-	return;
     if (fatal)
 	_die(ss.str());
 
