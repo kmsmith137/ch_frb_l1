@@ -15,3 +15,19 @@ port: 6677
 
 # RPC server locations for each stream.
 rpc_address: [ "tcp://10.0.0.101:5555", "tcp://10.0.0.102:5555", "tcp://10.0.0.103:5555", "tcp://10.0.0.104:5555" ]
+
+# The "assembled_chunk_ringbuf" is the handoff between the assembler and dedispersion threads.
+# Each chunk is approximately one second of data.
+
+assembled_chunk_ringbuf_capacity: 4
+
+# The "telescoping_ringbuf" holds chunks for retrieval by RPC,
+# after they have been processed by dedispersion threads.  Each
+# level of the telescoping ring buffer is downsampled by a factor
+# of two, relative to the previous one.
+#
+# In this example, the number of chunks in the telescoping ring 
+# buffer is 12 (= 4+4+4), and it represents 28 seconds of data
+# (= 4+8+16).
+
+telescoping_ringbuf_capacity: [ 4, 4, 4 ]
