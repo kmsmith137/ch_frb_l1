@@ -125,8 +125,7 @@ shared_ptr<ch_frb_io::intensity_network_stream> l1_params::make_input_stream(int
     ini_params.mandate_fast_kernels = true;
 
     ini_params.assembled_ringbuf_capacity = this->assembled_chunk_ringbuf_capacity;
-    ini_params.assembled_ringbuf_nlevels = this->telescoping_ringbuf_capacity.size();
-    ini_params.ringbuf_n = this->telescoping_ringbuf_capacity;
+    ini_params.telescoping_ringbuf_capacity = this->telescoping_ringbuf_capacity;
     
     // Setting this flag means that an exception will be thrown if either:
     //
