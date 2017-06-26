@@ -222,13 +222,27 @@ class RpcClient(object):
             return tokens
         # This will wait for the initial replies from servers, listing
         # the chunks to be written out.
-        parts = self.wait_for_tokens(tokens, timeout=timeout)
+        parts,servers = self.wait_for_tokens(tokens, timeout=timeout, get_sockets=True)
         # We expect one message part for each token.
         chunklists = [msgpack.unpackb(p[0]) if p is not None else None
                       for p in parts]
-        #print('Lists of chunks expected:', chunklists)
+        #print('Chunklists:', chunklists)
+        #print('Servers:', servers)
         if not waitAll:
-            return chunklists, tokens
+            # Parse the results into WriteChunkReply objects, and add
+            # the .server value.
+            results = []
+            for chunks,server in zip(chunklists, servers):
+                if chunks is None:
+                    results.append(None)
+                    continue
+                rr = []
+                for chunk in chunks:
+                    res = WriteChunkReply(*chunk)
+                    res.server = self.rsockets[server]
+                    rr.append(res)
+                results.append(rr)
+            return results, tokens
 
         return self.wait_for_all_writes(chunklists, tokens,
                                         timeout=timeout)
@@ -597,7 +611,25 @@ if __name__ == '__main__':
         print('Result:', X)
 
     print('Bogus result:', client.get_writechunk_status('nonesuch'))
-    
+
+    chunks,tokens = client.write_chunks([77,78], minfpga, maxfpga, 'chunk2-beam(BEAM)-chunk(CHUNK)+(NCHUNK).msgpack', waitAll=False)
+    print('Got chunks:', chunks)
+    for chlist in chunks:
+        if chlist is None:
+            continue
+        for chunk in chlist:
+            print('Chunk:', chunk)
+            [R] = client.get_writechunk_status(chunk.filename, servers=[chunk.server])
+            print('Status:', R)
+    time.sleep(1)
+    for chlist in chunks:
+        if chlist is None:
+            continue
+        for chunk in chlist:
+            print('Chunk:', chunk)
+            [R] = client.get_writechunk_status(chunk.filename, servers=[chunk.server])
+            print('Status:', R)
+
     if opt.log:
         addr = logger.address
         client.stop_logging(addr)
