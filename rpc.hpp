@@ -157,9 +157,20 @@ public:
     std::vector<uint64_t> beams;
     uint64_t min_fpga;    // or 0 for no limit
     uint64_t max_fpga;    // or 0 for no limit
+
+    // CURRENTLY UNIMPLEMENTED:
+    // dispersion measure, when requesting a sweep
+    float dm;
+    // uncertainty in DM, when requesting a sweep
+    float dm_error;
+    // when requesting a sweep, requested width (in seconds) around the given DM
+    float sweep_width;
+    // when requesting frequency-binned data
+    int frequency_binning;
+
     std::string filename_pattern; // filename pattern
     int priority;
-    MSGPACK_DEFINE(beams, min_fpga, max_fpga, filename_pattern, priority);
+    MSGPACK_DEFINE(beams, min_fpga, max_fpga, dm, dm_error, sweep_width, frequency_binning, filename_pattern, priority);
 };
 
 class WriteChunks_Reply {

@@ -182,6 +182,10 @@ class RpcClient(object):
     
     def write_chunks(self, beams, min_fpga, max_fpga, filename_pattern,
                      priority=0,
+                     dm=0.,
+                     dm_error=0.,
+                     sweep_width=0.,
+                     frequency_binning=0,
                      servers=None, wait=True, timeout=-1, waitAll=True):
         '''
         Asks the RPC servers to write a set of chunks to disk.
@@ -190,6 +194,13 @@ class RpcClient(object):
         *min_fgpa*, *max_fpga*: range of FPGA-counts to write
         *filename_pattern*: printf filename pattern
         *priority*: of writes.
+
+        When requesting a sweep (NOT CURRENTLY IMPLEMENTED!):
+        *dm*, *dm_error*: floats, DM and uncertainty of the sweep to request
+        *sweep_width*: float, range in seconds to retrieve around the sweep
+
+        *frequency_binning*: int, the factor by which to bin frequency
+         data before writing.
         
         *wait*: wait for the initial replies listing the chunks to be written out.
         *waitAll*: wait for servers to reply that all chunks have been written out.
@@ -201,7 +212,7 @@ class RpcClient(object):
         for k in servers:
             self.token += 1
             hdr = msgpack.packb(['write_chunks', self.token])
-            req = msgpack.packb([beams, min_fpga, max_fpga, filename_pattern, priority])
+            req = msgpack.packb([beams, min_fpga, max_fpga, dm, dm_error, sweep_width, frequency_binning, filename_pattern, priority])
             tokens.append(self.token)
             self.sockets[k].send(hdr + req)
         if not wait:

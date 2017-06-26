@@ -1,6 +1,7 @@
 #include <fstream>
 #include <unistd.h>
 #include <sys/time.h>
+#include <stdio.h>
 #include <thread>
 
 #include <zmq.hpp>
