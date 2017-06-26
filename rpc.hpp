@@ -117,6 +117,15 @@
          (FPGAN)   -> %08i  FPGA-counts size
      (see ch_frb_io : assembled_chunk : format_filename)
 
+ * get_writechunk_status(string pathname)
+
+     Returns the status of a previous write_chunks() request.
+
+     Returns: (status, error_message)
+
+     Status is "SUCCEEDED", "FAILED", "UNKNOWN", or "QUEUED"
+     Error message gives whatever information we have if it "FAILED".
+     UNKNOWN means we don't have any information about that path name.
 
  * shutdown()
 

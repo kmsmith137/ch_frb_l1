@@ -73,7 +73,10 @@ static string msg_string(zmq::message_t &msg) {
 }
  */
 
-// RPC requests to write assembled_chunks to disk are stored in this struct
+// RPC requests to write assembled_chunks to disk are stored in this
+// struct.  (this is used to queue requests *within* the RPC server --
+// requests are pulled off the "frontend" socket by the main RPC
+// server thread and queued for processing by the RpcWorker thread(s).
 struct write_chunk_request {
     std::vector<std::pair<zmq::message_t*, uint32_t> > clients;
     std::string filename;
@@ -139,9 +142,11 @@ public:
                 w->chunk->msgpack_bitshuffle = true;
                 w->chunk->write_msgpack_file(w->filename);
                 rep.success = true;
+                _server->set_writechunk_status(w->filename, "SUCCEEDED", "");
             } catch (...) {
                 chlog("Write msgpack file failed: filename " << rep.filename);
                 rep.error_message = "Failed to write msgpack file";
+                _server->set_writechunk_status(w->filename, "FAILED", "");
             }
             // Drop this chunk so its memory can be reclaimed
             w->chunk.reset();
@@ -233,9 +238,9 @@ bool L1RpcServer::is_shutdown() {
     return _shutdown;
 }
 
+// Called by the RpcWorker thread(s) to get more work.
 write_chunk_request* L1RpcServer::pop_write_request() {
     write_chunk_request* wreq;
-
     ulock u(_q_mutex);
     for (;;) {
         if (_shutdown) {
@@ -254,6 +259,17 @@ write_chunk_request* L1RpcServer::pop_write_request() {
     return wreq;
 }
 
+void L1RpcServer::set_writechunk_status(string filename,
+                                        string status,
+                                        string error_message) {
+    {
+        ulock u(_status_mutex);
+        _write_chunk_status[filename] = make_pair(status, error_message);
+    }
+}
+
+// For testing purposes, enqueue a chunk for writing as though an RPC
+// client requested it.
 void L1RpcServer::enqueue_write_request(std::shared_ptr<ch_frb_io::assembled_chunk> chunk,
                                         std::string filename,
                                         int priority) {
@@ -615,6 +631,10 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             // Format the filename the chunk will be written to.
             w->filename = (*chunk)->format_filename(req.filename_pattern);
 
+            // Record the status for this filename.
+            // .... what if the file already exists??
+            set_writechunk_status(w->filename, "QUEUED", "");
+
             // Copy client ID
             zmq::message_t* client_copy = new zmq::message_t();
             client_copy->copy(client);
@@ -640,6 +660,35 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
         return _send_frontend_message(*client, *token_to_message(token),
                                      *replymsg);
+
+    } else if (funcname == "get_writechunk_status") {
+
+        // grab argument: string pathname
+        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
+        string pathname = oh.get().as<string>();
+
+        // search the map of pathname -> (status, error_message)
+        string status;
+        string error_message;
+        {
+            ulock u(_status_mutex);
+            auto val = _write_chunk_status.find(pathname);
+            if (val == _write_chunk_status.end()) {
+                status = "UNKNOWN";
+            } else {
+                status        = val->second.first;
+                error_message = val->second.second;
+            }
+        }
+        pair<string, string> result(status, error_message);
+
+        msgpack::sbuffer buffer;
+        msgpack::pack(buffer, result);
+        //  Send reply back to client.
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(*client, *token_to_message(token),
+                                      *reply);
+
     } else {
         // Silent failure?
         chlog("Error: unknown RPC function name: " << funcname);

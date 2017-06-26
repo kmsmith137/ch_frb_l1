@@ -136,9 +136,9 @@ class RpcClient(object):
             self.sockets[k].connect(v)
 
         self.token = 0
-        # Buffer of received messages: token->message
+        # Buffer of received messages: token->[(message,socket), ...]
         self.received = {}
-            
+
     def get_statistics(self, servers=None, wait=True, timeout=-1):
         '''
         Retrieves statistics from each server.  Return value is one
@@ -179,7 +179,7 @@ class RpcClient(object):
         # We expect one message part for each token.
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
-    
+
     def write_chunks(self, beams, min_fpga, max_fpga, filename_pattern,
                      priority=0,
                      dm=0.,
@@ -231,7 +231,8 @@ class RpcClient(object):
                                         timeout=timeout)
 
     def wait_for_all_writes(self, chunklists, tokens, timeout=-1):
-        ## Wait for notification that all writes have completed.
+        ## Wait for notification that all writes from a write_chunks
+        ## call have completed.
         results = []
         if timeout > 0:
             t0 = time.time()
@@ -242,7 +243,8 @@ class RpcClient(object):
             N = len(chunklist)
             n = 0
             while n < N:
-                [p] = self.wait_for_tokens([token], timeout=timeout)
+                [p],[s] = self.wait_for_tokens([token], timeout=timeout,
+                                               get_sockets=True)
                 # adjust timeout
                 if timeout > 0:
                     tnow = time.time()
@@ -257,7 +259,32 @@ class RpcClient(object):
                 # unpack the reply
                 [beam, fpga0, fpgaN, filename, success, err] = chunk
                 res = WriteChunkReply(beam, fpga0, fpgaN, filename, success, err)
+                res.socket = s
                 results.append(res)
+        return results
+
+    def get_writechunk_status(self, filename,
+                              servers=None, wait=True, timeout=-1):
+        '''
+        Asks the RPC servers for the status of a given filename whose
+        write was requested by a write_chunks request.
+
+        Returns (status, error_message).
+        '''
+        if servers is None:
+            servers = self.servers.keys()
+        # Send RPC requests
+        tokens = []
+        for k in servers:
+            self.token += 1
+            hdr = msgpack.packb(['get_writechunk_status', self.token])
+            req = msgpack.packb(filename)
+            tokens.append(self.token)
+            self.sockets[k].send(hdr + req)
+        if not wait:
+            return tokens
+        # Wait for results...
+        results = self.wait_for_tokens(tokens, timeout=timeout)
         return results
 
     def shutdown(self, servers=None):
@@ -304,7 +331,7 @@ class RpcClient(object):
             tokens.append(self.token)
             self.sockets[k].send(hdr + req)
             
-    def _pop_token(self, t, d=None):
+    def _pop_token(self, t, d=None, get_socket=False):
         '''
         Pops a message for the given token number *t*, or returns *d*
         if one does not exist.
@@ -314,8 +341,14 @@ class RpcClient(object):
         except KeyError:
             return d
         msg = msgs.pop(0)
+        # if list of messages for this token is now empty, delete it
         if len(msgs) == 0:
             del self.received[t]
+        # self.received actually contains a list of (socket,message) tuples,
+        # so drop the socket part if not requested by the caller
+        if get_socket:
+            return msg
+        msg = msg[1]
         return msg
 
     def _receive(self, timeout=-1):
@@ -327,15 +360,15 @@ class RpcClient(object):
 
         Returns True if >1 messages were received.
         '''
-        def _handle_parts(parts):
+        def _handle_parts(parts, socket):
             hdr  = parts[0]
             token = msgpack.unpackb(hdr)
             rest = parts[1:]
             #print('Received token:', token, ':', rest)
             if token in self.received:
-                self.received[token].append(rest)
+                self.received[token].append((socket, rest))
             else:
-                self.received[token] = [rest]
+                self.received[token] = [(socket, rest)]
             #print('Now received parts for token:', self.received[token])
 
         received = False
@@ -350,9 +383,9 @@ class RpcClient(object):
             if len(events) == 0:
                 break
             for s,e in events:
-                #print('Receive()')
+                print('Received reply on socket', s)
                 parts = s.recv_multipart()
-                _handle_parts(parts)
+                _handle_parts(parts, s)
                 received = True
         if received:
             return True
@@ -366,12 +399,12 @@ class RpcClient(object):
         for s,e in events:
             #print('Receive()')
             parts = s.recv_multipart()
-            _handle_parts(parts)
+            _handle_parts(parts, s)
             received = True
 
         return received
     
-    def wait_for_tokens(self, tokens, timeout=-1):
+    def wait_for_tokens(self, tokens, timeout=-1, get_sockets=False):
         '''
         Retrieves results for the given *tokens*, possibly waiting for
         servers to reply.
@@ -379,6 +412,8 @@ class RpcClient(object):
         Returns a list of result messages, one for each *token*.
         '''
         results = {}
+        if get_sockets:
+            sockets = {}
         todo = [token for token in tokens]
         if timeout > 0:
             t0 = time.time()
@@ -386,9 +421,13 @@ class RpcClient(object):
             #print('Still waiting for tokens:', todo)
             done = []
             for token in todo:
-                r = self._pop_token(token)
+                r = self._pop_token(token, get_socket=get_sockets)
                 if r is not None:
                     done.append(token)
+                    if get_sockets:
+                        # unpack socket,result tuple
+                        socket,r = r
+                        sockets[token] = socket
                     results[token] = r
             for token in done:
                 todo.remove(token)
@@ -401,8 +440,10 @@ class RpcClient(object):
                     tnow = time.time()
                     timeout = max(0, t0 + timeout - tnow)
                     t0 = tnow
-        return [results.get(token, None) for token in tokens]
-
+        if not get_sockets:
+            return [results.get(token, None) for token in tokens]
+        return ([results.get(token, None) for token in tokens],
+                [sockets.get(token, None) for token in tokens])
 
 import threading
 
@@ -542,6 +583,11 @@ if __name__ == '__main__':
     R = client.write_chunks([77,78], minfpga, maxfpga, 'chunk-beam(BEAM)-chunk(CHUNK)+(NCHUNK).msgpack', timeout=3000)
     print('Got:', R)
 
+    for r in R:
+        print('Received', r, 'from socket', r.socket)
+        status,errmsg = client.get_writechunk_status(r.filename)
+        #servers=[v for k,v in ])
+    
     if opt.log:
         addr = logger.address
         client.stop_logging(addr)
