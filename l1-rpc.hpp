@@ -61,6 +61,10 @@ protected:
 
     void _do_shutdown();
 
+    int _send_frontend_message(zmq::message_t& clientmsg,
+                               zmq::message_t& tokenmsg,
+                               zmq::message_t& contentmsg);
+
 private:
     // ZeroMQ context
     zmq::context_t* _ctx;

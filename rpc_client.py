@@ -182,6 +182,10 @@ class RpcClient(object):
     
     def write_chunks(self, beams, min_fpga, max_fpga, filename_pattern,
                      priority=0,
+                     dm=0.,
+                     dm_error=0.,
+                     sweep_width=0.,
+                     frequency_binning=0,
                      servers=None, wait=True, timeout=-1, waitAll=True):
         '''
         Asks the RPC servers to write a set of chunks to disk.
@@ -190,6 +194,13 @@ class RpcClient(object):
         *min_fgpa*, *max_fpga*: range of FPGA-counts to write
         *filename_pattern*: printf filename pattern
         *priority*: of writes.
+
+        When requesting a sweep (NOT CURRENTLY IMPLEMENTED!):
+        *dm*, *dm_error*: floats, DM and uncertainty of the sweep to request
+        *sweep_width*: float, range in seconds to retrieve around the sweep
+
+        *frequency_binning*: int, the factor by which to bin frequency
+         data before writing.
         
         *wait*: wait for the initial replies listing the chunks to be written out.
         *waitAll*: wait for servers to reply that all chunks have been written out.
@@ -201,7 +212,7 @@ class RpcClient(object):
         for k in servers:
             self.token += 1
             hdr = msgpack.packb(['write_chunks', self.token])
-            req = msgpack.packb([beams, min_fpga, max_fpga, filename_pattern, priority])
+            req = msgpack.packb([beams, min_fpga, max_fpga, dm, dm_error, sweep_width, frequency_binning, filename_pattern, priority])
             tokens.append(self.token)
             self.sockets[k].send(hdr + req)
         if not wait:
@@ -214,21 +225,23 @@ class RpcClient(object):
                       for p in parts]
         #print('Lists of chunks expected:', chunklists)
         if not waitAll:
-            return chunklists
+            return chunklists, tokens
 
+        return self.wait_for_all_writes(chunklists, tokens,
+                                        timeout=timeout)
+
+    def wait_for_all_writes(self, chunklists, tokens, timeout=-1):
         ## Wait for notification that all writes have completed.
         results = []
         if timeout > 0:
             t0 = time.time()
-        for k,token,chunklist in zip(servers, tokens, chunklists):
-            #print('Waiting for', N, 'chunks from', k, ', token', token)
+        for token,chunklist in zip(tokens, chunklists):
             if chunklist is None:
                 # Did not receive a reply from this server.
                 continue
             N = len(chunklist)
             n = 0
             while n < N:
-                #print('Waiting for', n, 'chunks from', k, ', token', token, 'got', len(rr))
                 [p] = self.wait_for_tokens([token], timeout=timeout)
                 # adjust timeout
                 if timeout > 0:
@@ -245,7 +258,6 @@ class RpcClient(object):
                 [beam, fpga0, fpgaN, filename, success, err] = chunk
                 res = WriteChunkReply(beam, fpga0, fpgaN, filename, success, err)
                 results.append(res)
-
         return results
 
     def shutdown(self, servers=None):
@@ -439,6 +451,9 @@ if __name__ == '__main__':
                         help='Start up chlog server?')
     parser.add_argument('--write', '-w', nargs=4, metavar='x',#['<comma-separated beams>', '<minfpga>', '<maxfpga>', '<filename-pattern>'],
                         help='Send write_chunks command: <comma-separated beams> <minfpga> <maxfpga> <filename-pattern>', action='append',
+                        default=[])
+    parser.add_argument('--awrite', nargs=4, metavar='x',
+                        help='Send async write_chunks command: <comma-separated beams> <minfpga> <maxfpga> <filename-pattern>', action='append',
         default=[])
     parser.add_argument('--list', action='store_true', default=False,
                         help='Just send list_chunks command and exit.')
@@ -486,6 +501,20 @@ if __name__ == '__main__':
             f0 = int(f0, 10)
             f1 = int(f1, 10)
             R = client.write_chunks(beams, f0, f1, fnpat)
+            print('Results:')
+            if R is not None:
+                for r in R:
+                    print('  ', r)
+        doexit = True
+
+    # Async write requests
+    if len(opt.awrite):
+        for beams, f0, f1, fnpat in opt.awrite:
+            beams = beams.split(',')
+            beams = [int(b,10) for b in beams]
+            f0 = int(f0, 10)
+            f1 = int(f1, 10)
+            R = client.write_chunks(beams, f0, f1, fnpat, waitAll=False)
             print('Results:')
             if R is not None:
                 for r in R:

@@ -2,6 +2,10 @@
 #include <string>
 #include <iostream>
 
+#include <zmq.hpp>
+
+#include <bonsai.hpp>
+
 #include "ch_frb_io.hpp"
 #include "assembled_chunk_msgpack.hpp"
 
@@ -12,6 +16,7 @@
 
 #include <l1-rpc.hpp>
 #include <chlog.hpp>
+#include "l1-parts.hpp"
 
 using namespace std;
 using namespace ch_frb_io;
@@ -19,7 +24,7 @@ using namespace rf_pipelines;
 using namespace simpulse;
 
 static void usage() {
-    cout << "hdf5-stream [options] <HDF5 filenames ...>\n" <<
+    cout << "terminus-l1 [options] <HDF5 filenames ...>\n" <<
         "    [-g Gbps],  throttle packet-sending rate\n" <<
         "    [-a <RPC address>], default \"tcp://*:5555\"\n" <<
         "    [-P <RPC port number>] (integer port number)\n" <<
@@ -27,7 +32,9 @@ static void usage() {
         "    [-p <period of pulses, seconds>]\n" <<
         "    [-n <number of pulses>]\n" <<
         "    [-f <fluence of pulses>], default 1e5\n" <<
-        "    [-d <Dispersion Measure>], deafult 500\n" <<
+        "    [-d <Dispersion Measure>], default 500\n" <<
+        "    [-c <bonsai config file>], default bonsai_configs/benchmarks/params_noups_nbeta1.txt\n" <<
+        "    [-b <l1b address>], default tcp://127.0.0.1:6666\n" <<
         endl;
 }
 
@@ -51,11 +58,13 @@ static void usage() {
 
  */
 
-// this function is required to pull assembled_chunks from the end of
-// the L1 pipeline.  These would go on to RFI removal and Bonsai
-// dedispersion in real life L1...
-static void processing_thread_main(shared_ptr<ch_frb_io::intensity_network_stream> stream, int ithread);
-                                   
+// this pulls assembled_chunks from the L1 network receiver and
+// performs RFI removal and Bonsai dedispersion on them.
+static void processing_thread_main(shared_ptr<ch_frb_io::intensity_network_stream> stream,
+                                   int ithread,
+                                   const bonsai::config_params &cp,
+                                   const shared_ptr<bonsai::trigger_output_stream> &tp);
+
 int main(int argc, char **argv) {
 
     string dest = "127.0.0.1:10252";
@@ -64,6 +73,10 @@ int main(int argc, char **argv) {
     string rpc_port = "";
     int rpc_portnum = 0;
 
+    string l1b_address = "tcp://127.0.0.1:6666";
+
+    string bonsai_config_file = "bonsai_configs/benchmarks/params_noups_nbeta1.txt";
+    
     double pulse_t0 = 0;
     double pulse_period = 0;
     int npulses = 0;
@@ -74,9 +87,15 @@ int main(int argc, char **argv) {
     vector<double> fluence_fractions = { 1.0, 0.3, 0.1 };
     
     int c;
-    while ((c = getopt(argc, argv, "g:a:P:t:p:n:f:d:h")) != -1) {
+    while ((c = getopt(argc, argv, "g:a:P:t:p:n:f:d:c:b:h")) != -1) {
         switch (c) {
-	case 'g':
+        case 'c':
+            bonsai_config_file = optarg;
+            break;
+        case 'b':
+            l1b_address = optarg;
+            break;
+        case 'g':
 	  gbps = atof(optarg);
 	  break;
 
@@ -202,10 +221,24 @@ int main(int argc, char **argv) {
 
     // Spawn one processing thread per beam
     std::vector<std::thread> processing_threads;
-    for (size_t ibeam = 0; ibeam < ini_params.beam_ids.size(); ibeam++)
+
+    zmq::context_t zmqctx;
+
+    size_t nbeams = ini_params.beam_ids.size();
+    
+    bonsai::config_params bonsai_config(bonsai_config_file);
+
+    bonsai_config.write("bc.txt", "txt", true);
+    
+    // different bonsai dispersers apparently can't share triggers.
+    vector<shared_ptr<bonsai::trigger_output_stream> > output_streams;
+    for (size_t ibeam = 0; ibeam < nbeams; ibeam++)
+      output_streams.push_back(make_shared<l1b_trigger_stream>(&zmqctx, l1b_address, bonsai_config));
+    
+    for (size_t ibeam = 0; ibeam < nbeams; ibeam++)
         // Note: the processing thread gets 'ibeam', not the beam id,
         // because that is what get_assembled_chunk() takes
-        processing_threads.push_back(std::thread(std::bind(processing_thread_main, instream, ibeam)));
+        processing_threads.push_back(std::thread(std::bind(processing_thread_main, instream, ini_params.beam_ids[ibeam], bonsai_config, output_streams[ibeam])));
 
     if ((rpc_port.length() == 0) && (rpc_portnum == 0))
         rpc_port = "tcp://127.0.0.1:5555";
@@ -219,7 +252,6 @@ int main(int argc, char **argv) {
     // Start listening for packets.
     instream->start_stream();
 
-
     // Start the rf_pipelines stream from hdf5 files to network
     stream->run(transforms);
 
@@ -229,19 +261,19 @@ int main(int argc, char **argv) {
     
 }
 
+static void processing_thread_main(shared_ptr<ch_frb_io::intensity_network_stream> instream,
+                                   int beam_id,
+                                   const bonsai::config_params &cp,
+                                   const shared_ptr<bonsai::trigger_output_stream> &tp) {
+    chime_log_set_thread_name("proc-" + std::to_string(beam_id));
+    chlog("Processing thread main: beam " << beam_id);
 
+    auto stream = rf_pipelines::make_chime_network_stream(instream, beam_id);
+    auto transform_chain = make_rfi_chain();
+    auto dedisperser = make_dedisperser(cp, tp);
+    transform_chain.push_back(dedisperser);
 
-static void processing_thread_main(shared_ptr<ch_frb_io::intensity_network_stream> stream,
-                                    int ithread) {
-    chime_log_set_thread_name("proc-" + std::to_string(ithread));
-    chlog("Processing thread main: thread " << ithread);
-    for (;;) {
-	// Get assembled data from netwrok
-	auto chunk = stream->get_assembled_chunk(ithread);
-	if (!chunk)
-	    break;  // End-of-stream reached
-        chlog("Finished beam " << chunk->beam_id << ", chunk " << chunk->ichunk);
-    }
+    // (transform_chain, outdir, json_output, verbosity)
+    stream->run(transform_chain, string(), nullptr, 0);
 }
-
 

@@ -36,7 +36,7 @@ endif
 
 BINARIES := ch-frb-l1 ch-frb-simulate-l0 rpc-client test-l1-rpc sim-l0-set hdf5-stream terminus-l1
 
-all: $(BINARIES) pybitshuffle.so
+all: $(BINARIES)
 .PHONY: all
 
 INCFILES := ch_frb_l1.hpp l1-rpc.hpp rpc.hpp
@@ -56,7 +56,7 @@ dependencies.png: dependencies.dot
 rpc-client: rpc_client.o
 	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lch_frb_io -lzmq
 
-ch-frb-l1: ch-frb-l1.o yaml_paramfile.o $(L1_OBJS)
+ch-frb-l1: ch-frb-l1.o yaml_paramfile.o l1-parts.o $(L1_OBJS)
 	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lrf_pipelines -lbonsai -lch_frb_io -lzmq -lyaml-cpp
 
 sim-l0-set: sim-l0-set.cpp l0-sim.cpp
@@ -77,12 +77,8 @@ test-l1-rpc: test-l1-rpc.cpp $(L1_OBJS)
 hdf5-stream: hdf5-stream.cpp
 	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $< -lrf_pipelines -lch_frb_io $(LIBS)
 
-terminus-l1: terminus-l1.cpp $(L1_OBJS)
-	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lrf_pipelines -lch_frb_io $(LIBS) -lsimpulse -lzmq
-
-# Python wrapper
-pybitshuffle.so: pybitshuffle.c
-	$(CC_PYMODULE) -o $@ $^ -lch_frb_io
+terminus-l1: terminus-l1.o l1-parts.o $(L1_OBJS)
+	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lrf_pipelines -lbonsai -lch_frb_io $(LIBS) -lsimpulse -lzmq
 
 clean:
 	rm -f *.o *~ $(BINARIES)
