@@ -287,14 +287,10 @@ class RpcClient(object):
             return tokens
         # Wait for results...
         results = self.wait_for_tokens(tokens, timeout=timeout)
-        print('Results:', results)
-        rr = []
-        for r in results:
-            if r is None:
-                rr.append(None)
-            else:
-                rr.append(msgpack.unpackb(r))
-        return rr
+        # We only expect one response per server
+        results = [msgpack.unpackb(p[0]) if p is not None else None
+                   for p in results]
+        return results
 
     def shutdown(self, servers=None):
         '''
@@ -593,19 +589,18 @@ if __name__ == '__main__':
     print('Got:', R)
 
     for r in R:
-        print('Received', r, 'from socket', r.socket)
-        #print('Servers:', client.servers)
-        #print('Sockets:', client.sockets)
         server = client.rsockets.get(r.socket, None)
-        print('-> server', server)
+        print('Received', r, 'from server:', server)
         if server is not None:
             servers = [server]
         else:
             servers = None
-        #status,errmsg = client.get_writechunk_status(r.filename)
         X = client.get_writechunk_status(r.filename, servers=servers)
+        if server is not None:
+            X = X[0]
         print('Result:', X)
-        #servers=[v for k,v in ])
+
+    print('Bogus result:', client.get_writechunk_status('nonesuch'))
     
     if opt.log:
         addr = logger.address
