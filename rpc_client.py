@@ -129,11 +129,13 @@ class RpcClient(object):
 
         self.servers = servers
         self.sockets = {}
+        self.rsockets = {}
         for k,v in servers.items():
             self.sockets[k] = self.context.socket(zmq.DEALER)
             if identity is not None:
                 self.sockets[k].set(zmq.IDENTITY, identity)
             self.sockets[k].connect(v)
+            self.rsockets[self.sockets[k]] = k
 
         self.token = 0
         # Buffer of received messages: token->[(message,socket), ...]
@@ -285,7 +287,14 @@ class RpcClient(object):
             return tokens
         # Wait for results...
         results = self.wait_for_tokens(tokens, timeout=timeout)
-        return results
+        print('Results:', results)
+        rr = []
+        for r in results:
+            if r is None:
+                rr.append(None)
+            else:
+                rr.append(msgpack.unpackb(r))
+        return rr
 
     def shutdown(self, servers=None):
         '''
@@ -585,7 +594,17 @@ if __name__ == '__main__':
 
     for r in R:
         print('Received', r, 'from socket', r.socket)
-        status,errmsg = client.get_writechunk_status(r.filename)
+        #print('Servers:', client.servers)
+        #print('Sockets:', client.sockets)
+        server = client.rsockets.get(r.socket, None)
+        print('-> server', server)
+        if server is not None:
+            servers = [server]
+        else:
+            servers = None
+        #status,errmsg = client.get_writechunk_status(r.filename)
+        X = client.get_writechunk_status(r.filename, servers=servers)
+        print('Result:', X)
         #servers=[v for k,v in ])
     
     if opt.log:
