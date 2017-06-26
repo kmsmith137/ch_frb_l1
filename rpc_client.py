@@ -97,6 +97,7 @@ class WriteChunkReply(object):
         self.filename = filename
         self.success = success
         self.error = err
+        self.server = None
 
     def __str__(self):
         s = 'WriteChunkReply(beam %i, fpga %i + %i, filename %s' % (self.beam, self.fpga0, self.fpgaN, self.filename)
@@ -261,7 +262,7 @@ class RpcClient(object):
                 # unpack the reply
                 [beam, fpga0, fpgaN, filename, success, err] = chunk
                 res = WriteChunkReply(beam, fpga0, fpgaN, filename, success, err)
-                res.socket = s
+                res.server = self.rsockets[s]
                 results.append(res)
         return results
 
@@ -589,15 +590,10 @@ if __name__ == '__main__':
     print('Got:', R)
 
     for r in R:
-        server = client.rsockets.get(r.socket, None)
-        print('Received', r, 'from server:', server)
-        if server is not None:
-            servers = [server]
-        else:
-            servers = None
+        servers = [r.server]
+        print('Received', r, 'from server:', r.server)
         X = client.get_writechunk_status(r.filename, servers=servers)
-        if server is not None:
-            X = X[0]
+        X = X[0]
         print('Result:', X)
 
     print('Bogus result:', client.get_writechunk_status('nonesuch'))
