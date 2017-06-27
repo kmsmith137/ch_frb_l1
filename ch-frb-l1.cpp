@@ -206,13 +206,16 @@ static vector<shared_ptr<rf_pipelines::wi_transform>> make_rfi_chain()
 
 // A little helper routine to make the bonsai_dedisperser 
 // (Returns the rf_pipelines::wi_transform wrapper object, not the bonsai::dedisperser)
-static shared_ptr<rf_pipelines::wi_transform> make_dedisperser(const bonsai::config_params &cp, const shared_ptr<bonsai::trigger_output_stream> &tp)
+static shared_ptr<rf_pipelines::wi_transform> make_dedisperser(const bonsai::config_params &cp, const shared_ptr<bonsai::trigger_output_stream> &tp, const shared_ptr<bonsai::global_max_tracker> mp)
 {
     bonsai::dedisperser::initializer ini_params;
     ini_params.verbosity = 0;
     
     auto d = make_shared<bonsai::dedisperser> (cp, ini_params);
     d->add_processor(tp);
+
+    if (mp)
+	d->add_processor(mp);
 
     return rf_pipelines::make_bonsai_dedisperser(d);
 }
@@ -226,6 +229,14 @@ static void dedispersion_thread_main(const l1_params &l1_config, const bonsai::c
 				     const shared_ptr<bonsai::trigger_output_stream> &tp,
 				     int ibeam)
 {
+    // During development, it's convenient to throw in a bonsai::global_max_tracker,
+    // so that the dedispersion thread can print the most significant (DM, arrival_time)
+    // when it exits.
+    //
+    // FIXME: eventually the global_max_tracker can be removed (it won't be needed in production).
+
+    shared_ptr<bonsai::global_max_tracker> max_tracker = make_shared<bonsai::global_max_tracker> ();
+
     // FIXME write a std::thread subclass which makes this try..catch logic automatic.
 
     try {
@@ -241,11 +252,19 @@ static void dedispersion_thread_main(const l1_params &l1_config, const bonsai::c
         auto stream = rf_pipelines::make_chime_network_stream(sp, ibeam);
 	auto transform_chain = make_rfi_chain();
 
-	auto dedisperser = make_dedisperser(cp, tp);
+	auto dedisperser = make_dedisperser(cp, tp, max_tracker);
 	transform_chain.push_back(dedisperser);
 
 	// (transform_chain, outdir, json_output, verbosity)
 	stream->run(transform_chain, string(), nullptr, 0);
+
+	stringstream ss;
+	ss << "bonsai: beam=" << ibeam 
+	   << ", max_trigger=" << max_tracker->global_max_trigger
+	   << ", dm=" << max_tracker->global_max_trigger_dm
+	   << ", arrival_time=" << max_tracker->global_max_trigger_arrival_time << "\n";
+
+	cout << ss.str().c_str() << flush;
 
     } catch (exception &e) {
 	cerr << e.what() << "\n";
