@@ -35,6 +35,8 @@ static void usage() {
         "    [-d <Dispersion Measure>], default 500\n" <<
         "    [-c <bonsai config file>], default bonsai_configs/benchmarks/params_noups_nbeta1.txt\n" <<
         "    [-b <l1b address>], default tcp://127.0.0.1:6666\n" <<
+        "    [-B <beam-id>], can be repeated, default -B 1 -B 2 -B 3\n" <<
+        "    [-F <fluence-fraction>], can be repeated, fraction of fluence appearing in beam; default -F 1 -F 0.3 -F 0.1\n" <<
         endl;
 }
 
@@ -84,11 +86,18 @@ int main(int argc, char **argv) {
     double fluence = 1e5;
     double dm = 500;
 
-    vector<double> fluence_fractions = { 1.0, 0.3, 0.1 };
+    vector<double> fluence_fractions;
+    vector<int> beams;
     
     int c;
-    while ((c = getopt(argc, argv, "g:a:P:t:p:n:f:d:c:b:h")) != -1) {
+    while ((c = getopt(argc, argv, "g:a:P:t:p:n:f:d:c:b:B:F:h")) != -1) {
         switch (c) {
+        case 'B':
+            beams.push_back(atoi(optarg));
+            break;
+        case 'F':
+            fluence_fractions.push_back(atof(optarg));
+            break;
         case 'c':
             bonsai_config_file = optarg;
             break;
@@ -137,6 +146,25 @@ int main(int argc, char **argv) {
       cout << "Need hdf5 input filenames!" << endl;
       usage();
       return -1;
+    }
+
+    if ((fluence_fractions.size() > 0) && (beams.size() > 0) &&
+        (fluence_fractions.size() != beams.size())) {
+        cout << "If specified, fluence fractions -F and beam ids -B must be the same length." << endl;
+        return -1;
+    }
+    if ((fluence_fractions.size() == 0) && (beams.size() == 0)) {
+        fluence_fractions = { 1.0, 0.3, 0.1 };
+    }
+    if ((fluence_fractions.size() > 0) && (beams.size() == 0)) {
+        for (size_t j=0; j<fluence_fractions.size(); j++) {
+            beams.push_back(1+j);
+        }
+    }
+    // if beams are specified but fluence isn't...?
+    if (fluence_fractions.size() == 0) {
+        cout << "If beams are specified with -B, must also specify fluence fractions for them with -F" << endl;
+        return -1;
     }
 
     vector<string> fns;
@@ -191,7 +219,7 @@ int main(int argc, char **argv) {
     ch_frb_io::intensity_network_stream::initializer ini_params;
     
     for (size_t j=0; j<fluence_fractions.size(); j++) {
-        int beam = 1 + j;
+        int beam = beams[j];
         // Add this beam to the packet receiver's list of beams
         ini_params.beam_ids.push_back(beam);
 
