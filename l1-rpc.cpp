@@ -66,8 +66,8 @@ using namespace ch_frb_io;
  */
 
 
-// For debugging, convert a zmq message to a string
 /*
+// For debugging, convert a zmq message to a string
 static string msg_string(zmq::message_t &msg) {
     return string(static_cast<const char*>(msg.data()), msg.size());
 }
@@ -353,6 +353,7 @@ void L1RpcServer::run() {
                 chlog("Failed to receive message on frontend socket!");
                 continue;
             }
+            //chlog("Received RPC request from client: " << msg_string(client));
             more = _frontend.getsockopt<int>(ZMQ_RCVMORE);
             if (!more) {
                 chlog("Expected two message parts on frontend socket!");
@@ -469,6 +470,8 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
     string funcname = rpcreq.function;
     uint32_t token = rpcreq.token;
 
+    //chlog("Received RPC request for function: '" << funcname << "'");
+
     if (funcname == "shutdown") {
         chlog("Shutdown requested.");
         _do_shutdown();
@@ -506,7 +509,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             // /proc/stat values are in "jiffies"?
             stats[0]["procstat_time"] = dt * 100;
 
-            for (;;) {
+            for (; s.good();) {
                 string word;
                 s >> word;
                 if ((word.size() == 0) && (s.eof()))

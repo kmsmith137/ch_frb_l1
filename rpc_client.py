@@ -518,6 +518,8 @@ if __name__ == '__main__':
         default=[])
     parser.add_argument('--list', action='store_true', default=False,
                         help='Just send list_chunks command and exit.')
+    parser.add_argument('--identity', default='client',
+                        help='Identity to report to the server')
     parser.add_argument('ports', nargs='*',
                         help='Addresses or port numbers of RPC servers to contact')
     opt = parser.parse_args()
@@ -538,7 +540,8 @@ if __name__ == '__main__':
         servers = dict(a='tcp://127.0.0.1:5555',
                        b='tcp://127.0.0.1:5556')
 
-    client = RpcClient(servers, identity='client')
+    print('Sending to servers:', servers)
+    client = RpcClient(servers, identity=opt.identity)
 
     if opt.log:
         logger = ChLogServer()
