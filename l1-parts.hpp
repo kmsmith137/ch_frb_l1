@@ -58,7 +58,9 @@ protected:
 
 std::vector<std::shared_ptr<rf_pipelines::wi_transform> > make_rfi_chain();
 
-std::shared_ptr<rf_pipelines::wi_transform> make_dedisperser(const bonsai::config_params &cp, const std::shared_ptr<bonsai::trigger_output_stream> &tp);
+std::shared_ptr<rf_pipelines::wi_transform> make_dedisperser(const bonsai::config_params &cp,
+                                                             const std::shared_ptr<bonsai::trigger_output_stream> &tp,
+                                                             const std::shared_ptr<bonsai::global_max_tracker> mp = std::shared_ptr<bonsai::global_max_tracker>());
 
 
 #endif

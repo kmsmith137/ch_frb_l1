@@ -13,13 +13,16 @@ using namespace std;
 
 // A little helper routine to make the bonsai_dedisperser 
 // (Returns the rf_pipelines::wi_transform wrapper object, not the bonsai::dedisperser)
-shared_ptr<rf_pipelines::wi_transform> make_dedisperser(const bonsai::config_params &cp, const shared_ptr<bonsai::trigger_output_stream> &tp)
+shared_ptr<rf_pipelines::wi_transform> make_dedisperser(const bonsai::config_params &cp, const shared_ptr<bonsai::trigger_output_stream> &tp, const shared_ptr<bonsai::global_max_tracker> mp)
 {
     bonsai::dedisperser::initializer ini_params;
     ini_params.verbosity = 0;
-    
+
     auto d = make_shared<bonsai::dedisperser> (cp, ini_params);
     d->add_processor(tp);
+
+    if (mp)
+        d->add_processor(mp);
 
     return rf_pipelines::make_bonsai_dedisperser(d);
 }
