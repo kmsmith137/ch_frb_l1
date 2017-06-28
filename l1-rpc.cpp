@@ -722,7 +722,8 @@ void L1RpcServer::_add_write_request(write_chunk_request* req) {
     // AND search for a higher-priority duplicate of this element.
     deque<write_chunk_request*>::iterator it;
     for (it = _write_reqs.begin(); it != _write_reqs.end(); it++) {
-        if ((*it)->chunk == req->chunk) {
+        if (((*it)->chunk == req->chunk) &&
+            ((*it)->filename == req->filename)) {
             //cout << "Found an existing write request for chunk: beam " << req->chunk->beam_id << ", ichunk " << req->chunk->ichunk << " with >= priority" << endl;
             // Found a higher-priority existing entry -- add this request's clients to the existing one.
             (*it)->clients.insert((*it)->clients.end(), req->clients.begin(), req->clients.end());
