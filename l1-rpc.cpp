@@ -631,10 +631,6 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             // Format the filename the chunk will be written to.
             w->filename = (*chunk)->format_filename(req.filename_pattern);
 
-            // Record the status for this filename.
-            // .... what if the file already exists??
-            set_writechunk_status(w->filename, "QUEUED", "");
-
             // Copy client ID
             zmq::message_t* client_copy = new zmq::message_t();
             client_copy->copy(client);
@@ -718,7 +714,7 @@ void L1RpcServer::_add_write_request(write_chunk_request* req) {
 
     ulock u(_q_mutex);
 
-     // Highest priority goes at the front of the queue.
+    // Highest priority goes at the front of the queue.
     // Search for the first element with priority lower than this one's.
     // AND search for a higher-priority duplicate of this element.
     deque<write_chunk_request*>::iterator it;
@@ -736,6 +732,10 @@ void L1RpcServer::_add_write_request(write_chunk_request* req) {
             break;
     }
     bool added = true;
+
+    // Record the status for this filename.
+    set_writechunk_status(req->filename, "QUEUED", "");
+
     _write_reqs.insert(it, req);
     // Now check for duplicate chunks with lower priority after this
     // newly added one.  Since the "insert" invalidates all existing
