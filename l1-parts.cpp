@@ -186,11 +186,9 @@ void l1b_trigger_stream::process_triggers(const std::vector<std::shared_ptr<bons
         pk.pack("ntr_tot");
         pk.pack(ntr_tot);
 
-        // Create vector<float> for msgpack serialization.
-        vector<float> trigger_vec(ntr_tot);
-        float* triggers_data = &trigger_vec[0];
-        memcpy(triggers_data, (*it)->triggers, ntr_tot * sizeof(float));
-        pk.pack(trigger_vec);
+        pk.pack_array(ntr_tot);
+        for (size_t j=0; j<ntr_tot; j++)
+            pk.pack((*it)->triggers[j]);
     }
 
     zmq::message_t* reply = sbuffer_to_message(buffer);
