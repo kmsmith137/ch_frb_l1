@@ -253,6 +253,9 @@ void sim_thread_main(const shared_ptr<ch_frb_io::intensity_network_ostream> &ost
     for (int ichunk = 0; ichunk < nchunks; ichunk++) {
         // Hackily scale the integer random number generator to
         // produce uniform numbers in [mean - 2 sigma, mean + 2 sigma].
+	//
+	// Note that with this procedure, the variance of the data
+	// is (4/3) stddev^2 = 2133.33.
 
         float mean = 100;
         float stddev = 40;
