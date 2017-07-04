@@ -403,7 +403,7 @@ class RpcClient(object):
             if len(events) == 0:
                 break
             for s,e in events:
-                print('Received reply on socket', s)
+                #print('Received reply on socket', s)
                 parts = s.recv_multipart()
                 _handle_parts(parts, s)
                 received = True
