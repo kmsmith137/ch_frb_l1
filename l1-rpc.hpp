@@ -4,6 +4,7 @@
 #include <vector>
 #include <deque>
 #include <thread>
+#include <map>
 #include <mutex>
 #include <condition_variable>
 #include <zmq.hpp>
@@ -94,7 +95,7 @@ private:
     std::condition_variable _q_cond;
 
     // a vector of result codes for write_chunk_request() calls.
-    std::unordered_map<std::string, std::pair<std::string, std::string> > _write_chunk_status;
+    std::map<std::string, std::pair<std::string, std::string> > _write_chunk_status;
     // (and the mutex for it)
     std::mutex _status_mutex;
 
