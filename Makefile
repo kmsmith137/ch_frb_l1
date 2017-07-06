@@ -56,8 +56,8 @@ dependencies.png: dependencies.dot
 rpc-client: rpc_client.o
 	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lch_frb_io -lzmq
 
-ch-frb-l1: ch-frb-l1.o yaml_paramfile.o l1-parts.o $(L1_OBJS)
-	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lrf_pipelines -lbonsai -lch_frb_io -lzmq -lyaml-cpp
+ch-frb-l1: ch-frb-l1.o yaml_paramfile.o $(L1_OBJS)
+	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lrf_pipelines -lbonsai -lch_frb_io -lzmq -lyaml-cpp -ljsoncpp
 
 sim-l0-set: sim-l0-set.cpp l0-sim.cpp
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io

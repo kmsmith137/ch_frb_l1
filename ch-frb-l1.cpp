@@ -17,6 +17,7 @@
 //   cores 30-39:  secondary hyperthread on CPU2
 
 #include <thread>
+#include <fstream>
 
 #include <ch_frb_io.hpp>
 #include <rf_pipelines.hpp>
@@ -25,7 +26,6 @@
 
 #include "ch_frb_l1.hpp"
 #include "chlog.hpp"
-#include "l1-parts.hpp"
 
 using namespace std;
 using namespace ch_frb_l1;
@@ -35,12 +35,17 @@ using namespace ch_frb_l1;
 
 
 struct l1_params {
-    l1_params(const string &l1_config_filename, const string &bonsai_config_filename, const string &l1b_config_filename);
+    l1_params(const string &l1_config_filename, 
+	      const string &rfi_config_filename,
+	      const string &bonsai_config_filename, 
+	      const string &l1b_config_filename);
 
     const string l1_config_filename;
     const string l1b_config_filename;
 
     const bonsai::config_params bonsai_config;
+
+    Json::Value rfi_transform_chain_json;
 
     // Input stream object reads UDP packets from correlator.
     shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(int istream);
@@ -90,13 +95,24 @@ struct l1_params {
 };
 
 
-l1_params::l1_params(const string &l1_config_filename_, const string &bonsai_config_filename, const string &l1b_config_filename_) :
+l1_params::l1_params(const string &l1_config_filename_, const string &rfi_config_filename, const string &bonsai_config_filename, const string &l1b_config_filename_) :
     l1_config_filename(l1_config_filename_),
     l1b_config_filename(l1b_config_filename_),
     bonsai_config(bonsai_config_filename)
 {
     yaml_paramfile p(l1_config_filename);
-     
+
+    std::ifstream rfi_config_file(rfi_config_filename);
+    if (rfi_config_file.fail())
+        throw runtime_error("ch-frb-l1: couldn't open file " + rfi_config_filename);
+
+    Json::Reader rfi_config_reader;
+    if (!rfi_config_reader.parse(rfi_config_file, this->rfi_transform_chain_json))
+	throw runtime_error("ch-frb-l1: couldn't parse json file " + rfi_config_filename);
+
+    // throwaway call, to get an early check that json file is valid
+    rf_pipelines::deserialize_transform_chain_from_json(this->rfi_transform_chain_json);
+
     this->nbeams = p.read_scalar<int> ("nbeams");
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
@@ -242,7 +258,7 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 	ch_frb_io::pin_thread_to_cores(allowed_cores);
 	
         auto stream = rf_pipelines::make_chime_network_stream(sp, ibeam);
-	auto transform_chain = make_rfi_chain();
+	auto transform_chain = rf_pipelines::deserialize_transform_chain_from_json(config.rfi_transform_chain_json);
 
 	bonsai::dedisperser::initializer ini_params;
 	ini_params.verbosity = 0;
@@ -304,18 +320,18 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 
 static void usage()
 {
-    cerr << "usage: ch-frb-l1 <l1_config.yaml> <bonsai_config.txt> <l1b_config_file>\n";
+    cerr << "usage: ch-frb-l1 <l1_config.yaml> <rfi_config.txt> <bonsai_config.txt> <l1b_config_file>\n";
     exit(2);
 }
 
 
 int main(int argc, char **argv)
 {
-    if (argc != 4)
+    if (argc != 5)
 	usage();
 
-    // (l1_config_filename, bonsai_config_filename, l1b_config_filename)
-    l1_params config(argv[1], argv[2], argv[3]);
+    // (l1_config_filename, rfi_config_filename, bonsai_config_filename, l1b_config_filename)
+    l1_params config(argv[1], argv[2], argv[3], argv[4]);
 
     int nstreams = config.nstreams;
     int nbeams = config.nbeams;
