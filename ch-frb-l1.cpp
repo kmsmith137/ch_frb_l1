@@ -92,6 +92,11 @@ struct l1_params {
     // One L1-RPC per stream
     vector<string> rpc_address;
 
+    // A vector of length nbeams, containing the beam_ids that will be processed on this L1 server.
+    // It is currently assumed that these are known in advance and never change!
+    // If unspecified, 'beam_ids' defaults to { 0, ..., nbeams-1 }.
+    vector<int> beam_ids;
+
     // L1b linkage.  Note: assumed L1b command line is:
     //   <l1_executable_filename> <l1b_config> <beam_id>
 
@@ -181,7 +186,7 @@ l1_params::l1_params(int argc, char **argv)
 	this->port = vector<int> (ipaddr.size(), port[0]);
     
     if (ipaddr.size() != port.size())
-	throw runtime_error(l1_config_filename + " expected 'ip_addr' and 'port' to be lists of equal length");
+	throw runtime_error(l1_config_filename + ": expected 'ip_addr' and 'port' to be lists of equal length");
 
     this->nstreams = ipaddr.size();
 
@@ -200,6 +205,13 @@ l1_params::l1_params(int argc, char **argv)
 			    + to_string(nstreams) + ", inferred from number of (ipaddr,port) pairs");
     }
 
+    // Read beam_ids (postponed to here, so we get the check on 'nbeams')
+    
+    this->beam_ids = p.read_vector<int> ("beam_ids", vrange(0,nbeams));
+
+    if (beam_ids.size() != nbeams)
+	throw runtime_error(l1_config_filename + ": 'beam_ids' must have length 'nbeams'");
+    
     // Now decide whether instance is "subscale" or "full-scale".
 
     // 2 * (number of threads), where factor 2 is from hyperthreading.
@@ -310,10 +322,16 @@ static shared_ptr<L1RpcServer> make_l1rpc_server(const l1_params &config, int is
 
 
 // -------------------------------------------------------------------------------------------------
-
+//
+// dedispersion_thread_main().
+//
+// Note: the 'ibeam' argument is an index satisfying 0 <= ibeam < config.nbeams, 
+// where config.nbeams is the number of beams on the node.   Not a beam_id!
 
 static void dedispersion_thread_main(const l1_params &config, const shared_ptr<ch_frb_io::intensity_network_stream> &sp, int ibeam)
 {
+    assert(ibeam >= 0 && ibeam < config.nbeams);
+
     try {
 	vector<int> allowed_cores;
 
@@ -327,7 +345,9 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 	// Note that in the subscale case, 'allowed_cores' is an empty vector, and pin_thread_to_cores() no-ops.
 	ch_frb_io::pin_thread_to_cores(allowed_cores);
 	
-        auto stream = rf_pipelines::make_chime_network_stream(sp, ibeam);
+	// Note: the distinction between 'ibeam' and 'beam_id' is a possible source of bugs!
+	int beam_id = config.beam_ids[ibeam];
+        auto stream = rf_pipelines::make_chime_network_stream(sp, beam_id);
 	auto transform_chain = rf_pipelines::deserialize_transform_chain_from_json(config.rfi_transform_chain_json);
 
 	bonsai::dedisperser::initializer ini_params;
@@ -340,7 +360,7 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 	    vector<string> l1b_command_line = {
 		config.l1b_executable_filename,
 		config.l1b_config_filename,
-		std::to_string(ibeam)
+		std::to_string(beam_id)
 	    };
 
 	    bonsai::trigger_pipe::initializer l1b_pipe_ini;
@@ -374,7 +394,7 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 
 	if (config.track_global_trigger_max) {
 	    stringstream ss;
-	    ss << "ch-frb-l1: beam_id=" << ibeam 
+	    ss << "ch-frb-l1: beam_id=" << beam_id 
 	       << ": most significant FRB has SNR=" << max_tracker->global_max_trigger
 	       << ", and (dm,arrival_time)=(" << max_tracker->global_max_trigger_dm
 	       << "," << max_tracker->global_max_trigger_arrival_time
