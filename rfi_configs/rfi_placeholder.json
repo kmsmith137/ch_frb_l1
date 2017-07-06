@@ -1,0 +1,16 @@
+[
+   {
+      "axis" : "AXIS_FREQ",
+      "epsilon" : 0.01,
+      "nt_chunk" : 1024,
+      "polydeg" : 2,
+      "transform_name" : "polynomial_detrender"
+   },
+   {
+      "axis" : "AXIS_TIME",
+      "epsilon" : 0.01,
+      "nt_chunk" : 1024,
+      "polydeg" : 2,
+      "transform_name" : "polynomial_detrender"
+   }
+]
