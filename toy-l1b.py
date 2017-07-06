@@ -77,7 +77,9 @@ for ichunk in itertools.count():
     for (i,a) in enumerate(t):
         assert a.shape == (dedisp.ndm_coarse[i], dedisp.nsm[i], dedisp.nbeta[i], dedisp.nt_coarse_per_chunk[i])
 
-    all_triggers.append(t)
+    # A quick-and-dirty way to prevent the final plot from getting too large.
+    if len(all_triggers) < 128:
+        all_triggers.append(t)
 
 
 ########################################  plotting code starts here  ########################################
