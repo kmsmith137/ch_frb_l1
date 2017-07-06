@@ -160,6 +160,7 @@ l1_params::l1_params(int argc, char **argv)
     int yaml_verbosity = (this->verbosity >= 2) ? 1 : 0;
     yaml_paramfile p(l1_config_filename, yaml_verbosity);
 
+    // These parameters can be read right away.
     this->nbeams = p.read_scalar<int> ("nbeams");
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
@@ -170,6 +171,36 @@ l1_params::l1_params(int argc, char **argv)
     this->l1b_pipe_capacity = p.read_scalar<int> ("l1b_pipe_capacity", 0);
     this->l1b_pipe_blocking = p.read_scalar<bool> ("l1b_pipe_blocking", true);
     this->track_global_trigger_max = p.read_scalar<bool> ("track_global_trigger_max", false);
+
+    // Lots of sanity checks.
+    // First check that we have a consistent 'nstreams'.
+
+    if ((ipaddr.size() == 1) && (port.size() > 1))
+	this->ipaddr = vector<string> (port.size(), ipaddr[0]);
+    else if ((ipaddr.size() > 1) && (port.size() == 1))
+	this->port = vector<int> (ipaddr.size(), port[0]);
+    
+    if (ipaddr.size() != port.size())
+	throw runtime_error(l1_config_filename + " expected 'ip_addr' and 'port' to be lists of equal length");
+
+    this->nstreams = ipaddr.size();
+
+    // A few more checks..
+
+    if (nbeams <= 0)
+	throw runtime_error(l1_config_filename + ": 'nbeams' must be >= 1");
+    if (nstreams <= 0)
+	throw runtime_error(l1_config_filename + ": 'ip_addr' and 'port' must have length >= 1");
+    if (rpc_address.size() != (unsigned int)nstreams)
+	throw runtime_error(l1_config_filename + ": 'rpc_address' must be a list whose length is the number of (ip_addr,port) pairs");
+    if (l1b_pipe_capacity < 0)
+	throw runtime_error(l1_config_filename + ": l1b_pipe_capacity must be >= 0");
+    if (nbeams % nstreams) {
+	throw runtime_error(l1_config_filename + ": nbeams (=" + to_string(nbeams) + ") must be a multiple of nstreams (="
+			    + to_string(nstreams) + ", inferred from number of (ipaddr,port) pairs");
+    }
+
+    // Now decide whether instance is "subscale" or "full-scale".
 
     // 2 * (number of threads), where factor 2 is from hyperthreading.
     int hwcon = std::thread::hardware_concurrency();
@@ -183,27 +214,6 @@ l1_params::l1_params(int argc, char **argv)
 	     << "  with 16 beams and 20 cores, or a \"subscale\" mode with 4 beams and no core-pinning.\n"
 	     << "  This appears to be an instance with " << nbeams << " beams, and " << (hwcon/2) << " cores.\n";
 	exit(1);
-    }
-
-    if ((ipaddr.size() == 1) && (port.size() > 1))
-	this->ipaddr = vector<string> (port.size(), ipaddr[0]);
-    else if ((ipaddr.size() > 1) && (port.size() == 1))
-	this->port = vector<int> (ipaddr.size(), port[0]);
-    
-    if (ipaddr.size() != port.size())
-	throw runtime_error(l1_config_filename + " expected 'ip_addr' and 'port' to be lists of equal length");
-    
-    this->nstreams = ipaddr.size();
-
-    assert(nbeams > 0);
-    assert(nstreams > 0);
-    assert(ipaddr.size() == (unsigned int)nstreams);
-    assert(port.size() == (unsigned int)nstreams);
-    assert(rpc_address.size() == (unsigned int)nstreams);
-
-    if (nbeams % nstreams) {
-	throw runtime_error(l1_config_filename + " nbeams (=" + to_string(nbeams) + ") must be a multiple of nstreams (="
-			    + to_string(nstreams) + ", inferred from number of (ipaddr,port) pairs");
     }
 
     p.check_for_unused_params();
