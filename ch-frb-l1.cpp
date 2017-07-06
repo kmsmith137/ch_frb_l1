@@ -1,10 +1,13 @@
 // Major features missing:
 //
 //   - RFI removal is a placeholder
-//   - Alex Josephy's grouping/sifting code is not integrated
 //   - Distributed logging is not integrated
+//   - If anything goes wrong, the L1 server will crash!
 //
-// Currently hardcoded to assume the NUMA setup of the CHIMEFRB L1 nodes:
+// The L1 server can run in two modes: either a "full-scale" mode with 16 beams and 20 cores,
+// or a "subscale" mode with (nbeams <= 4) and no core-pinning.
+//
+// The "full-scale" mode is hardcoded to assume the NUMA setup of the CHIMEFRB L1 nodes:
 //   - Dual CPU
 //   - 10 cores/cpu
 //   - Hyperthreading enabled
@@ -53,10 +56,9 @@ struct l1_params {
     Json::Value rfi_transform_chain_json;
     bonsai::config_params bonsai_config;
 
-    // Current values:
-    //   verbosity=1: pretty quiet
-    //   verbosity=2: pretty noisy
-    // I'll probably add more values later!
+    // verbosity=1: pretty quiet
+    // verbosity=2: pretty noisy
+    // I plan to add verbosity=0 and verbosity=3 later!
     int verbosity = 1;
 
     // nstreams is automatically determined by the number of (ipaddr, port) pairs.
@@ -136,13 +138,27 @@ l1_params::l1_params(int argc, char **argv)
 	throw runtime_error("ch-frb-l1: couldn't parse json file " + rfi_config_filename);
 
     // Throwaway call, to get an early check that rfi_config_file is valid.
-    rf_pipelines::deserialize_transform_chain_from_json(this->rfi_transform_chain_json);
+    auto rfi_chain = rf_pipelines::deserialize_transform_chain_from_json(this->rfi_transform_chain_json);
+
+    if (verbosity >= 2) {
+	cout << rfi_config_filename << ": " << rfi_chain.size() << " transforms\n";
+	for (unsigned int i = 0; i < rfi_chain.size(); i++)
+	    cout << rfi_config_filename << ": transform " << i << "/" << rfi_chain.size() << ": " << rfi_chain[i]->name << "\n";
+    }
 
     // Read bonsai_config file.
     this->bonsai_config = bonsai::config_params(bonsai_config_filename);
 
+    if (verbosity >= 2) {
+	bool write_derived_params = true;
+	string prefix = bonsai_config_filename + ": ";
+	bonsai_config.write(cout, write_derived_params, prefix);
+    }
+
     // Remaining code in this function reads l1_config file.
-    yaml_paramfile p(l1_config_filename);
+
+    int yaml_verbosity = (this->verbosity >= 2) ? 1 : 0;
+    yaml_paramfile p(l1_config_filename, yaml_verbosity);
 
     this->nbeams = p.read_scalar<int> ("nbeams");
     this->ipaddr = p.read_vector<string> ("ipaddr");
@@ -404,10 +420,6 @@ static void print_statistics(const l1_params &config, const vector<shared_ptr<ch
 
 int main(int argc, char **argv)
 {
-    if (argc != 5)
-	usage();
-
-    // (l1_config_filename, rfi_config_filename, bonsai_config_filename, l1b_config_filename)
     l1_params config(argc, argv);
 
     int nstreams = config.nstreams;
