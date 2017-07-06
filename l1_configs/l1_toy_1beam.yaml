@@ -10,3 +10,5 @@ slow_kernels: True
 l1b_executable_filename: "./toy-l1b.py"
 
 rpc_address: "tcp://127.0.0.1:5555"
+
+track_global_trigger_max: True

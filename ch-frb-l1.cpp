@@ -90,14 +90,18 @@ struct l1_params {
     // One L1-RPC per stream
     vector<string> rpc_address;
 
-    // L1b linkage.
-    // Note: assumed L1b command line is:
+    // L1b linkage.  Note: assumed L1b command line is:
     //   <l1_executable_filename> <l1b_config> <beam_id>
 
     std::string l1b_executable_filename;
     bool l1b_pipe_blocking = true;
     bool l1b_search_path = false;     // will $PATH be searched for executable?
     int l1b_pipe_capacity = 0;        // zero means "system default"
+
+    // Occasionally useful for debugging: If track_global_trigger_max is true, then when 
+    // the L1 server exits, it will print the (DM, arrival time) of the most significant FRB.
+
+    bool track_global_trigger_max = false;
 };
 
 
@@ -149,6 +153,7 @@ l1_params::l1_params(int argc, char **argv)
     this->l1b_search_path = p.read_scalar<bool> ("l1b_search_path", false);
     this->l1b_pipe_capacity = p.read_scalar<int> ("l1b_pipe_capacity", 0);
     this->l1b_pipe_blocking = p.read_scalar<bool> ("l1b_pipe_blocking", true);
+    this->track_global_trigger_max = p.read_scalar<bool> ("track_global_trigger_max", false);
 
     // 2 * (number of threads), where factor 2 is from hyperthreading.
     int hwcon = std::thread::hardware_concurrency();
@@ -328,28 +333,29 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 	else
 	    cout << "ch-frb-l1: config parameter 'l1b_executable_filename' is an empty string, L1B processes will not be spawned\n";
 
-	// During development, it's convenient to throw in a bonsai::global_max_tracker,
-	// so that the dedispersion thread can print the most significant (DM, arrival_time)
-	// when it exits.
-	//
-	// FIXME: eventually the global_max_tracker can be removed (it won't be needed in production).
-	
-	auto max_tracker = make_shared<bonsai::global_max_tracker> ();
-	dedisperser->add_processor(max_tracker);
+	// Add max_tracker, if config.track_global_trigger_max == true.
+	shared_ptr<bonsai::global_max_tracker> max_tracker;
+
+	if (config.track_global_trigger_max) {
+	    max_tracker = make_shared<bonsai::global_max_tracker> ();
+	    dedisperser->add_processor(max_tracker);
+	}
 
 	transform_chain.push_back(rf_pipelines::make_bonsai_dedisperser(dedisperser));
 
 	// (transform_chain, outdir, json_output, verbosity)
 	stream->run(transform_chain, string(), nullptr, 0);
 
-	stringstream ss;
-	ss << "bonsai: beam=" << ibeam 
-	   << ", max_trigger=" << max_tracker->global_max_trigger
-	   << ", dm=" << max_tracker->global_max_trigger_dm
-	   << ", arrival_time=" << max_tracker->global_max_trigger_arrival_time << "\n";
-
-	cout << ss.str().c_str() << flush;
-
+	if (config.track_global_trigger_max) {
+	    stringstream ss;
+	    ss << "ch-frb-l1: beam_id=" << ibeam 
+	       << ": most significant FRB has SNR=" << max_tracker->global_max_trigger
+	       << ", and (dm,arrival_time)=(" << max_tracker->global_max_trigger_dm
+	       << "," << max_tracker->global_max_trigger_arrival_time
+	       << ")\n";
+	    
+	    cout << ss.str().c_str() << flush;
+	}
     } catch (exception &e) {
 	cerr << e.what() << "\n";
 	throw;
