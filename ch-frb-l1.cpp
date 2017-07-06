@@ -31,21 +31,33 @@ using namespace std;
 using namespace ch_frb_l1;
 
 
+static void usage()
+{
+    cerr << "Usage: ch-frb-l1 [-v] <l1_config.yaml> <rfi_config.txt> <bonsai_config.txt> <l1b_config_file>\n"
+	 << "  The -v flag makes the output more verbose\n";
+    exit(2);
+}
+
+
 // -------------------------------------------------------------------------------------------------
 
 
 struct l1_params {
-    l1_params(const string &l1_config_filename, 
-	      const string &rfi_config_filename,
-	      const string &bonsai_config_filename, 
-	      const string &l1b_config_filename);
+    l1_params(int argc, char **argv);
 
-    const string l1_config_filename;
-    const string l1b_config_filename;
-
-    const bonsai::config_params bonsai_config;
+    string l1_config_filename;
+    string rfi_config_filename;
+    string bonsai_config_filename;
+    string l1b_config_filename;
 
     Json::Value rfi_transform_chain_json;
+    bonsai::config_params bonsai_config;
+
+    // Current values:
+    //   verbosity=1: pretty quiet
+    //   verbosity=2: pretty noisy
+    // I'll probably add more values later!
+    int verbosity = 1;
 
     // nstreams is automatically determined by the number of (ipaddr, port) pairs.
     // There will be one (network_thread, assembler_thread, rpc_server) triple for each stream.
@@ -89,13 +101,28 @@ struct l1_params {
 };
 
 
-l1_params::l1_params(const string &l1_config_filename_, const string &rfi_config_filename, const string &bonsai_config_filename, const string &l1b_config_filename_) :
-    l1_config_filename(l1_config_filename_),
-    l1b_config_filename(l1b_config_filename_),
-    bonsai_config(bonsai_config_filename)
+l1_params::l1_params(int argc, char **argv)
 {
-    yaml_paramfile p(l1_config_filename);
+    vector<string> args;
 
+    // Low-budget command line parsing
+
+    for (int i = 1; i < argc; i++) {
+	if (!strcmp(argv[i], "-v"))
+	    this->verbosity = 2;
+	else
+	    args.push_back(argv[i]);
+    }
+
+    if (args.size() != 4)
+	usage();
+
+    this->l1_config_filename = args[0];
+    this->rfi_config_filename = args[1];
+    this->bonsai_config_filename = args[2];
+    this->l1b_config_filename = args[3];
+
+    // Read rfi_config file.
     std::ifstream rfi_config_file(rfi_config_filename);
     if (rfi_config_file.fail())
         throw runtime_error("ch-frb-l1: couldn't open file " + rfi_config_filename);
@@ -104,8 +131,14 @@ l1_params::l1_params(const string &l1_config_filename_, const string &rfi_config
     if (!rfi_config_reader.parse(rfi_config_file, this->rfi_transform_chain_json))
 	throw runtime_error("ch-frb-l1: couldn't parse json file " + rfi_config_filename);
 
-    // throwaway call, to get an early check that json file is valid
+    // Throwaway call, to get an early check that rfi_config_file is valid.
     rf_pipelines::deserialize_transform_chain_from_json(this->rfi_transform_chain_json);
+
+    // Read bonsai_config file.
+    this->bonsai_config = bonsai::config_params(bonsai_config_filename);
+
+    // Remaining code in this function reads l1_config file.
+    yaml_paramfile p(l1_config_filename);
 
     this->nbeams = p.read_scalar<int> ("nbeams");
     this->ipaddr = p.read_vector<string> ("ipaddr");
@@ -236,7 +269,7 @@ static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l
 // make_l1rpc_server()
 
 
-shared_ptr<L1RpcServer> make_l1rpc_server(const l1_params &config, int istream, shared_ptr<ch_frb_io::intensity_network_stream> stream) 
+static shared_ptr<L1RpcServer> make_l1rpc_server(const l1_params &config, int istream, shared_ptr<ch_frb_io::intensity_network_stream> stream) 
 {
     assert(istream >= 0 && istream < config.nstreams);
 
@@ -324,11 +357,43 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 }
 
 
-static void usage()
+// -------------------------------------------------------------------------------------------------
+//
+// print_statistics()
+//
+// FIXME move equivalent functionality to ch_frb_io?
+
+
+static void print_statistics(const l1_params &config, const vector<shared_ptr<ch_frb_io::intensity_network_stream>> &input_streams)
 {
-    cerr << "usage: ch-frb-l1 <l1_config.yaml> <rfi_config.txt> <bonsai_config.txt> <l1b_config_file>\n";
-    exit(2);
+    assert((int)input_streams.size() == config.nstreams);
+
+    for (int istream = 0; istream < config.nstreams; istream++) {
+	cout << "stream " << istream << ": ipaddr=" << config.ipaddr[istream] << ", udp_port=" << config.port[istream] << endl;
+ 
+	// vector<map<string,int>>
+	auto statistics = input_streams[istream]->get_statistics();
+	
+	for (unsigned int irec = 0; irec < statistics.size(); irec++) {
+	    cout << "    record " << irec  << endl;
+	    const auto &s = statistics[irec];
+	    
+	    vector<string> keys;
+	    for (const auto &kv: s)
+		keys.push_back(kv.first);
+	    
+	    sort(keys.begin(), keys.end());
+	    
+	    for (const auto &k: keys) {
+		auto kv = s.find(k);
+		cout << "         " << k << " " << kv->second << endl;
+	    }
+	}
+    }
 }
+
+
+// -------------------------------------------------------------------------------------------------
 
 
 int main(int argc, char **argv)
@@ -337,7 +402,7 @@ int main(int argc, char **argv)
 	usage();
 
     // (l1_config_filename, rfi_config_filename, bonsai_config_filename, l1b_config_filename)
-    l1_params config(argv[1], argv[2], argv[3], argv[4]);
+    l1_params config(argc, argv);
 
     int nstreams = config.nstreams;
     int nbeams = config.nbeams;
@@ -365,28 +430,8 @@ int main(int argc, char **argv)
     for (int ibeam = 0; ibeam < nbeams; ibeam++)
 	threads[ibeam].join();
 
-    for (int istream = 0; istream < nstreams; istream++) {
-	cout << "stream " << istream << ": ipaddr=" << config.ipaddr[istream] << ", udp_port=" << config.port[istream] << endl;
-
-	// vector<map<string,int>>
-	auto statistics = input_streams[istream]->get_statistics();
-
-	for (unsigned int irec = 0; irec < statistics.size(); irec++) {
-	    cout << "    record " << irec  << endl;
-	    const auto &s = statistics[irec];
-
-	    vector<string> keys;
-	    for (const auto &kv: s)
-		keys.push_back(kv.first);
-	    
-	    sort(keys.begin(), keys.end());
-	
-	    for (const auto &k: keys) {
-		auto kv = s.find(k);
-		cout << "         " << k << " " << kv->second << endl;
-	    }
-	}
-    }
+    if (config.verbosity >= 2)
+	print_statistics(config, input_streams);
 
     return 0;
 }
