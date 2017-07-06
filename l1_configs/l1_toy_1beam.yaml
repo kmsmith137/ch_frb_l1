@@ -1,0 +1,12 @@
+nbeams: 1
+
+# Divides data into four "streams", with four beams per stream.
+# In this configuration, each stream is on a different 1 Gbps interface, but a different UDP port.
+ipaddr: "127.0.0.1"
+port: 6677
+
+slow_kernels: True
+
+l1b_executable_filename: "./toy-l1b.py"
+
+rpc_address: "tcp://127.0.0.1:5555"
