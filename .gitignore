@@ -1,6 +1,7 @@
 *~
 *.o
 *.pyc
+*.dSYM
 Makefile.local
 ch-frb-l1
 ch-frb-simulate-l0

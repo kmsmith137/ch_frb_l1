@@ -1,6 +1,7 @@
 #include <fstream>
 #include <unistd.h>
 #include <sys/time.h>
+#include <stdio.h>
 #include <thread>
 
 #include <zmq.hpp>
@@ -64,15 +65,17 @@ using namespace ch_frb_io;
 
  */
 
-
-// For debugging, convert a zmq message to a string
 /*
+// For debugging, convert a zmq message to a string
 static string msg_string(zmq::message_t &msg) {
     return string(static_cast<const char*>(msg.data()), msg.size());
 }
- */
+*/
 
-// RPC requests to write assembled_chunks to disk are stored in this struct
+// RPC requests to write assembled_chunks to disk are stored in this
+// struct.  (this is used to queue requests *within* the RPC server --
+// requests are pulled off the "frontend" socket by the main RPC
+// server thread and queued for processing by the RpcWorker thread(s).
 struct write_chunk_request {
     std::vector<std::pair<zmq::message_t*, uint32_t> > clients;
     std::string filename;
@@ -138,9 +141,11 @@ public:
                 w->chunk->msgpack_bitshuffle = true;
                 w->chunk->write_msgpack_file(w->filename);
                 rep.success = true;
+                _server->set_writechunk_status(w->filename, "SUCCEEDED", "");
             } catch (...) {
                 chlog("Write msgpack file failed: filename " << rep.filename);
                 rep.error_message = "Failed to write msgpack file";
+                _server->set_writechunk_status(w->filename, "FAILED", "");
             }
             // Drop this chunk so its memory can be reclaimed
             w->chunk.reset();
@@ -163,14 +168,10 @@ public:
                     thisreply = new zmq::message_t();
                     thisreply->copy(reply);
                 }
-                try {
-                    if (!(_socket.send(*client, ZMQ_SNDMORE) &&
-                          _socket.send(*token_to_message(token), ZMQ_SNDMORE) &&
-                          _socket.send(*thisreply))) {
-                        chlog("ERROR: sending RPC reply: " << strerror(zmq_errno()));
-                    }
-                } catch (const zmq::error_t& e) {
-                    chlog("ERROR sending RPC reply: " << e.what());
+                if (!(_socket.send(*client, ZMQ_SNDMORE) &&
+                      _socket.send(*token_to_message(token), ZMQ_SNDMORE) &&
+                      _socket.send(*thisreply))) {
+                    chlog("ERROR: sending RPC reply: " << strerror(zmq_errno()));
                 }
                 delete client;
                 delete thisreply;
@@ -236,9 +237,9 @@ bool L1RpcServer::is_shutdown() {
     return _shutdown;
 }
 
+// Called by the RpcWorker thread(s) to get more work.
 write_chunk_request* L1RpcServer::pop_write_request() {
     write_chunk_request* wreq;
-
     ulock u(_q_mutex);
     for (;;) {
         if (_shutdown) {
@@ -257,6 +258,18 @@ write_chunk_request* L1RpcServer::pop_write_request() {
     return wreq;
 }
 
+void L1RpcServer::set_writechunk_status(string filename,
+                                        string status,
+                                        string error_message) {
+    {
+        ulock u(_status_mutex);
+        _write_chunk_status[filename] = make_pair(status, error_message);
+	chlog("Set writechunk status for " << filename << " to " << status);
+    }
+}
+
+// For testing purposes, enqueue a chunk for writing as though an RPC
+// client requested it.
 void L1RpcServer::enqueue_write_request(std::shared_ptr<ch_frb_io::assembled_chunk> chunk,
                                         std::string filename,
                                         int priority) {
@@ -340,6 +353,7 @@ void L1RpcServer::run() {
                 chlog("Failed to receive message on frontend socket!");
                 continue;
             }
+            //chlog("Received RPC request from client: " << msg_string(client));
             more = _frontend.getsockopt<int>(ZMQ_RCVMORE);
             if (!more) {
                 chlog("Expected two message parts on frontend socket!");
@@ -377,6 +391,7 @@ void L1RpcServer::run() {
                     chlog("  failed to un-msgpack message");
                 }
             }
+
             if (_shutdown)
                 break;
         }
@@ -402,7 +417,10 @@ void L1RpcServer::run() {
             assert(ok);
             more = _backend.getsockopt<int>(ZMQ_RCVMORE);
             assert(!more);
-            //cout << "  client: " << msg_string(client) << endl;
+
+	    //cout << "client: " << client.size() << " bytes" << endl;
+	    //// msg_string(client) << endl;
+            //cout << "token: " << token.size() << " bytes" << endl;
             //cout << "message: " << msg.size() << " bytes" << endl;
 
             // Don't need to unpack the message -- just pass it on to the client
@@ -412,16 +430,9 @@ void L1RpcServer::run() {
              msgpack::object obj = oh.get();
              cout << "  message: " << obj << endl;
              */
-            if (!(_frontend.send(client, ZMQ_SNDMORE) &&
-                  _frontend.send(token, ZMQ_SNDMORE) &&
-                  _frontend.send(msg))) {
-                chlog("ERROR: sending RPC reply: " << strerror(zmq_errno()));
-            }
+            _send_frontend_message(client, token, msg);
         }
     }
-
-
-
 
     chlog("L1 RPC server: broke out of main loop.  Joining workers...");
 
@@ -459,6 +470,9 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
     string funcname = rpcreq.function;
     uint32_t token = rpcreq.token;
 
+    //chlog("Received RPC request for function: '" << funcname << "'");
+    //from client '" << msg_string(*client) << "'");
+
     if (funcname == "shutdown") {
         chlog("Shutdown requested.");
         _do_shutdown();
@@ -490,13 +504,13 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             // read and parse /proc/stat, add to stats[0].
             ifstream s("/proc/stat");
             string key;
-            int arrayi;
+            int arrayi = 0;
 
             double dt = time_diff(_time0, get_time());
             // /proc/stat values are in "jiffies"?
             stats[0]["procstat_time"] = dt * 100;
 
-            for (;;) {
+            for (; s.good();) {
                 string word;
                 s >> word;
                 if ((word.size() == 0) && (s.eof()))
@@ -526,15 +540,8 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         //cout << "Sending RPC reply of size " << buffer.size() << endl;
         zmq::message_t* reply = sbuffer_to_message(buffer);
         //cout << "  client: " << msg_string(*client) << endl;
-
-        if (!(_frontend.send(*client, ZMQ_SNDMORE) &&
-              _frontend.send(*token_to_message(token), ZMQ_SNDMORE) &&
-              _frontend.send(*reply))) {
-            chlog("ERROR: sending RPC reply: " << strerror(zmq_errno()));
-            return -1;
-        }
-        //cout << "Sent stats reply!" << endl;
-        return 0;
+        return _send_frontend_message(*client, *token_to_message(token),
+                                     *reply);
 
     } else if (funcname == "list_chunks") {
        // No input arguments, so don't unpack anything more.
@@ -576,18 +583,13 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         msgpack::pack(buffer, allchunks);
         zmq::message_t* reply = sbuffer_to_message(buffer);
         //  Send reply back to client.
-        if (!(_frontend.send(*client, ZMQ_SNDMORE) &&
-              _frontend.send(*token_to_message(token), ZMQ_SNDMORE) &&
-              _frontend.send(*reply))) {
-            chlog("ERROR: sending RPC reply: " << strerror(zmq_errno()));
-            return -1;
-        }
-        return 0;
+        return _send_frontend_message(*client, *token_to_message(token),
+                                     *reply);
 
         /*
          The get_chunks() RPC is disabled for now.
     } else if (funcname == "get_chunks") {
-        cout << "RPC get_chunks() called" << endl;
+    //cout << "RPC get_chunks() called" << endl;
 
         // grab GetChunks_Request argument
         msgpack::object_handle oh =
@@ -621,6 +623,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         // Retrieve the chunks requested.
         vector<shared_ptr<assembled_chunk> > chunks;
         _get_chunks(req.beams, req.min_fpga, req.max_fpga, chunks);
+
         //cout << "get_chunks: got " << chunks.size() << " chunks" << endl;
 
         // Keep a list of the chunks to be written; we'll reply right away with this list.
@@ -655,14 +658,44 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         msgpack::pack(buffer, reply);
         zmq::message_t* replymsg = sbuffer_to_message(buffer);
 
-        if (!(_frontend.send(*client, ZMQ_SNDMORE) &&
-              _frontend.send(*token_to_message(token), ZMQ_SNDMORE) &&
-              _frontend.send(*replymsg))) {
-            chlog("ERROR: sending RPC reply: " << strerror(zmq_errno()));
-            return -1;
-        }
+        return _send_frontend_message(*client, *token_to_message(token),
+                                     *replymsg);
 
-        return 0;
+    } else if (funcname == "get_writechunk_status") {
+
+        // grab argument: string pathname
+        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
+        string pathname = oh.get().as<string>();
+
+        // search the map of pathname -> (status, error_message)
+        string status;
+        string error_message;
+        {
+            ulock u(_status_mutex);
+
+	    // DEBUG
+	    chdebug("Request for status of " << pathname);
+	    for (auto it=_write_chunk_status.begin(); it!=_write_chunk_status.end(); it++) {
+	      chdebug("status[" << it->first << "] = " << it->second.first << ((it->first == pathname) ? " ***" : ""));
+	    }
+
+            auto val = _write_chunk_status.find(pathname);
+            if (val == _write_chunk_status.end()) {
+                status = "UNKNOWN";
+            } else {
+                status        = val->second.first;
+                error_message = val->second.second;
+            }
+        }
+        pair<string, string> result(status, error_message);
+
+        msgpack::sbuffer buffer;
+        msgpack::pack(buffer, result);
+        //  Send reply back to client.
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(*client, *token_to_message(token),
+                                      *reply);
+
     } else {
         // Silent failure?
         chlog("Error: unknown RPC function name: " << funcname);
@@ -670,29 +703,55 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
     }
 }
 
+int L1RpcServer::_send_frontend_message(zmq::message_t& clientmsg,
+                                        zmq::message_t& tokenmsg,
+                                        zmq::message_t& contentmsg) {
+    try {
+        if (!(_frontend.send(clientmsg, ZMQ_SNDMORE) &&
+              _frontend.send(tokenmsg, ZMQ_SNDMORE) &&
+              _frontend.send(contentmsg))) {
+            chlog("ERROR: sending RPC reply: " << strerror(zmq_errno()));
+            return -1;
+        }
+    } catch (const zmq::error_t& e) {
+        chlog("ERROR: sending RPC reply: " << e.what());
+        return -1;
+    }
+    return 0;
+}
+
 // Enqueues a new request to write a chunk.
 void L1RpcServer::_add_write_request(write_chunk_request* req) {
 
     ulock u(_q_mutex);
 
-     // Highest priority goes at the front of the queue.
+    chdebug("Add_write_request for filename " << req->filename);
+
+    // Highest priority goes at the front of the queue.
     // Search for the first element with priority lower than this one's.
     // AND search for a higher-priority duplicate of this element.
     deque<write_chunk_request*>::iterator it;
     for (it = _write_reqs.begin(); it != _write_reqs.end(); it++) {
-        if ((*it)->chunk == req->chunk) {
-            //cout << "Found an existing write request for chunk: beam " << req->chunk->beam_id << ", ichunk " << req->chunk->ichunk << " with >= priority" << endl;
-            // Found a higher-priority existing entry -- add this request's clients to the existing one.
-            (*it)->clients.insert((*it)->clients.end(), req->clients.begin(), req->clients.end());
+        if (((*it)->chunk == req->chunk) &&
+            ((*it)->filename == req->filename)) {
+	  chdebug("Found an existing write request for chunk: beam " << req->chunk->beam_id
+		<< ", ichunk " << req->chunk->ichunk << " with >= priority " << (*it)->chunk
+		<< " and filename " << req->filename);
+	  // Found a higher-priority existing entry -- add this request's clients to the existing one.
+	  (*it)->clients.insert((*it)->clients.end(), req->clients.begin(), req->clients.end());
  
-            u.unlock();
-            return;
+	  u.unlock();
+	  return;
         }
         if ((*it)->priority < req->priority)
             // Found where we should insert this request!
             break;
     }
     bool added = true;
+
+    // Record the status for this filename.
+    set_writechunk_status(req->filename, "QUEUED", "");
+
     _write_reqs.insert(it, req);
     // Now check for duplicate chunks with lower priority after this
     // newly added one.  Since the "insert" invalidates all existing
@@ -700,8 +759,9 @@ void L1RpcServer::_add_write_request(write_chunk_request* req) {
 
     // Iterate up to the chunk we just inserted.
     for (it = _write_reqs.begin(); it != _write_reqs.end(); it++)
-        if ((*it)->chunk == req->chunk)
-            break;
+      if (((*it)->chunk == req->chunk) &&
+	  ((*it)->filename == req->filename))
+	break;
     // Remember where the newly-inserted request is, because if we
     // find another request for the same chunk but lower priority,
     // we'll append clients.
@@ -709,8 +769,9 @@ void L1RpcServer::_add_write_request(write_chunk_request* req) {
 
     it++;
     for (; it != _write_reqs.end(); it++) {
-        if ((*it)->chunk == req->chunk) {
-            //cout << "Found existing write request for this chunk with priority " << it->priority << " vs " << req->priority << endl;
+        if (((*it)->chunk == req->chunk) &&
+            ((*it)->filename == req->filename)) {
+	  chdebug("Found existing write request for this chunk (filename " << req->filename << ") with priority " << (*it)->priority << " vs " << req->priority);
             // Before deleting the lower-priority entry, copy its clients.
             (*newreq)->clients.insert((*newreq)->clients.end(), (*it)->clients.begin(), (*it)->clients.end());
             // Delete the lower-priority one.
@@ -723,16 +784,10 @@ void L1RpcServer::_add_write_request(write_chunk_request* req) {
         }
     }
 
-    /*
-     cout << "Added write request: now " << _write_reqs.size() << " queued" << endl;
-     cout << "Queue:" << endl;
-     for (it = _write_reqs.begin(); it != _write_reqs.end(); it++) {
-     cout << "  priority " << it->priority << ", chunk " << *(it->chunk) << ", clients [";
-     for (auto it2 = it->clients.begin(); it2 != it->clients.end(); it2++)
-     cout << " " << msg_string(**it2);
-     cout << " ]" << endl;
-     }
-     */
+    chdebug("Added write request: now " << _write_reqs.size() << " queued:");
+    for (it = _write_reqs.begin(); it != _write_reqs.end(); it++) {
+      chdebug("  priority " << (*it)->priority << ", filename " << (*it)->filename);
+    }
 
     u.unlock();
 

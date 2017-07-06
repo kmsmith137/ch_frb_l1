@@ -20,10 +20,11 @@ CXX ?= clang++
 
 DEBUG ?= no
 ifeq ($(DEBUG),no)
-     CPP := $(CXX) -std=c++11 -pthread -fPIC -march=native -Wall -O3 -ffast-math -funroll-loops -I. -I$(INCDIR) -I$(JSONCPP_INCDIR)
+     CPP := $(CXX) -std=c++11 -pthread -fPIC -Wall -O3 -march=native -ffast-math -funroll-loops
 else
-     CPP := $(CXX) -std=c++11 -pthread -fPIC -Wall -O0 -g -ffast-math -funroll-loops -I. -I$(INCDIR) -I$(JSONCPP_INCDIR)
+     CPP := $(CXX) -std=c++11 -pthread -fPIC -Wall -O0 -g -march=native -ffast-math
 endif
+CPP += -I. -I$(INCDIR) -I$(JSONCPP_INCDIR)
 
 # Any C++ flags which should only be specified when linking 
 # Don't forget to put -L. and -L$(LIBDIR) on the command line (in this order)

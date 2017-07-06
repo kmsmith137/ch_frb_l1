@@ -4,6 +4,7 @@
 #include <vector>
 #include <deque>
 #include <thread>
+#include <map>
 #include <mutex>
 #include <condition_variable>
 #include <zmq.hpp>
@@ -38,6 +39,11 @@ public:
     // called by RPC worker threads.
     write_chunk_request* pop_write_request();
 
+    // called by RPC worker threads to update status for a write_chunks request
+    void set_writechunk_status(std::string filename,
+                               std::string status,
+                               std::string error_message);
+
     // For testing: enqueue the given chunk for writing.
     void enqueue_write_request(std::shared_ptr<ch_frb_io::assembled_chunk>,
                                std::string filename,
@@ -61,6 +67,10 @@ protected:
 
     void _do_shutdown();
 
+    int _send_frontend_message(zmq::message_t& clientmsg,
+                               zmq::message_t& tokenmsg,
+                               zmq::message_t& contentmsg);
+
 private:
     // ZeroMQ context
     zmq::context_t* _ctx;
@@ -81,8 +91,13 @@ private:
     std::deque<write_chunk_request*> _write_reqs;
     // (and the mutex for it)
     std::mutex _q_mutex;
-
+    // (and a conditions variable for when the queue is not empty)
     std::condition_variable _q_cond;
+
+    // a vector of result codes for write_chunk_request() calls.
+    std::map<std::string, std::pair<std::string, std::string> > _write_chunk_status;
+    // (and the mutex for it)
+    std::mutex _status_mutex;
 
     // flag when we are shutting down.
     bool _shutdown;
