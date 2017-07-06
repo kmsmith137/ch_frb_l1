@@ -47,12 +47,6 @@ struct l1_params {
 
     Json::Value rfi_transform_chain_json;
 
-    // Input stream object reads UDP packets from correlator.
-    shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(int istream);
-
-    // L1-RPC object
-    shared_ptr<L1RpcServer> make_l1rpc_server(int istream, shared_ptr<ch_frb_io::intensity_network_stream>);
-
     // nstreams is automatically determined by the number of (ipaddr, port) pairs.
     // There will be one (network_thread, assembler_thread, rpc_server) triple for each stream.
     int nbeams = 0;
@@ -162,21 +156,26 @@ l1_params::l1_params(const string &l1_config_filename_, const string &rfi_config
 }
 
 
-// l1_params::make_input_stream(): returns a stream object which will read packets from the correlator.
+// -------------------------------------------------------------------------------------------------
+//
+// make_input_stream(): returns a stream object which will read packets from the correlator.
 
-shared_ptr<ch_frb_io::intensity_network_stream> l1_params::make_input_stream(int istream)
+
+static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l1_params &config, int istream)
 {
-    assert(istream >= 0 && istream < nstreams);
+    assert(istream >= 0 && istream < config.nstreams);
 
+    int nbeams = config.nbeams;
+    int nstreams = config.nstreams;
     int nbeams_per_stream = xdiv(nbeams, nstreams);
     
     ch_frb_io::intensity_network_stream::initializer ini_params;
 
-    ini_params.ipaddr = ipaddr[istream];
-    ini_params.udp_port = port[istream];
+    ini_params.ipaddr = config.ipaddr[istream];
+    ini_params.udp_port = config.port[istream];
     ini_params.beam_ids = vrange(istream * nbeams_per_stream, (istream+1) * nbeams_per_stream);
-    ini_params.mandate_fast_kernels = !slow_kernels;
-    ini_params.mandate_reference_kernels = slow_kernels;
+    ini_params.mandate_fast_kernels = !config.slow_kernels;
+    ini_params.mandate_reference_kernels = config.slow_kernels;
     
     // Setting this flag means that an exception will be thrown if either:
     //
@@ -202,7 +201,7 @@ shared_ptr<ch_frb_io::intensity_network_stream> l1_params::make_input_stream(int
 
     ini_params.assembled_ringbuf_nlevels = 1;
 
-    if (!is_subscale) {
+    if (!config.is_subscale) {
 	// Core-pinning logic for the full-scale L1 server.
 
 	if (nstreams % 2 == 1)
@@ -232,9 +231,16 @@ shared_ptr<ch_frb_io::intensity_network_stream> l1_params::make_input_stream(int
 }
 
 
-shared_ptr<L1RpcServer> l1_params::make_l1rpc_server(int istream, shared_ptr<ch_frb_io::intensity_network_stream> stream) {
+// -------------------------------------------------------------------------------------------------
+//
+// make_l1rpc_server()
 
-    shared_ptr<L1RpcServer> rpc = make_shared<L1RpcServer>(stream, rpc_address[istream]);
+
+shared_ptr<L1RpcServer> make_l1rpc_server(const l1_params &config, int istream, shared_ptr<ch_frb_io::intensity_network_stream> stream) 
+{
+    assert(istream >= 0 && istream < config.nstreams);
+
+    shared_ptr<L1RpcServer> rpc = make_shared<L1RpcServer>(stream, config.rpc_address[istream]);
     return rpc;
 }
 
@@ -341,10 +347,10 @@ int main(int argc, char **argv)
     vector<std::thread> threads(nbeams);
 
     for (int istream = 0; istream < nstreams; istream++)
-	input_streams[istream] = config.make_input_stream(istream);
+	input_streams[istream] = make_input_stream(config, istream);
 
     for (int istream = 0; istream < nstreams; istream++) {
-	rpc_servers[istream] = config.make_l1rpc_server(istream, input_streams[istream]);
+	rpc_servers[istream] = make_l1rpc_server(config, istream, input_streams[istream]);
         // returns std::thread
         rpc_servers[istream]->start();
     }
