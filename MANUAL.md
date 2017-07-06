@@ -48,6 +48,17 @@ For compilation instructions, see one of the following:
 <a name="laptop"></a>
 ### QUICK-START EXAMPLES WHICH CAN RUN ON A LAPTOP
 
+Example 1:
+
+  - Start the L1 server:
+    ```
+    ./ch-frb-l1 l1_configs/l1_toy_1beam.yaml rfi_configs/rfi_placeholder.json bonsai_configs/bonsai_toy_1tree.txt -
+    ```
+
+  - In another window, start the L0 simulator:
+    ```
+    ./ch-frb-simulate-l0 l0_configs/l0_toy_1beam.yaml 30
+    ```
 
 <a name="two-node-backend"></a>
 ### EXAMPLES ON THE TWO-NODE MCGILL BACKEND
