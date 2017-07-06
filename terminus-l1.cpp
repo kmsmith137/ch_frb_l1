@@ -14,7 +14,7 @@
 
 #include <l1-rpc.hpp>
 #include <chlog.hpp>
-#include "l1-parts.hpp"
+
 
 using namespace std;
 using namespace ch_frb_io;
@@ -281,6 +281,27 @@ int main(int argc, char **argv) {
 
     
 }
+
+
+
+// make_rfi_chain(): currently a placeholder which returns an arbitrarily constructed transform chain.
+//
+// The long-term plan here is:
+//   - keep developing RFI removal, until all transforms are C++
+//   - write code to serialize a C++ transform chain to yaml
+//   - add a command-line argument <transform_chain.yaml> to ch-frb-l1 
+
+static vector<shared_ptr<rf_pipelines::wi_transform>> make_rfi_chain()
+{
+    int nt_chunk = 1024;
+    int polydeg = 2;
+
+    auto t1 = rf_pipelines::make_polynomial_detrender(nt_chunk, rf_pipelines::AXIS_FREQ, polydeg);
+    auto t2 = rf_pipelines::make_polynomial_detrender(nt_chunk, rf_pipelines::AXIS_TIME, polydeg);
+    
+    return { t1, t2 };
+}
+
 
 static void processing_thread_main(shared_ptr<ch_frb_io::intensity_network_stream> instream,
                                    int beam_id,

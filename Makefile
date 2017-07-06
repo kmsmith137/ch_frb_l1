@@ -39,7 +39,7 @@ BINARIES := ch-frb-l1 ch-frb-simulate-l0 rpc-client test-l1-rpc sim-l0-set hdf5-
 all: $(BINARIES)
 .PHONY: all
 
-INCFILES := ch_frb_l1.hpp l0-sim.hpp l1-parts.hpp l1-rpc.hpp rpc.hpp
+INCFILES := ch_frb_l1.hpp l0-sim.hpp l1-rpc.hpp rpc.hpp
 
 L1_OBJS := l1-rpc.o
 
@@ -77,7 +77,7 @@ test-l1-rpc: test-l1-rpc.cpp $(L1_OBJS)
 hdf5-stream: hdf5-stream.cpp
 	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $< -lrf_pipelines -lch_frb_io $(LIBS)
 
-terminus-l1: terminus-l1.o l1-parts.o $(L1_OBJS)
+terminus-l1: terminus-l1.o $(L1_OBJS)
 	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lrf_pipelines -lbonsai -lch_frb_io $(LIBS) -lsimpulse -lzmq
 
 clean:
