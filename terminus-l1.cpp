@@ -2,8 +2,6 @@
 #include <string>
 #include <iostream>
 
-#include <zmq.hpp>
-
 #include <bonsai.hpp>
 
 #include "ch_frb_io.hpp"
@@ -64,8 +62,8 @@ static void usage() {
 // performs RFI removal and Bonsai dedispersion on them.
 static void processing_thread_main(shared_ptr<ch_frb_io::intensity_network_stream> stream,
                                    int ithread,
-                                   const bonsai::config_params &cp,
-                                   const shared_ptr<bonsai::trigger_output_stream> &tp);
+                                   const bonsai::config_params &cp);
+
 
 int main(int argc, char **argv) {
 
@@ -258,15 +256,10 @@ int main(int argc, char **argv) {
 
     bonsai_config.write("bc.txt", "txt", true);
     
-    // different bonsai dispersers apparently can't share triggers.
-    vector<shared_ptr<bonsai::trigger_output_stream> > output_streams;
-    for (size_t ibeam = 0; ibeam < nbeams; ibeam++)
-      output_streams.push_back(make_shared<l1b_trigger_stream>(&zmqctx, l1b_address, bonsai_config));
-    
     for (size_t ibeam = 0; ibeam < nbeams; ibeam++)
         // Note: the processing thread gets 'ibeam', not the beam id,
         // because that is what get_assembled_chunk() takes
-        processing_threads.push_back(std::thread(std::bind(processing_thread_main, instream, ini_params.beam_ids[ibeam], bonsai_config, output_streams[ibeam])));
+        processing_threads.push_back(std::thread(std::bind(processing_thread_main, instream, ini_params.beam_ids[ibeam], bonsai_config)));
 
     if ((rpc_port.length() == 0) && (rpc_portnum == 0))
         rpc_port = "tcp://127.0.0.1:5555";
@@ -291,15 +284,18 @@ int main(int argc, char **argv) {
 
 static void processing_thread_main(shared_ptr<ch_frb_io::intensity_network_stream> instream,
                                    int beam_id,
-                                   const bonsai::config_params &cp,
-                                   const shared_ptr<bonsai::trigger_output_stream> &tp) {
+                                   const bonsai::config_params &cp) {
     chime_log_set_thread_name("proc-" + std::to_string(beam_id));
     chlog("Processing thread main: beam " << beam_id);
 
     auto stream = rf_pipelines::make_chime_network_stream(instream, beam_id);
     auto transform_chain = make_rfi_chain();
-    auto dedisperser = make_dedisperser(cp, tp);
-    transform_chain.push_back(dedisperser);
+
+    bonsai::dedisperser::initializer ini_params;
+    ini_params.verbosity = 0;
+	
+    auto dedisperser = make_shared<bonsai::dedisperser> (cp, ini_params);
+    transform_chain.push_back(rf_pipelines::make_bonsai_dedisperser(dedisperser));
 
     // (transform_chain, outdir, json_output, verbosity)
     stream->run(transform_chain, string(), nullptr, 0);

@@ -22,8 +22,6 @@
 #include <rf_pipelines.hpp>
 #include <bonsai.hpp>
 #include <l1-rpc.hpp>
-#include <zmq.hpp>
-#include <msgpack.hpp>
 
 #include "ch_frb_l1.hpp"
 #include "chlog.hpp"
@@ -43,10 +41,6 @@ struct l1_params {
 
     // Input stream object reads UDP packets from correlator.
     shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(int istream);
-
-    // Output stream object writes coarse-grained triggers to grouping/sifting code.
-    shared_ptr<bonsai::trigger_output_stream> make_output_stream(int ibeam,
-                                                                 bonsai::config_params bonsai_config);
 
     // L1-RPC object
     shared_ptr<L1RpcServer> make_l1rpc_server(int istream, shared_ptr<ch_frb_io::intensity_network_stream>);
@@ -172,15 +166,6 @@ shared_ptr<ch_frb_io::intensity_network_stream> l1_params::make_input_stream(int
 }
 
 
-// l1_params::make_output_stream(): returns the stream object which will send coarse-grained
-// triggers to the sifting/grouping code.
-//
-shared_ptr<bonsai::trigger_output_stream> l1_params::make_output_stream(int ibeam, bonsai::config_params bonsai_config)
-{
-    assert(ibeam >= 0 && ibeam < nbeams);
-    return make_shared<l1b_trigger_stream>((zmq::context_t*)NULL, l1b_address[ibeam], bonsai_config);
-}
-
 shared_ptr<L1RpcServer> l1_params::make_l1rpc_server(int istream, shared_ptr<ch_frb_io::intensity_network_stream> stream) {
 
     shared_ptr<L1RpcServer> rpc = make_shared<L1RpcServer>(stream, rpc_address[istream]);
@@ -192,19 +177,8 @@ shared_ptr<L1RpcServer> l1_params::make_l1rpc_server(int istream, shared_ptr<ch_
 
 static void dedispersion_thread_main(const l1_params &l1_config, const bonsai::config_params &cp,
 				     const shared_ptr<ch_frb_io::intensity_network_stream> &sp, 
-				     const shared_ptr<bonsai::trigger_output_stream> &tp,
 				     int ibeam)
 {
-    // During development, it's convenient to throw in a bonsai::global_max_tracker,
-    // so that the dedispersion thread can print the most significant (DM, arrival_time)
-    // when it exits.
-    //
-    // FIXME: eventually the global_max_tracker can be removed (it won't be needed in production).
-
-    shared_ptr<bonsai::global_max_tracker> max_tracker = make_shared<bonsai::global_max_tracker> ();
-
-    // FIXME write a std::thread subclass which makes this try..catch logic automatic.
-
     try {
 	if (std::thread::hardware_concurrency() != 40)
 	    throw runtime_error("ch-frb-l1: this program is currently hardcoded to run on the 20-core chimefrb test nodes, and won't run on smaller machines");
@@ -212,14 +186,28 @@ static void dedispersion_thread_main(const l1_params &l1_config, const bonsai::c
 	if (l1_config.nbeams != 16)
 	    throw runtime_error("ch-frb-l1: current core-pinning logic in dedispersion_thread_main() assumes 16 beams");
 	
+	// Pin thread before allocating anything (especially dedisperser!)
 	int c = (ibeam / 8) * 10 + (ibeam % 8);
 	ch_frb_io::pin_thread_to_cores({c,c+20});
 	
         auto stream = rf_pipelines::make_chime_network_stream(sp, ibeam);
 	auto transform_chain = make_rfi_chain();
 
-	auto dedisperser = make_dedisperser(cp, tp, max_tracker);
-	transform_chain.push_back(dedisperser);
+	bonsai::dedisperser::initializer ini_params;
+	ini_params.verbosity = 0;
+
+	auto dedisperser = make_shared<bonsai::dedisperser> (cp, ini_params);
+	
+	// During development, it's convenient to throw in a bonsai::global_max_tracker,
+	// so that the dedispersion thread can print the most significant (DM, arrival_time)
+	// when it exits.
+	//
+	// FIXME: eventually the global_max_tracker can be removed (it won't be needed in production).
+	
+	auto max_tracker = make_shared<bonsai::global_max_tracker> ();
+	dedisperser->add_processor(max_tracker);
+
+	transform_chain.push_back(rf_pipelines::make_bonsai_dedisperser(dedisperser));
 
 	// (transform_chain, outdir, json_output, verbosity)
 	stream->run(transform_chain, string(), nullptr, 0);
@@ -258,7 +246,6 @@ int main(int argc, char **argv)
     int nbeams = l1_config.nbeams;
 
     vector<shared_ptr<ch_frb_io::intensity_network_stream>> input_streams(nstreams);
-    vector<shared_ptr<bonsai::trigger_output_stream>> output_streams(nbeams);
     vector<shared_ptr<L1RpcServer> > rpc_servers(nbeams);
     vector<std::thread> threads(nbeams);
 
@@ -271,14 +258,11 @@ int main(int argc, char **argv)
         rpc_servers[istream]->start();
     }
 
-    for (int ibeam = 0; ibeam < nbeams; ibeam++)
-        output_streams[ibeam] = l1_config.make_output_stream(ibeam, bonsai_config);
-
     for (int ibeam = 0; ibeam < nbeams; ibeam++) {
 	cerr << "spawning thread " << ibeam << endl;
 	int nbeams_per_stream = xdiv(nbeams, nstreams);
 	int istream = ibeam / nbeams_per_stream;
-	threads[ibeam] = std::thread(dedispersion_thread_main, l1_config, bonsai_config, input_streams[istream], output_streams[ibeam], ibeam);
+	threads[ibeam] = std::thread(dedispersion_thread_main, l1_config, bonsai_config, input_streams[istream], ibeam);
     }
 
     for (int ibeam = 0; ibeam < nbeams; ibeam++)
@@ -306,9 +290,6 @@ int main(int argc, char **argv)
 	    }
 	}
     }
-
-    for (int ibeam = 0; ibeam < nbeams; ibeam++)
-	cout << "dedisperser " << ibeam << ": nchunks_processed=" << output_streams[ibeam]->nchunks_processed << "\n";
 
     return 0;
 }
