@@ -56,6 +56,21 @@ struct l1_params {
     // The L1 server can run in two modes: either a "full-scale" mode with 16 beams and 20 cores,
     // or a "subscale" mode with (nbeams <= 4) and no core-pinning.
     bool is_subscale = true;
+    
+    // If slow_kernels=false (the default), the L1 server will use fast assembly language kernels
+    // for its packet processing.  If slow_kernels=true, then it will use reference kernels which
+    // are much slower.
+    //
+    // Note 1: the slow kernels are too slow for non-subscale use!  If slow kernels are used on
+    // the "full-scale" L1 server with (nbeams, nupfreq) = (16, 16), it may crash.
+    //
+    // Note 2: the fast kernels can only be used if certain conditions are met.  As of this writing,
+    // the conditions are: (a) nupfreq must be even, and (b) nt_per_packet must be 16.  In particular,
+    // for a subscale run with nupfreq=1, the fast kernels can't be used.
+    //
+    // Conditions (a) and (b) could be generalized by writing a little more code, if this would be useful
+    // then let me know!
+    bool slow_kernels = false;
 
     // Both vectors have length nstreams.
     vector<string> ipaddr;
@@ -86,6 +101,7 @@ l1_params::l1_params(const string &l1_config_filename_, const string &bonsai_con
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
     this->rpc_address = p.read_vector<string> ("rpc_address");
+    this->slow_kernels = p.read_scalar<bool> ("slow_kernels", false);
     this->l1b_executable_filename = p.read_scalar<string> ("l1b_executable_filename");
     this->l1b_search_path = p.read_scalar<bool> ("l1b_search_path", false);
     this->l1b_pipe_capacity = p.read_scalar<int> ("l1b_pipe_capacity", 0);
@@ -143,7 +159,8 @@ shared_ptr<ch_frb_io::intensity_network_stream> l1_params::make_input_stream(int
     ini_params.ipaddr = ipaddr[istream];
     ini_params.udp_port = port[istream];
     ini_params.beam_ids = vrange(istream * nbeams_per_stream, (istream+1) * nbeams_per_stream);
-    ini_params.mandate_fast_kernels = true;
+    ini_params.mandate_fast_kernels = !slow_kernels;
+    ini_params.mandate_reference_kernels = slow_kernels;
     
     // Setting this flag means that an exception will be thrown if either:
     //
