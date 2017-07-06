@@ -32,12 +32,15 @@ using namespace ch_frb_l1;
 
 
 // -------------------------------------------------------------------------------------------------
-//
-// More config parameters to come:
-//  - Parameters defining location of sifting/grouping code (e.g. local socket)
+
 
 struct l1_params {
-    l1_params(const string &filename);
+    l1_params(const string &l1_config_filename, const string &bonsai_config_filename, const string &l1b_config_filename);
+
+    const string l1_config_filename;
+    const string l1b_config_filename;
+
+    const bonsai::config_params bonsai_config;
 
     // Input stream object reads UDP packets from correlator.
     shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(int istream);
@@ -57,20 +60,32 @@ struct l1_params {
     // One L1-RPC per stream
     vector<string> rpc_address;
 
-    // One L1b address per beam
-    vector<string> l1b_address;
+    // L1b linkage.
+    // Note: assumed L1b command line is:
+    //   <l1_executable_filename> <l1b_config> <beam_id>
+
+    std::string l1b_executable_filename;
+    bool l1b_pipe_blocking = true;
+    bool l1b_search_path = false;     // will $PATH be searched for executable?
+    int l1b_pipe_capacity = 0;        // zero means "system default"
 };
 
 
-l1_params::l1_params(const string &filename)
+l1_params::l1_params(const string &l1_config_filename_, const string &bonsai_config_filename, const string &l1b_config_filename_) :
+    l1_config_filename(l1_config_filename_),
+    l1b_config_filename(l1b_config_filename_),
+    bonsai_config(bonsai_config_filename)
 {
-    yaml_paramfile p(filename);
+    yaml_paramfile p(l1_config_filename);
      
     this->nbeams = p.read_scalar<int> ("nbeams");
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
     this->rpc_address = p.read_vector<string> ("rpc_address");
-    this->l1b_address = p.read_vector<string> ("l1b_address");
+    this->l1b_executable_filename = p.read_scalar<string> ("l1b_executable_filename");
+    this->l1b_search_path = p.read_scalar<bool> ("l1b_search_path", false);
+    this->l1b_pipe_capacity = p.read_scalar<int> ("l1b_pipe_capacity", 0);
+    this->l1b_pipe_blocking = p.read_scalar<bool> ("l1b_pipe_blocking", true);
     
     if ((ipaddr.size() == 1) && (port.size() > 1))
 	this->ipaddr = vector<string> (port.size(), ipaddr[0]);
@@ -78,7 +93,7 @@ l1_params::l1_params(const string &filename)
 	this->port = vector<int> (ipaddr.size(), port[0]);
     
     if (ipaddr.size() != port.size())
-	throw runtime_error(filename + " expected 'ip_addr' and 'port' to be lists of equal length");
+	throw runtime_error(l1_config_filename + " expected 'ip_addr' and 'port' to be lists of equal length");
     
     this->nstreams = ipaddr.size();
 
@@ -87,10 +102,9 @@ l1_params::l1_params(const string &filename)
     assert(ipaddr.size() == (unsigned int)nstreams);
     assert(port.size() == (unsigned int)nstreams);
     assert(rpc_address.size() == (unsigned int)nstreams);
-    assert(l1b_address.size() == (unsigned int)nbeams);
 
     if (nbeams % nstreams) {
-	throw runtime_error(filename + " nbeams (=" + to_string(nbeams) + ") must be a multiple of nstreams (="
+	throw runtime_error(l1_config_filename + " nbeams (=" + to_string(nbeams) + ") must be a multiple of nstreams (="
 			    + to_string(nstreams) + ", inferred from number of (ipaddr,port) pairs");
     }
 
@@ -175,20 +189,21 @@ shared_ptr<L1RpcServer> l1_params::make_l1rpc_server(int istream, shared_ptr<ch_
 
 // -------------------------------------------------------------------------------------------------
 
-static void dedispersion_thread_main(const l1_params &l1_config, const bonsai::config_params &cp,
-				     const shared_ptr<ch_frb_io::intensity_network_stream> &sp, 
-				     int ibeam)
+
+static void dedispersion_thread_main(const l1_params &config, const shared_ptr<ch_frb_io::intensity_network_stream> &sp, int ibeam)
 {
     try {
 	if (std::thread::hardware_concurrency() != 40)
 	    throw runtime_error("ch-frb-l1: this program is currently hardcoded to run on the 20-core chimefrb test nodes, and won't run on smaller machines");
 	
-	if (l1_config.nbeams != 16)
+	if (config.nbeams != 16)
 	    throw runtime_error("ch-frb-l1: current core-pinning logic in dedispersion_thread_main() assumes 16 beams");
 	
-	// Pin thread before allocating anything (especially dedisperser!)
 	int c = (ibeam / 8) * 10 + (ibeam % 8);
-	ch_frb_io::pin_thread_to_cores({c,c+20});
+	vector<int> allowed_cores = { c, c+20 };
+
+	// Pin thread before allocating anything (especially dedisperser!)
+	ch_frb_io::pin_thread_to_cores(allowed_cores);
 	
         auto stream = rf_pipelines::make_chime_network_stream(sp, ibeam);
 	auto transform_chain = make_rfi_chain();
@@ -196,8 +211,29 @@ static void dedispersion_thread_main(const l1_params &l1_config, const bonsai::c
 	bonsai::dedisperser::initializer ini_params;
 	ini_params.verbosity = 0;
 
-	auto dedisperser = make_shared<bonsai::dedisperser> (cp, ini_params);
-	
+	auto dedisperser = make_shared<bonsai::dedisperser> (config.bonsai_config, ini_params);
+
+	if (config.l1b_executable_filename.size() > 0) {
+	    // Assumed L1b command line is: <l1_executable> <l1b_config> <beam_id>
+	    vector<string> l1b_command_line = {
+		config.l1b_executable_filename,
+		config.l1b_config_filename,
+		std::to_string(ibeam)
+	    };
+
+	    bonsai::trigger_pipe::initializer l1b_pipe_ini;
+	    l1b_pipe_ini.pipe_capacity = config.l1b_pipe_capacity;
+	    l1b_pipe_ini.blocking = config.l1b_pipe_blocking;
+	    l1b_pipe_ini.search_path = config.l1b_search_path;
+	    l1b_pipe_ini.child_cores = allowed_cores;   // important: pin L1b child process to same core as L1a parent thread.
+
+	    // The trigger_pipe constructor will spawn the L1B child process.
+	    auto tp = make_shared<bonsai::trigger_pipe> (l1b_command_line, l1b_pipe_ini);
+	    dedisperser->add_processor(tp);
+	}
+	else
+	    cout << "ch-frb-l1: config parameter 'l1b_executable_filename' is an empty string, L1B processes will not be spawned\n";
+
 	// During development, it's convenient to throw in a bonsai::global_max_tracker,
 	// so that the dedispersion thread can print the most significant (DM, arrival_time)
 	// when it exits.
@@ -229,7 +265,7 @@ static void dedispersion_thread_main(const l1_params &l1_config, const bonsai::c
 
 static void usage()
 {
-    cerr << "usage: ch-frb-l1 <l1_config.yaml> <bonsai_config.txt>\n";
+    cerr << "usage: ch-frb-l1 <l1_config.yaml> <bonsai_config.txt> <l1b_config_file>\n";
     exit(2);
 }
 
@@ -239,21 +275,21 @@ int main(int argc, char **argv)
     if (argc != 3)
 	usage();
 
-    l1_params l1_config(argv[1]);
-    bonsai::config_params bonsai_config(argv[2]);
+    // (l1_config_filename, bonsai_config_filename, l1b_config_filename)
+    l1_params config(argv[1], argv[2], argv[3]);
 
-    int nstreams = l1_config.nstreams;
-    int nbeams = l1_config.nbeams;
+    int nstreams = config.nstreams;
+    int nbeams = config.nbeams;
 
     vector<shared_ptr<ch_frb_io::intensity_network_stream>> input_streams(nstreams);
     vector<shared_ptr<L1RpcServer> > rpc_servers(nbeams);
     vector<std::thread> threads(nbeams);
 
     for (int istream = 0; istream < nstreams; istream++)
-	input_streams[istream] = l1_config.make_input_stream(istream);
+	input_streams[istream] = config.make_input_stream(istream);
 
     for (int istream = 0; istream < nstreams; istream++) {
-	rpc_servers[istream] = l1_config.make_l1rpc_server(istream, input_streams[istream]);
+	rpc_servers[istream] = config.make_l1rpc_server(istream, input_streams[istream]);
         // returns std::thread
         rpc_servers[istream]->start();
     }
@@ -262,14 +298,14 @@ int main(int argc, char **argv)
 	cerr << "spawning thread " << ibeam << endl;
 	int nbeams_per_stream = xdiv(nbeams, nstreams);
 	int istream = ibeam / nbeams_per_stream;
-	threads[ibeam] = std::thread(dedispersion_thread_main, l1_config, bonsai_config, input_streams[istream], ibeam);
+	threads[ibeam] = std::thread(dedispersion_thread_main, config, input_streams[istream], ibeam);
     }
 
     for (int ibeam = 0; ibeam < nbeams; ibeam++)
 	threads[ibeam].join();
 
     for (int istream = 0; istream < nstreams; istream++) {
-	cout << "stream " << istream << ": ipaddr=" << l1_config.ipaddr[istream] << ", udp_port=" << l1_config.port[istream] << endl;
+	cout << "stream " << istream << ": ipaddr=" << config.ipaddr[istream] << ", udp_port=" << config.port[istream] << endl;
 
 	// vector<map<string,int>>
 	auto statistics = input_streams[istream]->get_statistics();
