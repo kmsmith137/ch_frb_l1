@@ -49,11 +49,15 @@ struct l1_params {
     shared_ptr<L1RpcServer> make_l1rpc_server(int istream, shared_ptr<ch_frb_io::intensity_network_stream>);
 
     // nstreams is automatically determined by the number of (ipaddr, port) pairs.
-    // There will be one (network_thread, assembler_thread) pair for each stream.
+    // There will be one (network_thread, assembler_thread, rpc_server) triple for each stream.
     int nbeams = 0;
     int nstreams = 0;
 
-    // Both vectors have length nstream.
+    // The L1 server can run in two modes: either a "full-scale" mode with 16 beams and 20 cores,
+    // or a "subscale" mode with (nbeams <= 4) and no core-pinning.
+    bool is_subscale = true;
+
+    // Both vectors have length nstreams.
     vector<string> ipaddr;
     vector<int> port;
 
@@ -86,7 +90,21 @@ l1_params::l1_params(const string &l1_config_filename_, const string &bonsai_con
     this->l1b_search_path = p.read_scalar<bool> ("l1b_search_path", false);
     this->l1b_pipe_capacity = p.read_scalar<int> ("l1b_pipe_capacity", 0);
     this->l1b_pipe_blocking = p.read_scalar<bool> ("l1b_pipe_blocking", true);
-    
+
+    // 2 * (number of threads), where factor 2 is from hyperthreading.
+    int hwcon = std::thread::hardware_concurrency();
+
+    if (nbeams <= 4)
+	this->is_subscale = true;
+    else if ((nbeams == 16) && (hwcon == 40))
+	this->is_subscale = false;
+    else {
+	cerr << "ch-frb-l1: The L1 server can currently run in two modes: either a \"full-scale\" mode\n"
+	     << "  with 16 beams and 20 cores, or a \"subscale\" mode with 4 beams and no core-pinning.\n"
+	     << "  This appears to be an instance with " << nbeams << " beams, and " << (hwcon/2) << " cores.\n";
+	exit(1);
+    }
+
     if ((ipaddr.size() == 1) && (port.size() > 1))
 	this->ipaddr = vector<string> (port.size(), ipaddr[0]);
     else if ((ipaddr.size() > 1) && (port.size() == 1))
@@ -117,12 +135,6 @@ l1_params::l1_params(const string &l1_config_filename_, const string &bonsai_con
 shared_ptr<ch_frb_io::intensity_network_stream> l1_params::make_input_stream(int istream)
 {
     assert(istream >= 0 && istream < nstreams);
-
-    if (std::thread::hardware_concurrency() != 40)
-	throw runtime_error("ch-frb-l1: this program is currently hardcoded to run on the 20-core chimefrb test nodes, and won't run on smaller machines");
-
-    if (nstreams % 2 == 1)
-	throw runtime_error("ch-frb-l1: nstreams must be even, in order to divide dedispersion threads evenly between the two CPUs");
 
     int nbeams_per_stream = xdiv(nbeams, nstreams);
     
@@ -157,24 +169,31 @@ shared_ptr<ch_frb_io::intensity_network_stream> l1_params::make_input_stream(int
 
     ini_params.assembled_ringbuf_nlevels = 1;
 
-    // Note that processing threads 0-7 are pinned to cores 0-7 (on CPU1)
-    // and cores 10-17 (on CPU2).  I decided to pin assembler threads to
-    // cores 8 and 18.  This leaves cores 9 and 19 free for RPC threads.
+    if (!is_subscale) {
+	// Core-pinning logic for the full-scale L1 server.
 
-    if (istream < (nstreams/2))
-	ini_params.assembler_thread_cores = {8,28};
-    else
-	ini_params.assembler_thread_cores = {18,38};
+	if (nstreams % 2 == 1)
+	    throw runtime_error("ch-frb-l1: nstreams must be even, in order to divide dedispersion threads evenly between the two CPUs");
 
-    // I decided to pin all network threads to CPU1, since according to
-    // the motherboard manual, all NIC's live on the same PCI-E bus as CPU1.
-    //
-    // I think it makes sense to avoid pinning network threads to specific
-    // cores on the CPU, since they use minimal cycles, but scheduling latency
-    // is important for minimizing packet drops.  I haven't really tested this
-    // assumption though!
+	// Note that processing threads 0-7 are pinned to cores 0-7 (on CPU1)
+	// and cores 10-17 (on CPU2).  I decided to pin assembler threads to
+	// cores 8 and 18.  This leaves cores 9 and 19 free for RPC and other IO.
+	
+	if (istream < (nstreams/2))
+	    ini_params.assembler_thread_cores = {8,28};
+	else
+	    ini_params.assembler_thread_cores = {18,38};
 
-    ini_params.network_thread_cores = vconcat(vrange(0,10), vrange(20,30));
+	// I decided to pin all network threads to CPU1, since according to
+	// the motherboard manual, all NIC's live on the same PCI-E bus as CPU1.
+	//
+	// I think it makes sense to avoid pinning network threads to specific
+	// cores on the CPU, since they use minimal cycles, but scheduling latency
+	// is important for minimizing packet drops.  I haven't really tested this
+	// assumption though!
+
+	ini_params.network_thread_cores = vconcat(vrange(0,10), vrange(20,30));
+    }
 
     return ch_frb_io::intensity_network_stream::make(ini_params);
 }
@@ -193,16 +212,16 @@ shared_ptr<L1RpcServer> l1_params::make_l1rpc_server(int istream, shared_ptr<ch_
 static void dedispersion_thread_main(const l1_params &config, const shared_ptr<ch_frb_io::intensity_network_stream> &sp, int ibeam)
 {
     try {
-	if (std::thread::hardware_concurrency() != 40)
-	    throw runtime_error("ch-frb-l1: this program is currently hardcoded to run on the 20-core chimefrb test nodes, and won't run on smaller machines");
-	
-	if (config.nbeams != 16)
-	    throw runtime_error("ch-frb-l1: current core-pinning logic in dedispersion_thread_main() assumes 16 beams");
-	
-	int c = (ibeam / 8) * 10 + (ibeam % 8);
-	vector<int> allowed_cores = { c, c+20 };
+	vector<int> allowed_cores;
 
-	// Pin thread before allocating anything (especially dedisperser!)
+	if (!config.is_subscale) {
+	    // Core-pinning logic for full-scale L1 server.
+	    int c = (ibeam / 8) * 10 + (ibeam % 8);
+	    allowed_cores = { c, c+20 };
+	}
+
+	// Pin thread before allocating anything.
+	// Note that in the subscale case, 'allowed_cores' is an empty vector, and pin_thread_to_cores() no-ops.
 	ch_frb_io::pin_thread_to_cores(allowed_cores);
 	
         auto stream = rf_pipelines::make_chime_network_stream(sp, ibeam);
@@ -225,7 +244,10 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 	    l1b_pipe_ini.pipe_capacity = config.l1b_pipe_capacity;
 	    l1b_pipe_ini.blocking = config.l1b_pipe_blocking;
 	    l1b_pipe_ini.search_path = config.l1b_search_path;
-	    l1b_pipe_ini.child_cores = allowed_cores;   // important: pin L1b child process to same core as L1a parent thread.
+
+	    // Important: pin L1b child process to same core as L1a parent thread.
+	    // Note that in the subscale case, 'allowed_cores' is an empty vector, and the child process is not core-pinned.
+	    l1b_pipe_ini.child_cores = allowed_cores;
 
 	    // The trigger_pipe constructor will spawn the L1B child process.
 	    auto tp = make_shared<bonsai::trigger_pipe> (l1b_command_line, l1b_pipe_ini);
