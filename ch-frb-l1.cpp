@@ -294,7 +294,7 @@ static void usage()
 
 int main(int argc, char **argv)
 {
-    if (argc != 3)
+    if (argc != 4)
 	usage();
 
     // (l1_config_filename, bonsai_config_filename, l1b_config_filename)
