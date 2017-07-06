@@ -13,7 +13,7 @@ namespace ch_frb_l1 {
 #endif
 
 
-static bool file_exists(const string &filename)
+bool file_exists(const string &filename)
 {
     struct stat s;
 
@@ -27,9 +27,12 @@ static bool file_exists(const string &filename)
 }
 
 
-yaml_paramfile::yaml_paramfile(const string &filename_) :
-    filename(filename_)
+yaml_paramfile::yaml_paramfile(const string &filename_, int verbosity_) :
+    filename(filename_), verbosity(verbosity_)
 {
+    if (verbosity < 0 || verbosity > 2)
+	_die("verbosity constructor argument (=" + stringify(verbosity) + ") must be 0, 1, or 2");
+
     if (!file_exists(filename))
 	_die("file not found");
 
@@ -66,20 +69,24 @@ bool yaml_paramfile::has_param(const string &k) const
 
 void yaml_paramfile::check_for_unused_params(bool fatal) const
 {
-    bool flag = false;
+    vector<string> unused_keys;
+
+    for (const string &k: all_keys)
+	if (requested_keys.count(k) == 0)
+	    unused_keys.push_back(k);
+    
+    if (unused_keys.size() == 0)
+	return;
     
     stringstream ss;
-    ss << filename << "unrecognized params";
+    ss << ((unused_keys.size() > 1) ? "unused parameters " : "unused parameter ");
 
-    for (const string &k: all_keys) {
-	if (requested_keys.count(k) == 0) {
-	    ss << (flag ? ", " : " ") << k;
-	    flag = true;
-	}
+    for (unsigned int i = 0; i < unused_keys.size(); i++) {
+	if (i > 0)
+	    ss << ", ";
+	ss << "'" << unused_keys[i] << "'";
     }
 
-    if (!flag)
-	return;
     if (fatal)
 	_die(ss.str());
 
@@ -91,6 +98,12 @@ void yaml_paramfile::check_for_unused_params(bool fatal) const
 void yaml_paramfile::_die(const string &txt) const
 {
     throw runtime_error(filename + ": " + txt);
+}
+
+// Virtual member function; this is the default implementation
+void yaml_paramfile::_print(const string &txt) const
+{
+    cout << filename << ": " << txt << flush;
 }
 
 
