@@ -1,0 +1,6 @@
+nbeams: 1
+nthreads: 1
+nupfreq: 1
+
+ipaddr: "127.0.0.1"
+port: 6677
