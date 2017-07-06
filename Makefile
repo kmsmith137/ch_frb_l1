@@ -39,7 +39,7 @@ BINARIES := ch-frb-l1 ch-frb-simulate-l0 rpc-client test-l1-rpc sim-l0-set hdf5-
 all: $(BINARIES)
 .PHONY: all
 
-INCFILES := ch_frb_l1.hpp l1-rpc.hpp rpc.hpp
+INCFILES := ch_frb_l1.hpp l0-sim.hpp l1-parts.hpp l1-rpc.hpp rpc.hpp
 
 L1_OBJS := l1-rpc.o
 
