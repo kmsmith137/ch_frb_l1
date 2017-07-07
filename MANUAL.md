@@ -1,12 +1,6 @@
 ### MANUAL.md
 
-This minimal manual is a work in progress!  It should explain the critical
-things you need to know to use the L1 server, but it's pretty terse.
-
-The best way to improve the manual is to get feedback from people who
-are seeing it for the first time, so let me know what parts were confusing
-or needed more explanation!
-
+This manual is incomplete and some sections are placeholders!
 
 ### CONTENTS
 
@@ -20,30 +14,49 @@ or needed more explanation!
 <a name="overview"></a>
 ### HIGH-LEVEL OVERVIEW  
 
-The L1 server is not finished yet!  Here are some caveats:
+The L1 server is not finished yet!
+Please note the following caveats:
 
-  - No RFI removal!
+  - **No RFI removal yet**.  Instead there is a placeholder
+    processing stage which detrends the data, but does not
+    mask RFI.
 
-  - The simulator only simulates noise; no pulses or RFI.
+  - The L0 simulator can only simulate noise; it cannot
+    simulate pulses or replay RFI captures.
 
-  - If anything goes wrong it will crash!
+  - The L1 server is very fragile; if anything goes wrong
+    (such as a thread running slow and filling a ring buffer)
+    then it will probably crash!
 
-  - You will probably encounter bugs.
+  - Some parts have not been throroughly tested, and
+    you may encounter bugs.
 
 The main high-level components are:
 
   - ch-frb-l1: The "L1 server".
 
-  - ch-frb-simulate-l0: The "L0 simulator"
+    This is the master executable, which receives UDP packets
+    containing one or more beams, dedisperses each beam in a
+    separate thread, and passes coarse-grained triggers to "L1b"
+    (which runs as a separate process for each beam).
 
-  - RPC client python library.
+  - ch-frb-simulate-l0: The "L0 simulator".
 
-  - Webapp.
+    This is for testing the L1 server.  It simulates a packet stream
+    and sends it to L1, in the same packet format that the CHIME
+    correlator will use.
+
+  - RPC client python library.  (To be documented later.)
+
+  - Monitoring webapp.  (To be documented later.)
 
 For compilation instructions, see one of the following:
-  - doc/install.md: general-purpose install instructions
-  - doc/quick_install_frb1.md: simplified install instructions for frb1.physics.mcgill.ca
-  - doc/quick_install_l1_node.md: simplified install instructions for L1 nodes (frb-compute-0, frb-compute-1, ...)
+  - [doc/install.md](./doc/install.md):
+      general-purpose install instructions
+  - [doc/quick_install_frb1.md](./doc/quick_install_frb1.md):
+      simplified install instructions for frb1.physics.mcgill.ca
+  - [doc/quick_install_l1_node.md](./doc/quick_install_l1_node.md):
+      simplified install instructions for L1 compute nodes (frb-compute-0, frb-compute-1, ...)
 
 <a name="laptop"></a>
 ### QUICK-START EXAMPLES WHICH CAN RUN ON A LAPTOP
@@ -52,8 +65,13 @@ Example 1:
 
   - Start the L1 server:
     ```
-    ./ch-frb-l1 l1_configs/l1_toy_1beam.yaml rfi_configs/rfi_placeholder.json bonsai_configs/bonsai_toy_1tree.txt -
+    ./ch-frb-l1  \
+       l1_configs/l1_toy_1beam.yaml  \
+       rfi_configs/rfi_placeholder.json  \
+       bonsai_configs/bonsai_toy_1tree.txt  \
+       l1b_config_placeholder
     ```
+    There are four configuration files, which will be described shortly!
 
   - In another window, start the L0 simulator:
     ```
@@ -63,19 +81,141 @@ Example 1:
 <a name="two-node-backend"></a>
 ### EXAMPLES ON THE TWO-NODE MCGILL BACKEND
 
+This is a placeholder section, which will contain a description of
+the McGill two-node backend, and some examples which can be run.
+
+This is a good place to explain "L1 streams".  The L1 node must
+be configured to divide its input into multiple streams, with the
+following properties:
+
+ - Each stream corresponds to a unique (ip_address, udp_port) pair.
+   For example, a node with four network interfaces, using a single UDP
+   port on each, would use four streams.  (Assuming no link bonding!)
+
+ - The beams received by the node must be divided evenly between streams.
+   For example, if a node is configured with 16 beams and 2 streams, then
+   the correlator is responsible for sending 8 beams to each of the node's
+   two (ip_address, udp_port) pairs.
+
+ - Each stream is handled by an independent set of threads, and has an
+   independent RPC server.  For example, to tell the node to write all
+   of its beams to disk, a separate RPC would need to be sent to every
+   stream.
+   
+   If the node has multiple CPU's, then each stream's threads will be
+   "pinned" to one of the CPU's.
+
+The stream configuration of an L1 node is determined by the `ipaddr`, `port`,
+and `rpc_address` fields in the L1 configuration file.  See the section
+[Config file reference: L1 server](#user-content-l1-config) for more info.
+
+Now let's consider some examples.
+
+  - The "full-scale" 16-beam L1 server, running on an L1 node with
+    two CPU's, four NIC's, and no link bonding.
+
+    In this case, the L1 node would need to be configured to use
+    four streams (one each NIC), and the correlator nodes would need
+    to be configured to send four beams to each IP address.
+
+  - The "full-scale" L1 server with link bonding.
+
+    In this case, the four NIC's behave as one virtual NIC with
+    four times the bandwidth and one IP address.  We would still
+    need to use two streams (rather than one), to divide processing
+    between the two CPU's in the node.  The two streams would have
+    the same IP address, but would use different UDP ports.  The
+    correlator nodes would need to be configured to send 8 beams
+    to each UDP port.
+
+  - A subscale test case running on a laptop.  In this case there
+    is usually no reason to use more than one stream.
+
+The L1 server can run in one of two modes:
+
+  - A "full-scale" mode which assumes 16 beams, two 10-core CPU's,
+    and either 2 or 4 streams.  In this mode, we usually use 16384
+    frequency channels, which means that the L1 server needs 160 GB
+    of memory!
+
+  - A "subscale" mode which assumes <=4 beams, and either 1, 2, or 4 streams.
+  
+    This is intended for development/debugging (e.g. on a laptop).  In this
+    case, you'll almost certainly want to decrease the number of frequency
+    channels, so that the memory and CPU usage are reasonable.  With 1024
+    frequency channels and <= 4 beams, the L0 simulator and L1 server should
+    easily run on a laptop over the "loopback" network interface.
+
 <a name="l1-config"></a>
 ### CONFIG FILE REFERENCE: L1 SERVER
 
+The L1 configuration file is a YAML file.
+There are some examples in the `ch_frb_l1/l1_configs` directory.
+
+Parameters defining stream configuration, and beams to be processed:
+
+  - `nbeams`: Number of beams (integer).
+
+  - `beam_ids`: 
+
+  - `ipaddr`: IP address (e.g. "127.0.0.1" for loopback interface, or something
+     like "10.0.0.100" for a node on the real CHIME network).
+
+     This should either be a list of strings (one for each stream),
+     or a single stream (if all streams use the same IP address).
+
+  - `port`: UDP port.  This should be either a list of integers (one for each stream),
+     or a single integer (if all streams use the same UDP port).
+
+     Taken together, the ipaddr and port parameters determine the number of streams
+     
+  - `rpc_address`:
+
+Parameters defining L1B linkage.
+
+  - `l1b_executable_filename`:
+
+  - `l1b_search_path`:
+
+  - `l1b_pipe_capacity`:
+
+  - `l1b_pipe_blocking`:
+  
+Debugging:
+
+  - `slow_kernels`:
+
+  - `track_global_trigger_max`:
 
 <a name="l0-config"></a>
 ### CONFIG FILE REFERENCE: L0 SIMULATOR
+
+  - `nbeams`: Number of beams (integer).
+  
+  - `nthreads`
+
+  - `nupfreq`
+  
+  - `fpga_counts_per_sample`
+  
+  - `max_packet_size`
+  
+  - `gbps_per_stream`
+  
+  - `ipaddr`
+
+  - `port`
+
+  - `nfreq_coarse_per_packet`
+
+  - `nt_per_packet`
 
 
 <a name="rpc reference"></a>
 ### RPC REFERENCE
 
-  - get_statistics
+  - `get_statistics`
 
-  - write_chunks
+  - `write_chunks`
 
 
