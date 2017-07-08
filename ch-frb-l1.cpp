@@ -36,8 +36,10 @@ using namespace ch_frb_l1;
 
 static void usage()
 {
-    cerr << "Usage: ch-frb-l1 [-v] <l1_config.yaml> <rfi_config.txt> <bonsai_config.txt> <l1b_config_file>\n"
-	 << "  The -v flag makes the output more verbose\n";
+    cerr << "Usage: ch-frb-l1 [-vp] <l1_config.yaml> <rfi_config.txt> <bonsai_config.txt> <l1b_config_file>\n"
+	 << "  The -v flag increases verbosity of the toplevel ch-frb-l1 logic\n"
+	 << "  The -p flag enables a very verbose debug trace of the pipe I/O between L1a and L1b\n";
+
     exit(2);
 }
 
@@ -56,10 +58,11 @@ struct l1_params {
     Json::Value rfi_transform_chain_json;
     bonsai::config_params bonsai_config;
 
-    // verbosity=1: pretty quiet
-    // verbosity=2: pretty noisy
-    // I plan to add verbosity=0 and verbosity=3 later!
-    int verbosity = 1;
+    // l1_verbosity=1: pretty quiet
+    // l1_verbosity=2: pretty noisy
+    // I may add l1_verbosity=0 and l1_verbosity=3 later!
+    int l1_verbosity = 1;
+    bool l1b_pipe_io_debug = false;
 
     // nstreams is automatically determined by the number of (ipaddr, port) pairs.
     // There will be one (network_thread, assembler_thread, rpc_server) triple for each stream.
@@ -119,10 +122,19 @@ l1_params::l1_params(int argc, char **argv)
     // Low-budget command line parsing
 
     for (int i = 1; i < argc; i++) {
-	if (!strcmp(argv[i], "-v"))
-	    this->verbosity = 2;
-	else
+	if (argv[i][0] != '-') {
 	    args.push_back(argv[i]);
+	    continue;
+	}
+
+	for (int j = 1; argv[i][j] != 0; j++) {
+	    if (argv[i][j] == 'v')
+		this->l1_verbosity = 2;
+	    else if (argv[i][j] == 'p')
+		this->l1b_pipe_io_debug = true;
+	    else
+		usage();
+	}
     }
 
     if (args.size() != 4)
@@ -145,7 +157,7 @@ l1_params::l1_params(int argc, char **argv)
     // Throwaway call, to get an early check that rfi_config_file is valid.
     auto rfi_chain = rf_pipelines::deserialize_transform_chain_from_json(this->rfi_transform_chain_json);
 
-    if (verbosity >= 2) {
+    if (l1_verbosity >= 2) {
 	cout << rfi_config_filename << ": " << rfi_chain.size() << " transforms\n";
 	for (unsigned int i = 0; i < rfi_chain.size(); i++)
 	    cout << rfi_config_filename << ": transform " << i << "/" << rfi_chain.size() << ": " << rfi_chain[i]->name << "\n";
@@ -154,7 +166,7 @@ l1_params::l1_params(int argc, char **argv)
     // Read bonsai_config file.
     this->bonsai_config = bonsai::config_params(bonsai_config_filename);
 
-    if (verbosity >= 2) {
+    if (l1_verbosity >= 2) {
 	bool write_derived_params = true;
 	string prefix = bonsai_config_filename + ": ";
 	bonsai_config.write(cout, write_derived_params, prefix);
@@ -162,7 +174,7 @@ l1_params::l1_params(int argc, char **argv)
 
     // Remaining code in this function reads l1_config file.
 
-    int yaml_verbosity = (this->verbosity >= 2) ? 1 : 0;
+    int yaml_verbosity = (this->l1_verbosity >= 2) ? 1 : 0;
     yaml_paramfile p(l1_config_filename, yaml_verbosity);
 
     // These parameters can be read right away.
@@ -367,6 +379,7 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 	    l1b_pipe_ini.pipe_capacity = config.l1b_pipe_capacity;
 	    l1b_pipe_ini.blocking = config.l1b_pipe_blocking;
 	    l1b_pipe_ini.search_path = config.l1b_search_path;
+	    l1b_pipe_ini.verbosity = config.l1b_pipe_io_debug ? 3: 1;
 
 	    // Important: pin L1b child process to same core as L1a parent thread.
 	    // Note that in the subscale case, 'allowed_cores' is an empty vector, and the child process is not core-pinned.
@@ -478,7 +491,7 @@ int main(int argc, char **argv)
     for (int ibeam = 0; ibeam < nbeams; ibeam++)
 	threads[ibeam].join();
 
-    if (config.verbosity >= 2)
+    if (config.l1_verbosity >= 2)
 	print_statistics(config, input_streams);
 
     return 0;
