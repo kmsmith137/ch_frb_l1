@@ -78,14 +78,33 @@ Example 1:
     ./ch-frb-simulate-l0 l0_configs/l0_toy_1beam.yaml 30
     ```
 
-<a name="two-node-backend"></a>
-### EXAMPLES ON THE TWO-NODE MCGILL BACKEND
+<a name="configuration-file-overview"></a>
+### CONFIGURATION FILE OVERVIEW
 
-This is a placeholder section, which will contain a description of
-the McGill two-node backend, and some examples which can be run.
 
-This is a good place to explain "L1 streams".  The L1 node must
-be configured to divide its input into multiple streams, with the
+  - The directory `ch_frb_l1/bonsai_configs/benchmarks` contains four bonsai config files.  The 
+    computational cost of each can be measured with the command-line utility:
+    ```
+    bonsai-time-dedisperser bonsai_configs/benchmarks/params_noups_nbeta1.txt 20
+    ```
+    This will run 20 copies of the dedisperser, one on each core, when it measures the running time.
+    In addition, the placeholder RFI removal in `ch-frb-l1.cpp` should take around 19% of a core.
+    Using this procedure, I get the following timings:
+    ```
+    params_noups_nbeta1.txt: 0.38 + 0.19 = 0.57
+    params_noups_nbeta2.txt: 0.42 + 0.19 = 0.61
+    params_ups_nbeta1.txt: 0.57 + 0.19 = 0.76
+    params_ups_nbeta2.txt: 0.74 + 0.19 = 0.93
+    ```
+    A puzzle here is that the last config (params_ups_nbeta2.txt) fails to run quickly enough,
+    even though it should be able to keep up with the data by a small (7%) margin.
+
+    I usually test using `params_ups_nbeta1.txt`.  This is the most computationally
+    expensive option which currently works!
+
+
+Now is a good place to explain L1 streams.
+The L1 node is configured to divide its input into multiple streams, with the
 following properties:
 
  - Each stream corresponds to a unique (ip_address, udp_port) pair.
@@ -145,6 +164,26 @@ The L1 server can run in one of two modes:
     channels, so that the memory and CPU usage are reasonable.  With 1024
     frequency channels and <= 4 beams, the L0 simulator and L1 server should
     easily run on a laptop over the "loopback" network interface.
+
+
+<a name="two-node-backend"></a>
+### EXAMPLES ON THE TWO-NODE MCGILL BACKEND
+
+This is a placeholder section, which will contain a description of
+the McGill two-node backend, and some examples which can be run.
+
+
+  - Right now the following ports are open on the firewalls of the compute nodes: 10252/udp, 6677/udp, 6677/tcp.
+    If you need to open more, the syntax is:
+    ```
+    sudo firewall-cmd --zone=public --add-port=10252/udp --permanent
+    sudo firewall-cmd --reload
+    sudo firewall-cmd --list-all
+    ```
+
+  - You may run into a nuisance issue where the L1 process hangs for a long time (uninterruptible with control-C)
+    after throwing an exception, because it is trying to write its core dump.  My solution is
+    `sudo killall -9 abrt-hook-ccpp` in another window.  Let me know if you find a better one!
 
 <a name="l1-config"></a>
 ### CONFIG FILE REFERENCE: L1 SERVER
