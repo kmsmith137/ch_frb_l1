@@ -7,7 +7,7 @@
 #      interface is throttled to 1 Gbps
 
 nbeams: 16
-nupfreq: 16
+nfreq: 16384
 
 # Divides data into four "streams", with four beams per stream.
 # In this configuration, each stream is on a different 1 Gbps interface, but a different UDP port.

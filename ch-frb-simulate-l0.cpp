@@ -29,7 +29,7 @@ struct l0_params {
 
     int nbeams_tot = 0;
     int nthreads_tot = 0;
-    int nupfreq = 0;
+    int nfreq_fine = 0;
 
     // The 'ipaddr' and 'port' vectors have the same length 'nstreams'
     // nstreams evenly divides nthreads.
@@ -56,6 +56,7 @@ struct l0_params {
     double gbps_per_stream = 0.0;
 
     // Derived parameters
+    int nupfreq = 0;
     int nbeams_per_stream = 0;
     int nthreads_per_stream = 0;
     int nfreq_coarse_per_thread = 0;
@@ -69,7 +70,7 @@ l0_params::l0_params(const string &filename)
 
     this->nbeams_tot = p.read_scalar<int> ("nbeams");
     this->nthreads_tot = p.read_scalar<int> ("nthreads");
-    this->nupfreq = p.read_scalar<int> ("nupfreq");
+    this->nfreq_fine = p.read_scalar<int> ("nfreq");
 
     if (p.has_param("fpga_counts_per_sample"))
 	this->fpga_counts_per_sample = p.read_scalar<int> ("fpga_counts_per_sample");
@@ -95,7 +96,7 @@ l0_params::l0_params(const string &filename)
     assert(nthreads_tot > 0);
     assert(nthreads_tot <= 32);
     assert(nbeams_tot > 0);
-    assert(nupfreq > 0);
+    assert(nfreq_fine > 0);
     assert(fpga_counts_per_sample > 0);
     assert(max_packet_size > 0);
     assert(ipaddr.size() == (unsigned int)nstreams);
@@ -120,10 +121,16 @@ l0_params::l0_params(const string &filename)
 			    + to_string(nstreams) + ", inferred by counting (ipaddr,port) pairs)");
     }
 
+    if (nfreq_fine % ch_frb_io::constants::nfreq_coarse_tot != 0) {
+	throw runtime_error(filename + ": nfreq (=" + to_string(nfreq_fine ) + ") must be a multiple of "
+			    + to_string(ch_frb_io::constants::nfreq_coarse_tot));
+    }
+
     // Derived parameters, part 1
     this->nbeams_per_stream = xdiv(nbeams_tot, nstreams);
     this->nthreads_per_stream = xdiv(nthreads_tot, nstreams);
     this->nfreq_coarse_per_thread = xdiv(nfreq_coarse_tot, nthreads_per_stream);
+    this->nupfreq = xdiv(nfreq_fine, ch_frb_io::constants::nfreq_coarse_tot);
 
     // Logic for nfreq_coarse_per_packet, nt_per_packet can be a little complicated!
 
