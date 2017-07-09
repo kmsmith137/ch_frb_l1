@@ -232,17 +232,17 @@ l1_params::l1_params(int argc, char **argv)
     
     // Now decide whether instance is "subscale" or "full-scale".
 
-    // 2 * (number of threads), where factor 2 is from hyperthreading.
-    int hwcon = std::thread::hardware_concurrency();
+    // Factor 2 is from hyperthreading.
+    int num_cores = std::thread::hardware_concurrency() / 2;
 
     if (nbeams <= 4)
 	this->is_subscale = true;
-    else if ((nbeams == 16) && (hwcon == 40))
+    else if ((nbeams == 16) && (num_cores == 20))
 	this->is_subscale = false;
     else {
 	cerr << "ch-frb-l1: The L1 server can currently run in two modes: either a \"full-scale\" mode\n"
 	     << "  with 16 beams and 20 cores, or a \"subscale\" mode with 4 beams and no core-pinning.\n"
-	     << "  This appears to be an instance with " << nbeams << " beams, and " << (hwcon/2) << " cores.\n";
+	     << "  This appears to be an instance with " << nbeams << " beams, and " << num_cores << " cores.\n";
 	exit(1);
     }
 
