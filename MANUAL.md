@@ -6,6 +6,7 @@ This manual is incomplete and some sections are placeholders!
 
   - [High-level overview](#user-content-overview)
   - [Quick-start examples which can run on a laptop](#user-content-laptop)
+  - [Configuration overview](#user-content-configuration-file-overview)
   - [Examples on the two-node McGill backend](#user-content-two-node-backend)
   - [Config file reference: L1 server](#user-content-l1-config)
   - [Config file reference: L0 simulator](#user-content-l0-config)
@@ -24,12 +25,32 @@ Please note the following caveats:
   - The L0 simulator can only simulate noise; it cannot
     simulate pulses or replay RFI captures.
 
+  - There is currently a technical issue in the bonsai code
+    which requires an artificially large bonsai chunk size (8 seconds)
+    in order to search the full (DM, pulse width) parameter space
+    (roughly DM <= 13000 and width <= 100 ms).
+
+    In the current set of bonsai configuration files, I've chosen
+    to search the full parameter space, using an 8-second chunk size.
+    It would also be possible to make an alternate set of configuration
+    files which use a 1-second bonsai chunk size, but search a more
+    limited parameter space (roughly DM <= 3200 and width <= 8 ms).
+    Let me know if this would be useful!
+
+    Eventually, this technical issue will be fixed, and it will be
+    possible to simultaneously use a 1-second chunk size, and search
+    the full CHIME parameter space.
+
   - The L1 server is very fragile; if anything goes wrong
     (such as a thread running slow and filling a ring buffer)
-    then it will probably crash!
+    then it will throw an exception and die.
 
-  - Some parts have not been throroughly tested, and
-    you may encounter bugs.
+    This is actually convenient for debugging (assuming that we did
+    a good job of making the text of the exception informative), but
+    for production we need to carefully enumerate corner cases and
+    make sure that the L1 server recovers sensibly.
+    
+  - Some parts have not been throroughly tested, and you may encounter bugs!
 
 The main high-level components are:
 
@@ -132,6 +153,20 @@ Example 1:
 <a name="configuration-file-overview"></a>
 ### CONFIGURATION FILE OVERVIEW
 
+Command-line syntax for ch-frb-l1:
+```
+Usage: ch-frb-l1 [-vp] <l1_config.yaml> <rfi_config.txt> <bonsai_config.txt> <l1b_config_file>
+  The -v flag increases verbosity of the toplevel ch-frb-l1 logic
+  The -p flag enables a very verbose debug trace of the pipe I/O between L1a and L1b
+```
+The L1 server takes four parameter files.
+
+  - The utility `bonsai-show-config` is useful!
+
+  - As mentioned previously, there is a technical issue in the bonsai code.
+    If you modify the 16K-frequency bonsai config files, there's a good chance you'll get cryptic
+    errors like "bonsai_ups_nbeta2.txt: nt_tree[3]=256 is too small (minimum value for this config = 320)".
+    Eventually this will be fixed!
 
   - The directory `ch_frb_l1/bonsai_configs/benchmarks` contains four bonsai config files.  The 
     computational cost of each can be measured with the command-line utility:
@@ -152,6 +187,11 @@ Example 1:
 
     I usually test using `params_ups_nbeta1.txt`.  This is the most computationally
     expensive option which currently works!
+
+Command-line syntax for ch-frb-simulate-l0:
+```
+Usage: ch-frb-simulate-l0 <l0_params.yaml> <num_seconds>
+```
 
 
 Now is a good place to explain L1 streams.
@@ -261,16 +301,84 @@ Parameters defining stream configuration, and beams to be processed:
      
   - `rpc_address`:
 
-Parameters defining L1B linkage.
+##### Parameters defining L1b linkage
 
-  - `l1b_executable_filename`:
+  - `l1b_executable_filename` (string).
 
-  - `l1b_search_path`:
+     Filename of the L1b executable.  The L1 server spawns
+     L1b subprocesses using the following command line:
+     ```
+     <l1b_executable_filename> <l1b_config_filename> <beam_id>
+     ```
+     Here, l1b_config_filename is one of the command-line arguments when the L1 server is started
+     (see [configuration file overview](#user-content-configuration-file-overview) above for the 
+     L1 server command-line syntax).  The beam_id is an integer.
 
-  - `l1b_pipe_capacity`:
+     When each L1b subprocess is spawned, its standard input will be connected to a unix pipe
+     which will be used to send coarse-grained triggers from L1a to L1b.  The bonsai configuration
+     information (e.g. dimensions of coarse-grained trigger) arrays will also be sent over the
+     pipe, so there is no need for the bonsai_config_filename to appear on the L1b command line.
 
-  - `l1b_pipe_blocking`:
-  
+     Currently, the L1b process should be written in python, and the `bonsai.PipedDedisperser`
+     python class should be used to receive coarse-grained triggers through the pipe.  The
+     program `toy-l1b.py` is a toy example, which "processes" coarse-grained triggers by
+     combining them into a waterfall plot.
+
+  - `l1b_search_path` (boolean, default=false).
+
+     If true, then duplicate the actions of the
+     shell in searching for the l1b executable, by trying all colon-separated directories
+     in the $PATH environnment variable.
+
+  - `l1b_buffer_nsamples` (integer, default=0).
+
+    Number of time samples which can be buffered between L1a and L1b.
+
+    Under the hood, this gets converted to a buffer size in bytes, which is used to set
+    the capacity of the unix pipe between L1 and L1b.  The default (0) means that a
+    system default pipe capacity is used (usually 64 kbytes, which is uncomfortably small).
+
+    It is important to note that setting the capacity of a pipe is a linux-only feature!
+    Therefore, on other operating systems, setting l1b_buffer_nsamples=0 is the only option.
+    In linux, there is also a maximum allowed capacity (/proc/sys/fs/pipe-max-size).  If
+    you get a permissions failure when increasing pipe capacity, then you probably need to
+    increase the maximum (as root).
+
+    When the L1 server computes the pipe capacity from l1b_buffer_nsamples, the buffer size
+    will be rounded up to a multiple of the bonsai chunk size ('nt_chunk' in the bonsai config 
+    file), and a little bit of padding will be added for metadata.
+
+  - `l1b_pipe_timeout` (floating-point, default=0).
+
+    Timeout in seconds for the unix pipe connecting L1a and L1b.
+
+    This parameter determines what happens when L1a tries to write to the pipe, and the pipe
+    is full (presumably because L1b is running slow).  The dedispersion thread will sleep
+    until the timeout expires, or the pipe becomes writeable, whichever comes first.  If a
+    second write also fails because the pipe is full, then the L1 server will throw an
+    exception.
+
+    **Important:** the default parameters (l1b_buffer_nsamples = l1b_pipe_timeout = 0) are asking for trouble!  
+    In this case, the L1 server will crash if the pipe fills for an instant, and the pipe capacity will be a system 
+    default (usually 64 kbytes) which is probably too small to hold the coarse-grained triggers from a single bonsai 
+    chunk.  In this situation, the L1 server can crash even in its normal mode of operation, in the middle of sending
+    a chunk of data from L1a to L1b.
+
+    One alternative to this "doomsday scenario", which we plan to use in the production L1 server, is to set l1b_pipe_timeout=0,
+    but set l1b_buffer_nsamples to some reasonable value (say 4096, corresponding to a 4-second buffer).
+    This solution is suitable for a real-time search, since it puts a hard limit on how far L1b can
+    fall behind in its processing (4 seconds) before it is considered an error.  It only works on Linux,
+    which is fine for the real L1 nodes, but can't be emulated on an osx laptop.
+
+    Another alternative, which is the only alternative to the doomsday scenario on a non-linux machine,
+    is to set l1b_pipe_timeout to some reasonable value (a few seconds).  In this configuration, there is
+    no hard limit on how far L1b can fall behind cumulatively, as long as it calls PipedDedisperser.get_triggers()
+    frequently enough.  This configuration is suitable for subscale testing, and is used in all the toy
+    L1 config file examples.
+
+  - `l1b_pipe_blocking` (boolean, default=false): if true, then L1a's writes to the pipe
+    will be blocking.  This has the same effect as setting l1b_pipe_timeout to a huge value.
+
 Debugging:
 
   - `slow_kernels`:
