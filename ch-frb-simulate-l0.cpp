@@ -279,7 +279,7 @@ void sim_thread_main(const shared_ptr<ch_frb_io::intensity_network_ostream> &ost
 
 static void usage()
 {
-    cerr << "usage: ch-frb-simulate-l0 <l0_params.yaml> <num_seconds>\n";
+    cerr << "Usage: ch-frb-simulate-l0 <l0_params.yaml> <num_seconds>\n";
     exit(2);
 }
 
