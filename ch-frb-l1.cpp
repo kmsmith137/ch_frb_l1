@@ -101,12 +101,13 @@ struct l1_params {
     vector<int> beam_ids;
 
     // L1b linkage.  Note: assumed L1b command line is:
-    //   <l1_executable_filename> <l1b_config> <beam_id>
+    //   <l1b_executable_filename> <l1b_config_filename> <beam_id>
 
     std::string l1b_executable_filename;
-    bool l1b_pipe_blocking = true;
     bool l1b_search_path = false;     // will $PATH be searched for executable?
-    int l1b_pipe_capacity = 0;        // zero means "system default"
+    int l1b_buffer_nsamples = 0;      // determines buffer size between L1a and L1b (0 = system default)
+    double l1b_pipe_timeout = 0.0;    // timeout in seconds between L1a and L1
+    bool l1b_pipe_blocking = false;   // setting this to true is equivalent to a very large l1b_pipe_timeout
 
     // Occasionally useful for debugging: If track_global_trigger_max is true, then when 
     // the L1 server exits, it will print the (DM, arrival time) of the most significant FRB.
@@ -185,8 +186,9 @@ l1_params::l1_params(int argc, char **argv)
     this->slow_kernels = p.read_scalar<bool> ("slow_kernels", false);
     this->l1b_executable_filename = p.read_scalar<string> ("l1b_executable_filename");
     this->l1b_search_path = p.read_scalar<bool> ("l1b_search_path", false);
-    this->l1b_pipe_capacity = p.read_scalar<int> ("l1b_pipe_capacity", 0);
-    this->l1b_pipe_blocking = p.read_scalar<bool> ("l1b_pipe_blocking", true);
+    this->l1b_buffer_nsamples = p.read_scalar<int> ("l1b_buffer_nsamples", 0);
+    this->l1b_pipe_timeout = p.read_scalar<double> ("l1b_pipe_timeout", 0.0);
+    this->l1b_pipe_blocking = p.read_scalar<bool> ("l1b_pipe_blocking", false);
     this->track_global_trigger_max = p.read_scalar<bool> ("track_global_trigger_max", false);
 
     // Lots of sanity checks.
@@ -210,8 +212,12 @@ l1_params::l1_params(int argc, char **argv)
 	throw runtime_error(l1_config_filename + ": 'ip_addr' and 'port' must have length >= 1");
     if (rpc_address.size() != (unsigned int)nstreams)
 	throw runtime_error(l1_config_filename + ": 'rpc_address' must be a list whose length is the number of (ip_addr,port) pairs");
-    if (l1b_pipe_capacity < 0)
-	throw runtime_error(l1_config_filename + ": l1b_pipe_capacity must be >= 0");
+    if (l1b_executable_filename.size() == 0)
+	throw runtime_error(l1_config_filename + ": l1b_executable_filename must be a nonempty string");
+    if (l1b_buffer_nsamples < 0)
+	throw runtime_error(l1_config_filename + ": l1b_buffer_nsamples must be >= 0");
+    if (l1b_pipe_timeout < 0.0)
+	throw runtime_error(l1_config_filename + ": l1b_pipe_timeout must be >= 0.0");
     if (nbeams % nstreams) {
 	throw runtime_error(l1_config_filename + ": nbeams (=" + to_string(nbeams) + ") must be a multiple of nstreams (="
 			    + to_string(nstreams) + ", inferred from number of (ipaddr,port) pairs");
@@ -345,8 +351,9 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
     assert(ibeam >= 0 && ibeam < config.nbeams);
 
     try {
-	vector<int> allowed_cores;
+	const bonsai::config_params &bonsai_config = config.bonsai_config;
 
+	vector<int> allowed_cores;
 	if (!config.is_subscale) {
 	    // Core-pinning logic for full-scale L1 server.
 	    int c = (ibeam / 8) * 10 + (ibeam % 8);
@@ -365,7 +372,7 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 	bonsai::dedisperser::initializer ini_params;
 	ini_params.verbosity = 0;
 
-	auto dedisperser = make_shared<bonsai::dedisperser> (config.bonsai_config, ini_params);
+	auto dedisperser = make_shared<bonsai::dedisperser> (bonsai_config, ini_params);
 
 	if (config.l1b_executable_filename.size() > 0) {
 	    // Assumed L1b command line is: <l1_executable> <l1b_config> <beam_id>
@@ -375,22 +382,43 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 		std::to_string(beam_id)
 	    };
 
-	    bonsai::trigger_pipe::initializer l1b_pipe_ini;
-	    l1b_pipe_ini.pipe_capacity = config.l1b_pipe_capacity;
-	    l1b_pipe_ini.blocking = config.l1b_pipe_blocking;
-	    l1b_pipe_ini.search_path = config.l1b_search_path;
-	    l1b_pipe_ini.verbosity = config.l1b_pipe_io_debug ? 3: 1;
+	    bonsai::trigger_pipe::initializer l1b_initializer;
+	    l1b_initializer.timeout = config.l1b_pipe_timeout;
+	    l1b_initializer.blocking = config.l1b_pipe_blocking;
+	    l1b_initializer.search_path = config.l1b_search_path;
+	    l1b_initializer.verbosity = config.l1b_pipe_io_debug ? 3: config.l1_verbosity;
+
+	    if (config.l1b_buffer_nsamples > 0) {
+		int nt_chunk = bonsai_config.nt_chunk;
+		int nchunks = (config.l1b_buffer_nsamples + nt_chunk - 1) / nt_chunk;
+
+		if ((config.l1_verbosity >= 1) && (config.l1b_buffer_nsamples != nchunks * nt_chunk)) {
+		    cout << "ch-frb-l1: increasing l1b_buffer_nsamples: "
+			 << config.l1b_buffer_nsamples << " -> " << (nchunks * nt_chunk) 
+			 << " (rounding up to multiple of bonsai_config.nt_chunk)" << endl;
+		}
+
+		// Base capacity for config_params + a little extra for miscellaneous metadata...
+		l1b_initializer.pipe_capacity = bonsai_config.serialize_to_buffer().size() + 1024;
+
+		// ... plus capacity for coarse-grained triggers.
+		for (int itree = 0; itree < bonsai_config.ntrees; itree++)
+		    l1b_initializer.pipe_capacity += nchunks * bonsai_config.ntriggers_per_chunk[itree] * sizeof(float);
+
+		if (config.l1_verbosity >= 2)
+		    cout << "ch-frb-l1: l1b pipe_capacity will be " << l1b_initializer.pipe_capacity << " bytes" << endl;
+	    }
 
 	    // Important: pin L1b child process to same core as L1a parent thread.
 	    // Note that in the subscale case, 'allowed_cores' is an empty vector, and the child process is not core-pinned.
-	    l1b_pipe_ini.child_cores = allowed_cores;
+	    l1b_initializer.child_cores = allowed_cores;
 
-	    // The trigger_pipe constructor will spawn the L1B child process.
-	    auto tp = make_shared<bonsai::trigger_pipe> (l1b_command_line, l1b_pipe_ini);
+	    // The trigger_pipe constructor will spawn the L1b child process.
+	    auto tp = make_shared<bonsai::trigger_pipe> (l1b_command_line, l1b_initializer);
 	    dedisperser->add_processor(tp);
 	}
-	else
-	    cout << "ch-frb-l1: config parameter 'l1b_executable_filename' is an empty string, L1B processes will not be spawned\n";
+	else if (config.l1_verbosity >= 1)
+	    cout << "ch-frb-l1: config parameter 'l1b_executable_filename' is an empty string, L1b processes will not be spawned\n";
 
 	// Add max_tracker, if config.track_global_trigger_max == true.
 	shared_ptr<bonsai::global_max_tracker> max_tracker;
