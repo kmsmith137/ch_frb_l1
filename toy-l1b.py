@@ -1,13 +1,17 @@
 #!/usr/bin/env python
 #
 # This is a toy L1b script, intended as a way of documenting the L1a-L1b interface.
+# For example usage, see "Quick-start examples which can run on a laptop" in MANUAL.md.
 #
-# It receives coarse-grained triggers from L1a, and "processes" them by generating
+# This script receives coarse-grained triggers from L1a, and "processes" them by generating
 # a big waterfall plot (toy_l1b_beam${BEAM_ID}.png).
 #
 # Although toy-l1b.py is intended as documentation, it may also be useful for debugging,
 # since it provides a simple way of plotting the output of L1a.
-
+#
+# The bonsai.PipedDedisperser class is used to receive data from L1a.  For another
+# toy example illustrating use of this class (outside the L1 server framework), see 
+# examples_python/example4*.py in the bonsai repository.
 
 import sys
 import bonsai
