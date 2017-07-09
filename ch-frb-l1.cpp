@@ -404,6 +404,16 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 	ini_params.verbosity = 0;
 
 	auto dedisperser = make_shared<bonsai::dedisperser> (bonsai_config, ini_params);
+	transform_chain.push_back(rf_pipelines::make_bonsai_dedisperser(dedisperser));
+
+	// Trigger processors.
+	shared_ptr<bonsai::trigger_pipe> l1b_trigger_pipe;
+	shared_ptr<bonsai::global_max_tracker> max_tracker;
+
+	if (config.track_global_trigger_max) {
+	    max_tracker = make_shared<bonsai::global_max_tracker> ();
+	    dedisperser->add_processor(max_tracker);
+	}
 
 	if (config.l1b_executable_filename.size() > 0) {
 	    // Assumed L1b command line is: <l1_executable> <l1b_config> <beam_id>
@@ -445,26 +455,16 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 	    l1b_initializer.child_cores = allowed_cores;
 
 	    // The trigger_pipe constructor will spawn the L1b child process.
-	    auto tp = make_shared<bonsai::trigger_pipe> (l1b_command_line, l1b_initializer);
-	    dedisperser->add_processor(tp);
+	    l1b_trigger_pipe = make_shared<bonsai::trigger_pipe> (l1b_command_line, l1b_initializer);
+	    dedisperser->add_processor(l1b_trigger_pipe);
 	}
 	else if (config.l1_verbosity >= 1)
 	    cout << "ch-frb-l1: config parameter 'l1b_executable_filename' is an empty string, L1b processes will not be spawned\n";
 
-	// Add max_tracker, if config.track_global_trigger_max == true.
-	shared_ptr<bonsai::global_max_tracker> max_tracker;
-
-	if (config.track_global_trigger_max) {
-	    max_tracker = make_shared<bonsai::global_max_tracker> ();
-	    dedisperser->add_processor(max_tracker);
-	}
-
-	transform_chain.push_back(rf_pipelines::make_bonsai_dedisperser(dedisperser));
-
 	// (transform_chain, outdir, json_output, verbosity)
 	stream->run(transform_chain, string(), nullptr, 0);
 
-	if (config.track_global_trigger_max) {
+	if (max_tracker) {
 	    stringstream ss;
 	    ss << "ch-frb-l1: beam_id=" << beam_id 
 	       << ": most significant FRB has SNR=" << max_tracker->global_max_trigger
@@ -474,7 +474,14 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 	    
 	    cout << ss.str().c_str() << flush;
 	}
-    } catch (exception &e) {
+
+	if (l1b_trigger_pipe) {
+	    int l1b_status = l1b_trigger_pipe->wait_for_child();
+	    if (config.l1_verbosity >= 1)
+		cout << "l1b process exited with status " << l1b_status << endl;
+	}
+    } 
+    catch (exception &e) {
 	cerr << e.what() << "\n";
 	throw;
     }
