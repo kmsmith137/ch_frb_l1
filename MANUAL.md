@@ -116,7 +116,7 @@ is more involved.  You'll probably need to write some Makefile include files
 ("Makefile.local" files).  We hope to streamline this process at some point!
 For now, please see:
 
-  - [General-purpose install instructions](./doc/install.md):
+  - [General-purpose install instructions](./doc/install.md)
 
 
 ### HELP! MY PIPELINE IS BROKEN
@@ -221,14 +221,14 @@ and `rpc_address` fields in the L1 configuration file.  See the section
 
 Now let's consider some examples.
 
-  - The "full-scale" 16-beam L1 server, running on an L1 node with
+  - The "production-scale" 16-beam L1 server, running on an L1 node with
     two CPU's, four NIC's, and no link bonding.
 
     In this case, the L1 node would need to be configured to use
     four streams (one each NIC), and the correlator nodes would need
     to be configured to send four beams to each IP address.
 
-  - The "full-scale" L1 server with link bonding.
+  - The "production-scale" L1 server with link bonding.
 
     In this case, the four NIC's behave as one virtual NIC with
     four times the bandwidth and one IP address.  We would still
@@ -243,7 +243,7 @@ Now let's consider some examples.
 
 The L1 server can run in one of two modes:
 
-  - A "full-scale" mode which assumes 16 beams, two 10-core CPU's,
+  - A "production-scale" mode which assumes 16 beams, two 10-core CPU's,
     and either 2 or 4 streams.  In this mode, we usually use 16384
     frequency channels, which means that the L1 server needs 160 GB
     of memory!
@@ -282,24 +282,49 @@ the McGill two-node backend, and some examples which can be run.
 The L1 configuration file is a YAML file.
 There are some examples in the `ch_frb_l1/l1_configs` directory.
 
-Parameters defining stream configuration, and beams to be processed:
+##### High-level parameters
 
-  - `nbeams`: Number of beams (integer).
+  - `nbeams` (integer).
+
+    Number of beams processed by the node.
+
+  - `ipaddr` (either a string, or a list of strings)
+
+    One or more IP addresses, for the L1 server's stream(s).  This can be either a list
+    of strings (one for each stream), or a single string (if all streams use the same
+    IP address).  IP addresses are specified as strings, e.g. "127.0.0.1".
+
+  - `port`: UDP port (either an integer, or a list of integers)
+
+    One or more UDP ports, for the L1 server's stream(s).  This can be either a list
+    of UDP ports (one for each stream), or a single UDP port (if all streams use the same
+    port).
+
+  - `rpc_address`:
+
+    XXX
 
   - `beam_ids`: 
 
-  - `ipaddr`: IP address (e.g. "127.0.0.1" for loopback interface, or something
-     like "10.0.0.100" for a node on the real CHIME network).
+    XXX
 
-     This should either be a list of strings (one for each stream),
-     or a single stream (if all streams use the same IP address).
+  - `slow_kernels` (boolean, default=false).
 
-  - `port`: UDP port.  This should be either a list of integers (one for each stream),
-     or a single integer (if all streams use the same UDP port).
+    By default (slow_kernels=false), the L1 server uses fast assembly-language kernels
+    for packet-level operations such as decoding and buffer assembly.  However, these
+    are only implemented if the L0 simulator sends 16 time samples per packet, the number
+    of frequencies is >= 2048, and the CPU has the AVX2 instruction set.  If slow_kernels=true,
+    then slow reference kernels will be used.
 
-     Taken together, the ipaddr and port parameters determine the number of streams
-     
-  - `rpc_address`:
+    When running the L1 server in its "production-scale" mode on 20-core nodes, I recommend
+    setting slow_kernels=false, since the reference kernels may be too slow to keep
+    up with the data.  You may need to force the L0 simulator to send 16 time samples
+    per packet, by setting nt_per_packet=16 in its yaml file.
+
+    When running the L1 server on subscale test instances, I recommend setting slow_kernels=true,
+    since you may not have the AVX2 instruction set (e.g. on a laptop), and you may not want
+    to use 16 times samples per packet on the simulator (this can lead to awkwardly small
+    packets in subscale cases).
 
 ##### Parameters defining L1b linkage
 
@@ -323,6 +348,8 @@ Parameters defining stream configuration, and beams to be processed:
      python class should be used to receive coarse-grained triggers through the pipe.  The
      program `toy-l1b.py` is a toy example, which "processes" coarse-grained triggers by
      combining them into a waterfall plot.
+
+     If l1b_executable_filename is an empty string, then L1b subprocesses will not be spawned.
 
   - `l1b_search_path` (boolean, default=false).
 
@@ -379,34 +406,42 @@ Parameters defining stream configuration, and beams to be processed:
   - `l1b_pipe_blocking` (boolean, default=false): if true, then L1a's writes to the pipe
     will be blocking.  This has the same effect as setting l1b_pipe_timeout to a huge value.
 
-Debugging:
+##### Miscellaneous parameters
 
-  - `slow_kernels`:
+  - `track_global_trigger_max` (boolean, default=false).
 
-  - `track_global_trigger_max`:
+    If track_global_trigger_max=true, then the L1 server will keep track of the FRB with the
+    highest signal-to-noise in each beam.  When the L1 server exits, it prints the signal-to-noise,
+    arrival time and DM to the terminal.
+
+    This was implemented for early debugging, and is a little superfluous now that L1b is integrated!
 
 <a name="l0-config"></a>
 ### CONFIG FILE REFERENCE: L0 SIMULATOR
 
-  - `nbeams`: Number of beams (integer).
-  
-  - `nthreads`
+  - `nbeams` (integer).
 
-  - `nupfreq`
-  
-  - `fpga_counts_per_sample`
-  
-  - `max_packet_size`
-  
-  - `gbps_per_stream`
-  
-  - `ipaddr`
+    Number of beams that the 
 
-  - `port`
+  - `nupfreq` (integer).
 
-  - `nfreq_coarse_per_packet`
+  - `nfreq_coarse_per_packet` (integer).
 
-  - `nt_per_packet`
+  - `nt_per_packet` (integer, optional).
+  
+    Recommend omitting in subscale, specifying 16 in production-scale.
+
+  - `nthreads` (integer).
+  
+  - `fpga_counts_per_sample` (integer).
+  
+  - `max_packet_size` (integer).
+  
+  - `gbps_per_stream` (integer).
+  
+  - `ipaddr` (integer).
+
+  - `port` (integer).
 
 
 <a name="rpc reference"></a>
