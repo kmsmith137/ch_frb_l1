@@ -1,14 +1,33 @@
-nbeams: 1
+# This is "example 1", in the section "Quick-start examples
+# which can be run on a laptop" in MANUAL.md.
 
-# Divides data into four "streams", with four beams per stream.
-# In this configuration, each stream is on a different 1 Gbps interface, but a different UDP port.
+
+# Configure the L1 server to expect 1 beam, on the loopback 
+# interface (127.0.0.1), UDP port 6677.
+
+nbeams: 1
 ipaddr: "127.0.0.1"
 port: 6677
+rpc_address: "tcp://127.0.0.1:5555"
+
+
+# slow_kernels=True makes sense in subscale test instances, but not in the
+# production real-time search.  See MANUAL.md for discussion!
 
 slow_kernels: True
 
+
+# L1b configuration.
+#
+# Postprocess triggers using 'toy-l1b.py', a placeholder version
+# of the L1b code which "processes" coarse-grained triggers by
+# making a big waterfall plot (toy_l1b_beam0.png).
+#
+# The parameter combination (l1b_buffer_nsamples, l1b_pipe_timeout) = (0, 5.0)
+# makes sense for subscale test instances, but not in the production real-time
+# search.  See MANUAL.md for discussion!
+
 l1b_executable_filename: "./toy-l1b.py"
+l1b_buffer_nsamples: 0
+l1b_pipe_timeout: 5.0
 
-rpc_address: "tcp://127.0.0.1:5555"
-
-track_global_trigger_max: True
