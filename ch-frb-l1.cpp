@@ -38,7 +38,8 @@ static void usage()
 {
     cerr << "Usage: ch-frb-l1 [-vp] <l1_config.yaml> <rfi_config.txt> <bonsai_config.txt> <l1b_config_file>\n"
 	 << "  The -v flag increases verbosity of the toplevel ch-frb-l1 logic\n"
-	 << "  The -p flag enables a very verbose debug trace of the pipe I/O between L1a and L1b\n";
+	 << "  The -p flag enables a very verbose debug trace of the pipe I/O between L1a and L1b\n"
+	 << "  The -f flag forces the L1 server to run, even if the config files look fishy\n";
 
     exit(2);
 }
@@ -63,6 +64,7 @@ struct l1_params {
     // I may add l1_verbosity=0 and l1_verbosity=3 later!
     int l1_verbosity = 1;
     bool l1b_pipe_io_debug = false;
+    bool fflag = false;
 
     // nstreams is automatically determined by the number of (ipaddr, port) pairs.
     // There will be one (network_thread, assembler_thread, rpc_server) triple for each stream.
@@ -113,6 +115,9 @@ struct l1_params {
     // the L1 server exits, it will print the (DM, arrival time) of the most significant FRB.
 
     bool track_global_trigger_max = false;
+
+    // Helper function for constructor
+    void die_unless_fflag_set(const string &msg) const;
 };
 
 
@@ -133,6 +138,8 @@ l1_params::l1_params(int argc, char **argv)
 		this->l1_verbosity = 2;
 	    else if (argv[i][j] == 'p')
 		this->l1b_pipe_io_debug = true;
+	    else if (argv[i][j] == 'f')
+		this->fflag = true;
 	    else
 		usage();
 	}
@@ -246,7 +253,31 @@ l1_params::l1_params(int argc, char **argv)
 	exit(1);
     }
 
-    p.check_for_unused_params();
+    // Final checks...
+
+    bool unused_params_are_fatal = !this->fflag;
+    p.check_for_unused_params(unused_params_are_fatal);
+
+    if ((l1b_buffer_nsamples == 0) && (l1b_pipe_timeout <= 1.0e-6))
+	die_unless_fflag_set("should specify either l1b_buffer_nsamples > 0, or l1b_pipe_timeout > 0.0, see MANUAL.md for discussion.");
+
+    if (is_subscale && (bonsai_config.nfreq > 4096))
+	die_unless_fflag_set("subscale instance with > 4096 frequency channels, presumably unintentional?");
+
+    if (is_subscale && !slow_kernels)
+	die_unless_fflag_set("subscale instance with slow_kernels=false, presumably unintentional?");
+
+    if ((bonsai_config.nfreq > 4096) && slow_kernels)
+	die_unless_fflag_set("nfreq > 4096 and slow_kernels=true, presumably unintentional?");
+}
+
+
+void l1_params::die_unless_fflag_set(const string &msg) const
+{
+    if (!this->fflag)
+	throw runtime_error("ch-frb-l1: " + msg + "  To override this warning, use -f.");
+    else if (this->l1_verbosity >= 1)
+	cerr << "ch-frb-l1: warning: " << msg << "  Running anyway since -f was specified.\n";
 }
 
 
