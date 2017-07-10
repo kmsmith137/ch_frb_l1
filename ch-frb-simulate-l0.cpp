@@ -19,7 +19,7 @@ using ch_frb_io::lexical_cast;
 
 
 struct l0_params {
-    static constexpr int nfreq_coarse_tot = ch_frb_io::constants::nfreq_coarse_tot;
+    static constexpr int nfreq_coarse = ch_frb_io::constants::nfreq_coarse_tot;
 
     l0_params(const string &filename);
 
@@ -121,16 +121,14 @@ l0_params::l0_params(const string &filename)
 			    + to_string(nstreams) + ", inferred by counting (ipaddr,port) pairs)");
     }
 
-    if (nfreq_fine % ch_frb_io::constants::nfreq_coarse_tot != 0) {
-	throw runtime_error(filename + ": nfreq (=" + to_string(nfreq_fine ) + ") must be a multiple of "
-			    + to_string(ch_frb_io::constants::nfreq_coarse_tot));
-    }
+    if (nfreq_fine % nfreq_coarse != 0)
+	throw runtime_error(filename + ": nfreq (=" + to_string(nfreq_fine ) + ") must be a multiple of " + to_string(nfreq_coarse));
 
     // Derived parameters, part 1
     this->nbeams_per_stream = xdiv(nbeams_tot, nstreams);
     this->nthreads_per_stream = xdiv(nthreads_tot, nstreams);
-    this->nfreq_coarse_per_thread = xdiv(nfreq_coarse_tot, nthreads_per_stream);
-    this->nupfreq = xdiv(nfreq_fine, ch_frb_io::constants::nfreq_coarse_tot);
+    this->nfreq_coarse_per_thread = xdiv(nfreq_coarse, nthreads_per_stream);
+    this->nupfreq = xdiv(nfreq_fine, nfreq_coarse);
 
     // Logic for nfreq_coarse_per_packet, nt_per_packet can be a little complicated!
 
