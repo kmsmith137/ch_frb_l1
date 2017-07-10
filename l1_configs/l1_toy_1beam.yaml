@@ -2,10 +2,13 @@
 # which can be run on a laptop" in MANUAL.md.
 
 
-# Configure the L1 server to expect 1 beam, on the loopback 
-# interface (127.0.0.1), UDP port 6677.
+# This toy L1 server instance expects 1 beam, with 1024 frequencies.
 
 nbeams: 1
+nfreq: 1024
+
+# Configure the L1 server to use the loopback interface 127.0.0.1 and UDP port 6677.
+
 ipaddr: "127.0.0.1"
 port: 6677
 rpc_address: "tcp://127.0.0.1:5555"

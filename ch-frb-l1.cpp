@@ -49,6 +49,8 @@ static void usage()
 
 
 struct l1_params {
+    static constexpr int nfreq_coarse = ch_frb_io::constants::nfreq_coarse_tot;
+
     l1_params(int argc, char **argv);
 
     string l1_config_filename;
@@ -69,6 +71,7 @@ struct l1_params {
     // nstreams is automatically determined by the number of (ipaddr, port) pairs.
     // There will be one (network_thread, assembler_thread, rpc_server) triple for each stream.
     int nbeams = 0;
+    int nfreq = 0;
     int nstreams = 0;
 
     // The L1 server can run in two modes: either a "full-scale" mode with 16 beams and 20 cores,
@@ -187,6 +190,7 @@ l1_params::l1_params(int argc, char **argv)
 
     // These parameters can be read right away.
     this->nbeams = p.read_scalar<int> ("nbeams");
+    this->nfreq = p.read_scalar<int> ("nfreq");
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
     this->rpc_address = p.read_vector<string> ("rpc_address");
@@ -215,6 +219,12 @@ l1_params::l1_params(int argc, char **argv)
 
     if (nbeams <= 0)
 	throw runtime_error(l1_config_filename + ": 'nbeams' must be >= 1");
+    if (nfreq != bonsai_config.nfreq)
+	throw runtime_error("ch-frb-l1: 'nfreq' values in l1 config file and bonsai config file must match");
+    if (nfreq <= 0)
+	throw runtime_error(l1_config_filename + ": 'nfreq' must be >= 1");
+    if (nfreq % nfreq_coarse)
+	throw runtime_error(l1_config_filename + ": 'nfreq' must be a multiple of " + to_string(nfreq_coarse));
     if (nstreams <= 0)
 	throw runtime_error(l1_config_filename + ": 'ip_addr' and 'port' must have length >= 1");
     if (rpc_address.size() != (unsigned int)nstreams)
