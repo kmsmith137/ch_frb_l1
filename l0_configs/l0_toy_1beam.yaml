@@ -1,17 +1,18 @@
 # This is "example 1", in the section "Quick-start examples
 # which can be run on a laptop" in MANUAL.md.
 
-# Configure the L0 simulator to send 1 beam, on the loopback 
-# interface (127.0.0.1), UDP port 6677.
+# In this toy example, we use 1 beam and 1024 frequency channels.
 
 nbeams: 1
+nfreq: 1024
+
+# Send data to the loopback address (127.0.0.1), UDP port 6677.
+
 ipaddr: "127.0.0.1"
 port: 6677
 
-# In this subscale example, we use 1024 frequency channels.
-# In the production-scale search, there will be 16384 channels!
-
-nfreq: 1024
-
+# Total number of threads used by the L0 simulator.
+# Note: nthreads must be a multiple of the number of "streams", which
+# is the number of distinct (ipaddr,port) pairs (in this case nsteams=1).
 
 nthreads: 1

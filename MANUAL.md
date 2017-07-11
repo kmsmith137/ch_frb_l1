@@ -41,7 +41,7 @@ Please note the following caveats:
     possible to simultaneously use a 1-second chunk size, and search
     the full CHIME parameter space.
 
-  - The L1 server is very fragile; if anything goes wrong
+  - The L1 server is fragile; if anything goes wrong
     (such as a thread running slow and filling a ring buffer)
     then it will throw an exception and die.
 
@@ -50,7 +50,8 @@ Please note the following caveats:
     for production we need to carefully enumerate corner cases and
     make sure that the L1 server recovers sensibly.
     
-  - Some parts have not been throroughly tested, and you may encounter bugs!
+  - The code is in a "pre-alpha" state, and serious testing
+    will probably uncover bugs!
 
 The main high-level components are:
 
@@ -162,6 +163,8 @@ Usage: ch-frb-l1 [-vp] <l1_config.yaml> <rfi_config.txt> <bonsai_config.txt> <l1
 The L1 server takes four parameter files.
 
   - The utility `bonsai-show-config` is useful!
+
+  - [ instructions for reading a bonsai config file from python ]
 
   - As mentioned previously, there is a technical issue in the bonsai code.
     If you modify the 16K-frequency bonsai config files, there's a good chance you'll get cryptic
