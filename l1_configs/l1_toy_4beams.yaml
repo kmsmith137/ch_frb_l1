@@ -1,0 +1,36 @@
+# This is "example 2", in the section "Quick-start examples
+# which can be run on a laptop" in MANUAL.md.
+
+nbeams: 4
+nfreq: 1024
+
+# Configure the L1 server to expect 4 beam, on the loopback 
+# interface (127.0.0.1).  Just for fun, we split the input data
+# between UDP ports 6677 and 6678.  (Beam IDs 0+1 will be sent
+# to port 6677, and beam IDs 2+3 will be sent to port 6678.)
+
+ipaddr: "127.0.0.1"
+port: [ 6677, 6678 ]
+rpc_address: [ "tcp://127.0.0.1:5555", "tcp://127.0.0.1:5556" ]
+
+# slow_kernels=True makes sense in subscale test instances, but not in the
+# production real-time search.  See MANUAL.md for discussion!
+
+slow_kernels: True
+
+assembled_ringbuf_nsamples: 4000
+telescoping_ringbuf_nsamples: [ 4000, 4000, 4000 ]
+
+# L1b configuration.
+#
+# Postprocess triggers using 'toy-l1b.py', a placeholder version
+# of the L1b code which "processes" coarse-grained triggers by
+# making a big waterfall plot (toy_l1b_beam0.png).
+#
+# The parameter combination (l1b_buffer_nsamples, l1b_pipe_timeout) = (0, 5.0)
+# makes sense for subscale test instances, but not in the production real-time
+# search.  See MANUAL.md for discussion!
+
+l1b_executable_filename: "./toy-l1b.py"
+l1b_buffer_nsamples: 0
+l1b_pipe_timeout: 5.0

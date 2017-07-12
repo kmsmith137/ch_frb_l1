@@ -7,6 +7,7 @@ This manual is incomplete and some sections are placeholders!
   - [High-level overview](#user-content-overview)
   - [Quick-start examples which can run on a laptop](#user-content-laptop)
   - [Configuration overview](#user-content-configuration-file-overview)
+  - [L1 streams](#user-content-l1-streams)
   - [Examples on the two-node McGill backend](#user-content-two-node-backend)
   - [Config file reference: L1 server](#user-content-l1-config)
   - [Config file reference: L0 simulator](#user-content-l0-config)
@@ -136,7 +137,9 @@ update from git, and rebuild everything from scratch.
 <a name="laptop"></a>
 ### QUICK-START EXAMPLES WHICH CAN RUN ON A LAPTOP
 
-Example 1:
+Example 1: simplest example: one beam, 1024 frequency channels, one dedispersion tree.
+The L0 simulator and L1 server run on the same machine (e.g. a laptop), and exchange packets 
+over the loopback interface (127.0.0.1).
 
   - Start the L1 server:
     ```
@@ -151,6 +154,34 @@ Example 1:
   - In another window, start the L0 simulator:
     ```
     ./ch-frb-simulate-l0 l0_configs/l0_toy_1beam.yaml 30
+    ```
+
+Example 2: we make example 1 slightly more complicated as follows.  
+We process 4 beams, which are divided between UDP ports 6677 and 6688 (two beams per UDP port).
+This is more representative of the real L1 server configuration, where 16 beams
+will either be divided between four IP addresses, or divided between two UDP ports,
+depending on whether we end up using link bonding.  See the section 
+[L1 streams](#user-content-l1-streams) below for more discussion.
+
+In example 2, we also use three dedispersion trees which search different
+parts of the (DM, pulse width) parameter space.  See comments in the bonsai
+config files for more details (and MANUAL.md in the bonsai repo).
+This is more representative of the real search, where we plan to use
+6 or 7 trees (I think!)
+
+  - Start the L1 server:
+    ```
+    ./ch-frb-l1  \
+       l1_configs/l1_toy_4beams.yaml  \
+       rfi_configs/rfi_placeholder.json  \
+       bonsai_configs/bonsai_toy_3trees.txt  \
+       l1b_config_placeholder
+    ```
+    There are four configuration files, which will be described shortly!
+
+  - In another window, start the L0 simulator:
+    ```
+    ./ch-frb-simulate-l0 l0_configs/l0_toy_4beams.yaml 30
     ```
 
 <a name="configuration-file-overview"></a>
@@ -198,6 +229,8 @@ Command-line syntax for ch-frb-simulate-l0:
 Usage: ch-frb-simulate-l0 <l0_params.yaml> <num_seconds>
 ```
 
+<a name="l1-streams"></a>
+### L1 STREAMS
 
 Now is a good place to explain L1 streams.
 The L1 node is configured to divide its input into multiple streams, with the

@@ -1,0 +1,19 @@
+# This is "example 2", in the section "Quick-start examples
+# which can be run on a laptop" in MANUAL.md.
+
+# In this toy example, we use 4 beams and 1024 frequency channels.
+
+nbeams: 4
+nfreq: 1024
+
+# In this example, we split the data between UDP ports 6677 and 6678.
+# (Beam IDs 0+1 will be sent to port 6677, and beam IDs 2+3 will be sent to port 6678.)
+
+ipaddr: "127.0.0.1"
+port: [ 6677, 6678 ]
+
+# Total number of threads used by the L0 simulator.
+# Note: nthreads must be a multiple of the number of "streams", which
+# is the number of distinct (ipaddr,port) pairs (in this case nsteams=2).
+
+nthreads: 2
