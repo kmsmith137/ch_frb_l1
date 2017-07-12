@@ -36,7 +36,7 @@ using namespace ch_frb_l1;
 
 static void usage()
 {
-    cerr << "Usage: ch-frb-l1 [-vp] <l1_config.yaml> <rfi_config.txt> <bonsai_config.txt> <l1b_config_file>\n"
+    cerr << "Usage: ch-frb-l1 [-vp] <l1_config.yaml> <rfi_config.json> <bonsai_config.txt> <l1b_config_file>\n"
 	 << "  The -v flag increases verbosity of the toplevel ch-frb-l1 logic\n"
 	 << "  The -p flag enables a very verbose debug trace of the pipe I/O between L1a and L1b\n"
 	 << "  The -f flag forces the L1 server to run, even if the config files look fishy\n";
