@@ -93,7 +93,7 @@ struct yaml_paramfile {
     yaml_paramfile(const std::string &filename, int verbosity=0);
 
     bool has_param(const std::string &k) const;
-    void check_for_unused_params(bool fatal=true) const;
+    bool check_for_unused_params(bool fatal=true) const;
 
     // For debugging and message-printing
     virtual void _die(const std::string &txt) const;    // by default, throws an exception

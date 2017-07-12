@@ -67,7 +67,7 @@ bool yaml_paramfile::has_param(const string &k) const
 }
 
 
-void yaml_paramfile::check_for_unused_params(bool fatal) const
+bool yaml_paramfile::check_for_unused_params(bool fatal) const
 {
     vector<string> unused_keys;
 
@@ -76,7 +76,7 @@ void yaml_paramfile::check_for_unused_params(bool fatal) const
 	    unused_keys.push_back(k);
     
     if (unused_keys.size() == 0)
-	return;
+	return true;
     
     stringstream ss;
     ss << ((unused_keys.size() > 1) ? "unused parameters " : "unused parameter ");
@@ -91,6 +91,7 @@ void yaml_paramfile::check_for_unused_params(bool fatal) const
 	_die(ss.str());
 
     cerr << filename << ": " << ss.str() << endl;
+    return false;
 }
 
 

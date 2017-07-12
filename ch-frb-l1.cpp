@@ -310,22 +310,41 @@ l1_params::l1_params(int argc, char **argv)
 	exit(1);
     }
 
-    // Final checks...
+    // Final warning checks.
 
-    bool unused_params_are_fatal = !this->fflag;
-    p.check_for_unused_params(unused_params_are_fatal);
+    bool have_warnings = false;
 
-    if ((l1b_buffer_nsamples == 0) && (l1b_pipe_timeout <= 1.0e-6))
-	die_unless_fflag_set("should specify either l1b_buffer_nsamples > 0, or l1b_pipe_timeout > 0.0, see MANUAL.md for discussion.");
+    if (!p.check_for_unused_params(false))  // fatal=false
+	have_warnings = true;
 
-    if (is_subscale && (bonsai_config.nfreq > 4096))
-	die_unless_fflag_set("subscale instance with > 4096 frequency channels, presumably unintentional?");
+    if ((l1b_buffer_nsamples == 0) && (l1b_pipe_timeout <= 1.0e-6)) {
+	cout << l1_config_filename << ": should specify either l1b_buffer_nsamples > 0, or l1b_pipe_timeout > 0.0, see MANUAL.md for discussion." << endl;
+	have_warnings = true;
+    }
 
-    if (is_subscale && !slow_kernels)
-	die_unless_fflag_set("subscale instance with slow_kernels=false, presumably unintentional?");
+    if (is_subscale && (bonsai_config.nfreq > 4096)) {
+	cout << l1_config_filename << ": subscale instance with > 4096 frequency channels, presumably unintentional?" << endl;
+	have_warnings = true;
+    }
 
-    if ((bonsai_config.nfreq > 4096) && slow_kernels)
-	die_unless_fflag_set("nfreq > 4096 and slow_kernels=true, presumably unintentional?");
+    if (is_subscale && !slow_kernels) {
+	cout << l1_config_filename << ": subscale instance with slow_kernels=false, presumably unintentional?" << endl;
+	have_warnings = true;
+    }
+
+    if ((bonsai_config.nfreq > 4096) && slow_kernels) {
+	cout << l1_config_filename << ": nfreq > 4096 and slow_kernels=true, presumably unintentional?" << endl;
+	have_warnings = true;
+    }
+
+    if (have_warnings) {
+	if (this->fflag)
+	    cout << "ch-frb-l1: the above warnings will be ignored, since the -f flag was specified." << endl;
+	else {
+	    cout << "ch-frb-l1: the above warning(s) are treated as fatal.  To force the L1 server to run anyway, use ch-frb-l1 -f." << endl;
+	    exit(1);
+	}
+    }
 }
 
 
