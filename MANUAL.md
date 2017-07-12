@@ -6,7 +6,7 @@ This manual is incomplete and some sections are placeholders!
 
   - [High-level overview](#user-content-overview)
   - [Quick-start examples which can run on a laptop](#user-content-laptop)
-  - [Configuration overview](#user-content-configuration-file-overview)
+  - [Configuration file overview](#user-content-configuration-file-overview)
   - [L1 streams](#user-content-l1-streams)
   - [Examples on the two-node McGill backend](#user-content-two-node-backend)
   - [Config file reference: L1 server](#user-content-l1-config)
@@ -26,7 +26,7 @@ Please note the following caveats:
   - The L0 simulator can only simulate noise; it cannot
     simulate pulses or replay RFI captures.
 
-  - No FPGA counts yet.
+  - The L1 server doesn't pass FPGA-count timestamps to L1b yet.
 
   - There is currently a technical issue in the bonsai code
     which requires an artificially large bonsai chunk size (8 seconds)
@@ -48,8 +48,7 @@ Please note the following caveats:
     (such as a thread running slow and filling a ring buffer)
     then it will throw an exception and die.
 
-    This is actually convenient for debugging (assuming that we did
-    a good job of making the text of the exception informative), but
+    I find that this is actually convenient for debugging, but
     for production we need to carefully enumerate corner cases and
     make sure that the L1 server recovers sensibly.
     
@@ -137,7 +136,7 @@ update from git, and rebuild everything from scratch.
 <a name="laptop"></a>
 ### QUICK-START EXAMPLES WHICH CAN RUN ON A LAPTOP
 
-Example 1: simplest example: one beam, 1024 frequency channels, one dedispersion tree.
+**Example 1:** simplest example: one beam, 1024 frequency channels, one dedispersion tree.
 The L0 simulator and L1 server run on the same machine (e.g. a laptop), and exchange packets 
 over the loopback interface (127.0.0.1).
 
@@ -149,14 +148,24 @@ over the loopback interface (127.0.0.1).
        bonsai_configs/bonsai_toy_1tree.txt  \
        l1b_config_placeholder
     ```
-    There are four configuration files, which will be described shortly!
+    There are four configuration files, which will be described in the
+    next section ([Configuration file overview](#user-content-configuration-file-overview)).
+
+    After you start the L1 server, you should see the line "ch_frb_io: listening for packets..."
+    and the server will pause.
 
   - In another window, start the L0 simulator:
     ```
     ./ch-frb-simulate-l0 l0_configs/l0_toy_1beam.yaml 30
     ```
+    This will simulate 30 seconds of data.  If you switch back to the L1 server's window,
+    you'll see some output as chunks of data are processed.  After it finishes, you'll see
+    a line "toy-l1b.py: wrote toy_l1b_beam0.png".  This is a plot of the coarse-grained
+    triggers, which will not contain any interesting features, because the simulation
+    is pure noise.
 
-Example 2: we make example 1 slightly more complicated as follows.  
+
+**Example 2:** similar to example 1, but slightly more complicated as follows.  
 We process 4 beams, which are divided between UDP ports 6677 and 6688 (two beams per UDP port).
 This is more representative of the real L1 server configuration, where 16 beams
 will either be divided between four IP addresses, or divided between two UDP ports,
@@ -184,16 +193,22 @@ This is more representative of the real search, where we plan to use
     ./ch-frb-simulate-l0 l0_configs/l0_toy_4beams.yaml 30
     ```
 
+After the example finishes, you should see four plots toy_l1b_beam$N.png,
+where N=0,1,2,3.  Each plot corresponds to one beam, and contains three
+rows of output, corresponding to the three dedispersion trees in this example.
+
 <a name="configuration-file-overview"></a>
 ### CONFIGURATION FILE OVERVIEW
 
-Command-line syntax for ch-frb-l1:
+The command-line syntax for ch-frb-l1:
 ```
 Usage: ch-frb-l1 [-vp] <l1_config.yaml> <rfi_config.txt> <bonsai_config.txt> <l1b_config_file>
   The -v flag increases verbosity of the toplevel ch-frb-l1 logic
   The -p flag enables a very verbose debug trace of the pipe I/O between L1a and L1b
 ```
-The L1 server takes four parameter files.
+The L1 server takes four parameter files as follows:
+
+  - The 
 
   - The utility `bonsai-show-config` is useful!
 
@@ -345,6 +360,11 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
   - `beam_ids`: 
 
     XXX
+
+    Note that in a setup with multiple L1 nodes, we would currently need a separate config
+    file for each node, because the beam IDs would be different!  This will be fixed soon,
+    by defining config file syntax which allows the beam IDs to be derived from the L1 node's
+    IP address.
 
   - `slow_kernels` (boolean, default=false).
 
