@@ -1,3 +1,12 @@
+# This is a bonsai config file for "example 1" in ch_frb_l1/MANUAL.md.
+#
+# This toy config uses a single dedispersion tree, to search data
+# with 1024 frequency channels to max DM 207.
+#
+# For more information on bonsai, including documentation of the configuration
+# file and pointers to example programs, a good place to start is MANUAL.md
+# in the bonsai repository (https://github.com/CHIMEFRB/bonsai/blob/master/MANUAL.md).
+
 nfreq = 1024
 freq_lo_MHz = 400.0
 freq_hi_MHz = 800.0

@@ -1,3 +1,13 @@
+# This is a bonsai config file for "example 2" in ch_frb_l1/MANUAL.md.
+#
+# This toy config uses three dedispersion trees with different levels
+# of upsampling/downsampling , to search data with 1024 frequency channels
+# to max DM 412.
+#
+# For more information on bonsai, including documentation of the configuration
+# file and pointers to example programs, a good place to start is MANUAL.md
+# in the bonsai repository (https://github.com/CHIMEFRB/bonsai/blob/master/MANUAL.md).
+
 nfreq = 1024
 freq_lo_MHz = 400.0
 freq_hi_MHz = 800.0
@@ -6,7 +16,7 @@ dt_sample = 0.00098304    # exact CHIME value assuming 384 FPGA counts/sample
 ntrees = 3
 tree_size = 4096
 nds = [ 1, 1, 2 ]
-nups = [ 2, 1, 1 ]
+nups = [ 2, 1, 1 ]   # tree 0 is upsampled
 
 nt_tree = [ 512, 512, 256 ]
 nt_chunk = 512
