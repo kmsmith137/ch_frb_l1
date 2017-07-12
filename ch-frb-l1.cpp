@@ -49,8 +49,6 @@ static void usage()
 
 
 struct l1_params {
-    static constexpr int nfreq_coarse = ch_frb_io::constants::nfreq_coarse_tot;
-
     l1_params(int argc, char **argv);
 
     string l1_config_filename;
@@ -105,10 +103,18 @@ struct l1_params {
     // If unspecified, 'beam_ids' defaults to { 0, ..., nbeams-1 }.
     vector<int> beam_ids;
 
+    // Buffer sizes, in time samples (as specified in config file).
+    int assembled_ringbuf_nsamples = 8192;
+    vector<int> telescoping_ringbuf_nsamples;
+    
+    // Buffer sizes, converted to assembled_chunks.
+    int assembled_ringbuf_nchunks = 0;
+    vector<int> telescoping_ringbuf_nchunks;
+
     // L1b linkage.  Note: assumed L1b command line is:
     //   <l1b_executable_filename> <l1b_config_filename> <beam_id>
 
-    std::string l1b_executable_filename;
+    string l1b_executable_filename;
     bool l1b_search_path = false;     // will $PATH be searched for executable?
     int l1b_buffer_nsamples = 0;      // determines buffer size between L1a and L1b (0 = system default)
     double l1b_pipe_timeout = 0.0;    // timeout in seconds between L1a and L1
@@ -126,6 +132,8 @@ struct l1_params {
 
 l1_params::l1_params(int argc, char **argv)
 {
+    const int nfreq_c = ch_frb_io::constants::nfreq_coarse_tot;
+
     vector<string> args;
 
     // Low-budget command line parsing
@@ -195,6 +203,8 @@ l1_params::l1_params(int argc, char **argv)
     this->port = p.read_vector<int> ("port");
     this->rpc_address = p.read_vector<string> ("rpc_address");
     this->slow_kernels = p.read_scalar<bool> ("slow_kernels", false);
+    this->assembled_ringbuf_nsamples = p.read_scalar<int> ("assembled_ringbuf_nsamples", 8192);
+    this->telescoping_ringbuf_nsamples = p.read_vector<int> ("telescoping_ringbuf_nsamples", {});
     this->l1b_executable_filename = p.read_scalar<string> ("l1b_executable_filename");
     this->l1b_search_path = p.read_scalar<bool> ("l1b_search_path", false);
     this->l1b_buffer_nsamples = p.read_scalar<int> ("l1b_buffer_nsamples", 0);
@@ -215,7 +225,7 @@ l1_params::l1_params(int argc, char **argv)
 
     this->nstreams = ipaddr.size();
 
-    // A few more checks..
+    // More sanity checks..
 
     if (nbeams <= 0)
 	throw runtime_error(l1_config_filename + ": 'nbeams' must be >= 1");
@@ -223,8 +233,8 @@ l1_params::l1_params(int argc, char **argv)
 	throw runtime_error("ch-frb-l1: 'nfreq' values in l1 config file and bonsai config file must match");
     if (nfreq <= 0)
 	throw runtime_error(l1_config_filename + ": 'nfreq' must be >= 1");
-    if (nfreq % nfreq_coarse)
-	throw runtime_error(l1_config_filename + ": 'nfreq' must be a multiple of " + to_string(nfreq_coarse));
+    if (nfreq % nfreq_c)
+	throw runtime_error(l1_config_filename + ": 'nfreq' must be a multiple of " + to_string(nfreq_c));
     if (nstreams <= 0)
 	throw runtime_error(l1_config_filename + ": 'ip_addr' and 'port' must have length >= 1");
     if (rpc_address.size() != (unsigned int)nstreams)
@@ -235,17 +245,54 @@ l1_params::l1_params(int argc, char **argv)
 	throw runtime_error(l1_config_filename + ": l1b_buffer_nsamples must be >= 0");
     if (l1b_pipe_timeout < 0.0)
 	throw runtime_error(l1_config_filename + ": l1b_pipe_timeout must be >= 0.0");
+    if (assembled_ringbuf_nsamples <= 0)
+	throw runtime_error(l1_config_filename + ": 'assembled_ringbuf_nsamples' must be >= 1");
+    if (telescoping_ringbuf_nsamples.size() > 4)
+	throw runtime_error(l1_config_filename + ": 'telescoping_ringbuf_nsamples' must be a list of length <= 4");
+    if ((telescoping_ringbuf_nsamples.size() > 0) && (telescoping_ringbuf_nsamples[0] < assembled_ringbuf_nsamples))
+	throw runtime_error(l1_config_filename + ": if specified, 'telescoping_ringbuf_nsamples[0]' must be >= assembled_ringbuf_nsamples");
+
+    for (unsigned int i = 0; i < telescoping_ringbuf_nsamples.size(); i++) {
+	if (telescoping_ringbuf_nsamples[i] <= 0)
+	    throw runtime_error(l1_config_filename + ": all elements of 'telescoping_ringbuf_nsamples' must be > 0");
+    }
+
     if (nbeams % nstreams) {
 	throw runtime_error(l1_config_filename + ": nbeams (=" + to_string(nbeams) + ") must be a multiple of nstreams (="
 			    + to_string(nstreams) + ", inferred from number of (ipaddr,port) pairs");
     }
 
-    // Read beam_ids (postponed to here, so we get the check on 'nbeams')
+    // Read beam_ids (postponed to here, so we get the check on 'nbeams' first).
     
     this->beam_ids = p.read_vector<int> ("beam_ids", vrange(0,nbeams));
 
     if (beam_ids.size() != nbeams)
 	throw runtime_error(l1_config_filename + ": 'beam_ids' must have length 'nbeams'");
+
+    // Convert *_ringbuf_nsamples to *_ringbuf_nchunks.
+
+    int nt_c = ch_frb_io::constants::nt_per_assembled_chunk;
+    this->assembled_ringbuf_nchunks = (assembled_ringbuf_nsamples + nt_c - 1) / nt_c;
+    this->assembled_ringbuf_nchunks = max(assembled_ringbuf_nchunks, 2);
+
+    if ((l1_verbosity >= 1) && (assembled_ringbuf_nsamples != assembled_ringbuf_nchunks * nt_c)) {
+	cout << l1_config_filename << ": assembled_ringbuf_nsamples increased from " 
+	     << assembled_ringbuf_nsamples << " to " << (assembled_ringbuf_nchunks * nt_c) << endl;
+    }
+
+    int nr = telescoping_ringbuf_nsamples.size();
+    this->telescoping_ringbuf_nchunks.resize(nr);
+
+    for (int i = 0; i < nr; i++) {
+	nt_c = (1 << i) * ch_frb_io::constants::nt_per_assembled_chunk;
+	this->telescoping_ringbuf_nchunks[i] = (telescoping_ringbuf_nsamples[i] + nt_c - 1) / nt_c;
+	this->telescoping_ringbuf_nchunks[i] = max(telescoping_ringbuf_nchunks[i], 2);
+
+	if ((l1_verbosity >= 1) && (telescoping_ringbuf_nsamples[i] != telescoping_ringbuf_nchunks[i] * nt_c)) {
+	    cout << l1_config_filename << ": telescoping_ringbuf_nsamples[" << i << "] increased from "
+		 << telescoping_ringbuf_nsamples[i] << " to " << (telescoping_ringbuf_nchunks[i] * nt_c) << endl;
+	}
+    }
     
     // Now decide whether instance is "subscale" or "full-scale".
 
@@ -311,6 +358,8 @@ static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l
     ini_params.beam_ids = vrange(istream * nbeams_per_stream, (istream+1) * nbeams_per_stream);
     ini_params.mandate_fast_kernels = !config.slow_kernels;
     ini_params.mandate_reference_kernels = config.slow_kernels;
+    ini_params.assembled_ringbuf_capacity = config.assembled_ringbuf_nchunks;
+    ini_params.telescoping_ringbuf_capacity = config.telescoping_ringbuf_nchunks;
     
     // Setting this flag means that an exception will be thrown if either:
     //
@@ -327,14 +376,6 @@ static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l
     // is something that we'll fix soon, but it's nontrivial.
     
     ini_params.throw_exception_on_buffer_drop = true;
-
-    // This disables the "telescoping" part of the telescoping ring buffers.
-    // Currently, the telescoping logic is too slow for real-time use.  (The
-    // symptom is that the assembler threads run slow, triggering condition (1)
-    // from the previous comment.)  We should be able to fix this by writing
-    // fancy assembly language kernels for the telescoping logic!
-
-    ini_params.assembled_ringbuf_nlevels = 1;
 
     if (!config.is_subscale) {
 	// Core-pinning logic for the full-scale L1 server.

@@ -19,6 +19,8 @@ rpc_address: "tcp://127.0.0.1:5555"
 
 slow_kernels: True
 
+assembled_ringbuf_nsamples: 4096
+telescoping_ringbuf_nsamples: [ 4096, 4096, 4096 ]
 
 # L1b configuration.
 #

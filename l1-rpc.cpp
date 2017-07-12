@@ -8,7 +8,6 @@
 #include <msgpack.hpp>
 
 #include "ch_frb_io.hpp"
-#include "l1-ringbuf.hpp"
 
 #include "l1-rpc.hpp"
 #include "rpc.hpp"

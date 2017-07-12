@@ -25,6 +25,8 @@ Please note the following caveats:
   - The L0 simulator can only simulate noise; it cannot
     simulate pulses or replay RFI captures.
 
+  - No FPGA counts yet.
+
   - There is currently a technical issue in the bonsai code
     which requires an artificially large bonsai chunk size (8 seconds)
     in order to search the full (DM, pulse width) parameter space
@@ -328,6 +330,54 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
     since you may not have the AVX2 instruction set (e.g. on a laptop), and you may not want
     to use 16 times samples per packet on the simulator (this can lead to awkwardly small
     packets in subscale cases).
+
+##### Buffer sizes
+
+  - `assembled_ringbuf_nsamples` (integer, default 8192).
+
+    The "assembled" ring buffer sits between the assembler thread and the dedispersion threads.
+    If the dedispersion threads are running slow, then this ring buffer will start to fill up.
+    The assembled_ringbuf_nsamples parameter sets the size of the ring buffer, in time samples
+    (i.e. milliseconds).
+
+    Currently, if the assembled ring buffer fills up, then the L1 server throws an exception.
+    This behavior will eventually be replaced with some recovery logic which resets the dedispersion	
+    state.
+
+  - `telescoping_ringbuf_nsamples` (list of integers, optional).
+
+    After data is processed by the assembler thread, it goes to the "telescoping" ring buffer,
+    which saves it for later retrieval by RPC's.
+
+    As the name suggests, the buffer is telescoping, in the sense that data is saved at
+    multiple levels of time downsampling.  For example, the most recent 60 seconds of 
+    data might be saved at full time resolution (1 ms), the next 60 seconds of data
+    might be saved at 2 ms resolution, and the next 180 seconds might be saved at 4 ms
+    resolution.
+
+    The telescoping_ringbuf_nsamples field is a list of integers, which defines how many
+    samples (i.e. milliseconds) are saved at each level of downsampling.  The scheme described
+    in the previous paragraph could be configured as follows:
+    ```
+    # Telescoping ring buffer configuration
+    #      60 seconds at 1 ms time resolution
+    #   +  60 seconds at 2 ms time resolution
+    #   + 180 seconds at 4 ms time resolution
+
+    telescoping_ringbuf_nsamples = [ 60000, 60000, 180000 ]
+    ```
+    Note that the elements of the telescoping_ringbuf_nsamples list are _non-downsampled_
+    sample counts, i.e. the number "180000" above corresponds to (180000 * 1 ms), not
+    (180000 * 4 ms).
+
+    If the telescoping_ringbuf_nsamples field is absent (or an empty list) then the
+    telescoping ring buffer is disabled, and the node will not save data for RPC-based
+    retrieval.
+
+    An implementation detail: the telescoping_ringbuf_nsamples will be rounded up to
+    the nearest "assembled_chunk", where the assembled_chunk size is 1024, 2048, 4096...
+    depending on the level of downsampling.
+
 
 ##### Parameters defining L1b linkage
 
