@@ -71,6 +71,7 @@ before_script:
     - cd
     - git clone https://github.com/CHIMEFRB/ch_frb_io.git
     - cd ch_frb_io
+    - git checkout l1_prerelease
     - ln -s site/Makefile.local.travis Makefile.local
     - pwd
     - make
