@@ -101,7 +101,8 @@ before_script:
     ###- git clone https://github.com/CHIMEFRB/bonsai.git
     ###- cd bonsai
     - mkdir bonsai
-    - wget -O bonsai.tgz http://broiler.astrometry.net/~dstn/temp/bonsai-master-2017-04-10.tgz
+    #- wget -O bonsai.tgz http://broiler.astrometry.net/~dstn/temp/bonsai-master-2017-04-10.tgz
+    - wget -O bonsai.tgz http://broiler.astrometry.net/~dstn/temp/bonsai-l1-prerelease.tgz
     - tar xzf bonsai.tgz
     - ln -s site/Makefile.local.travis Makefile.local
     - make
