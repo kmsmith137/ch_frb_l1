@@ -365,16 +365,20 @@ void l1_params::die_unless_fflag_set(const string &msg) const
 static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l1_params &config, int istream)
 {
     assert(istream >= 0 && istream < config.nstreams);
+    assert(config.beam_ids.size() == config.nbeams);
 
     int nbeams = config.nbeams;
     int nstreams = config.nstreams;
     int nbeams_per_stream = xdiv(nbeams, nstreams);
-    
+
+    auto beam_id0 = config.beam_ids.begin() + istream * nbeams_per_stream;
+    auto beam_id1 = config.beam_ids.begin() + (istream+1) * nbeams_per_stream;
+
     ch_frb_io::intensity_network_stream::initializer ini_params;
 
     ini_params.ipaddr = config.ipaddr[istream];
     ini_params.udp_port = config.port[istream];
-    ini_params.beam_ids = vrange(istream * nbeams_per_stream, (istream+1) * nbeams_per_stream);
+    ini_params.beam_ids = vector<int> (beam_id0, beam_id1);
     ini_params.mandate_fast_kernels = !config.slow_kernels;
     ini_params.mandate_reference_kernels = config.slow_kernels;
     ini_params.assembled_ringbuf_capacity = config.assembled_ringbuf_nchunks;
