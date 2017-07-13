@@ -124,9 +124,6 @@ struct l1_params {
     // the L1 server exits, it will print the (DM, arrival time) of the most significant FRB.
 
     bool track_global_trigger_max = false;
-
-    // Helper function for constructor
-    void die_unless_fflag_set(const string &msg) const;
 };
 
 
@@ -345,15 +342,6 @@ l1_params::l1_params(int argc, char **argv)
 	    exit(1);
 	}
     }
-}
-
-
-void l1_params::die_unless_fflag_set(const string &msg) const
-{
-    if (!this->fflag)
-	throw runtime_error("ch-frb-l1: " + msg + "  To override this warning, use -f.");
-    else if (this->l1_verbosity >= 1)
-	cerr << "ch-frb-l1: warning: " << msg << "  Running anyway since -f was specified.\n";
 }
 
 
