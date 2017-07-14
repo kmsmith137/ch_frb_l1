@@ -131,8 +131,8 @@ public:
 
             WriteChunks_Reply rep;
             rep.beam = w->chunk->beam_id;
-            rep.fpga0 = w->chunk->fpgacounts_begin();
-            rep.fpgaN = w->chunk->fpgacounts_N();
+            rep.fpga0 = w->chunk->fpga_begin;
+            rep.fpgaN = w->chunk->fpga_end - w->chunk->fpga_begin;
             rep.success = false;
             rep.filename = w->filename;
 
@@ -560,8 +560,8 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
                 // iterate over chunks
                 for (auto it2 = (*it1).begin(); it2 != (*it1).end(); it2++) {
                     allchunks.push_back(make_tuple((uint64_t)it2->first->beam_id,
-                                                   it2->first->fpgacounts_begin(),
-                                                   it2->first->fpgacounts_end(),
+                                                   it2->first->fpga_begin,
+                                                   it2->first->fpga_end,
                                                    it2->second));
                 }
             }
@@ -572,8 +572,8 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             for (auto it=_write_reqs.begin(); it!=_write_reqs.end(); it++) {
                 shared_ptr<assembled_chunk> ch = (*it)->chunk;
                 allchunks.push_back(make_tuple((uint64_t)ch->beam_id,
-                                               ch->fpgacounts_begin(),
-                                               ch->fpgacounts_end(),
+                                               ch->fpga_begin,
+                                               ch->fpga_end,
                                                L1RB_WRITEQUEUE));
             }
         }
@@ -646,8 +646,8 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
             WriteChunks_Reply rep;
             rep.beam = (*chunk)->beam_id;
-            rep.fpga0 = (*chunk)->fpgacounts_begin();
-            rep.fpgaN = (*chunk)->fpgacounts_N();
+            rep.fpga0 = (*chunk)->fpga_begin;
+            rep.fpgaN = (*chunk)->fpga_end - (*chunk)->fpga_begin;
             rep.filename = w->filename;
             rep.success = true; // ?
             reply.push_back(rep);

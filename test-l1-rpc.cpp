@@ -72,7 +72,7 @@ int main(int argc, char** argv) {
 
     intensity_network_stream::initializer ini;
     ini.beam_ids.push_back(beam);
-    //ini.mandate_fast_kernels = HAVE_AVX2;
+    //ini.force_fast_kernels = HAVE_AVX2;
 
     if (udpport)
         ini.udp_port = udpport;
@@ -98,8 +98,6 @@ int main(int argc, char** argv) {
     int nt_per = 16;
     int fpga_per = 400;
 
-    assembled_chunk* ch;
-
     std::random_device rd;
     std::mt19937 rng(rd());
     rng.seed(42);
@@ -111,7 +109,15 @@ int main(int argc, char** argv) {
     int failed_push = 0;
 
     for (int i=0; i<nchunks; i++) {
-        ch = new assembled_chunk(beam, nupfreq, nt_per, fpga_per, i);
+	assembled_chunk::initializer ini_params;
+	ini_params.beam_id = beam;
+	ini_params.nupfreq = nupfreq;
+	ini_params.nt_per_packet = nt_per;
+	ini_params.fpga_counts_per_sample = fpga_per;
+	ini_params.ichunk = i;
+
+	assembled_chunk *ch = new assembled_chunk(ini_params);
+
         chlog("Injecting " << i);
         if (stream->inject_assembled_chunk(ch))
             chlog("Injected " << i);
@@ -187,9 +193,9 @@ int main(int argc, char** argv) {
         cout << "[" << endl;
         for (auto it2 = it->begin(); it2 != it->end(); it2++) {
             shared_ptr<assembled_chunk> ch = it2->first;
-            cout << "  chunk " << (ch->fpgacounts_begin() / Nchunk) << " to " <<
-                (ch->fpgacounts_end() / Nchunk) << ", N chunks " <<
-                (ch->fpgacounts_N() / Nchunk) << endl;
+            cout << "  chunk " << (ch->fpga_begin / Nchunk) << " to " <<
+                (ch->fpga_end / Nchunk) << ", N chunks " <<
+                ((ch->fpga_end - ch->fpga_begin) / Nchunk) << endl;
         }
         cout << "]" << endl;
     }

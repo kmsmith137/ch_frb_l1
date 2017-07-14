@@ -239,8 +239,8 @@ int main(int argc, char **argv) {
     chime_log_open_socket();
     chime_log_set_thread_name("main");
     ini_params.accept_end_of_stream_packets = false;
-    ini_params.mandate_fast_kernels = false;
-    ini_params.mandate_reference_kernels = true;
+    ini_params.force_fast_kernels = false;
+    ini_params.force_reference_kernels = true;
 
     // Make input stream object
     shared_ptr<ch_frb_io::intensity_network_stream> instream = ch_frb_io::intensity_network_stream::make(ini_params);

@@ -267,7 +267,7 @@ int main(int argc, char** argv) {
         for (int j=0; j<n_beams_per_l1_node; j++) {
             ini_params.beam_ids.push_back(i*n_beams_per_l1_node + j);
         }
-        ini_params.mandate_fast_kernels = HAVE_AVX2;
+        ini_params.force_fast_kernels = HAVE_AVX2;
         int udp_port = udp_port_l1_base + i;
         ini_params.udp_port = udp_port;
         cout << "Starting L1 node listening on UDP port " << udp_port << endl;

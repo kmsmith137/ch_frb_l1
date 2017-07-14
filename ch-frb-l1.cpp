@@ -367,8 +367,8 @@ static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l
     ini_params.ipaddr = config.ipaddr[istream];
     ini_params.udp_port = config.port[istream];
     ini_params.beam_ids = vector<int> (beam_id0, beam_id1);
-    ini_params.mandate_fast_kernels = !config.slow_kernels;
-    ini_params.mandate_reference_kernels = config.slow_kernels;
+    ini_params.force_fast_kernels = !config.slow_kernels;
+    ini_params.force_reference_kernels = config.slow_kernels;
     ini_params.assembled_ringbuf_capacity = config.assembled_ringbuf_nchunks;
     ini_params.telescoping_ringbuf_capacity = config.telescoping_ringbuf_nchunks;
     
