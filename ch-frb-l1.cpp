@@ -236,8 +236,6 @@ l1_params::l1_params(int argc, char **argv)
 	throw runtime_error(l1_config_filename + ": 'ip_addr' and 'port' must have length >= 1");
     if (rpc_address.size() != (unsigned int)nstreams)
 	throw runtime_error(l1_config_filename + ": 'rpc_address' must be a list whose length is the number of (ip_addr,port) pairs");
-    if (l1b_executable_filename.size() == 0)
-	throw runtime_error(l1_config_filename + ": l1b_executable_filename must be a nonempty string");
     if (l1b_buffer_nsamples < 0)
 	throw runtime_error(l1_config_filename + ": l1b_buffer_nsamples must be >= 0");
     if (l1b_pipe_timeout < 0.0)
@@ -314,7 +312,7 @@ l1_params::l1_params(int argc, char **argv)
     if (!p.check_for_unused_params(false))  // fatal=false
 	have_warnings = true;
 
-    if ((l1b_buffer_nsamples == 0) && (l1b_pipe_timeout <= 1.0e-6)) {
+    if ((l1b_executable_filename.size() > 0) && (l1b_buffer_nsamples == 0) && (l1b_pipe_timeout <= 1.0e-6)) {
 	cout << l1_config_filename << ": should specify either l1b_buffer_nsamples > 0, or l1b_pipe_timeout > 0.0, see MANUAL.md for discussion." << endl;
 	have_warnings = true;
     }
@@ -557,15 +555,29 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 // FIXME move equivalent functionality to ch_frb_io?
 
 
-static void print_statistics(const l1_params &config, const vector<shared_ptr<ch_frb_io::intensity_network_stream>> &input_streams)
+static void print_statistics(const l1_params &config, const vector<shared_ptr<ch_frb_io::intensity_network_stream>> &input_streams, int verbosity)
 {
     assert((int)input_streams.size() == config.nstreams);
+
+    if (verbosity <= 0)
+	return;
 
     for (int istream = 0; istream < config.nstreams; istream++) {
 	cout << "stream " << istream << ": ipaddr=" << config.ipaddr[istream] << ", udp_port=" << config.port[istream] << endl;
  
 	// vector<map<string,int>>
 	auto statistics = input_streams[istream]->get_statistics();
+
+	if (verbosity <= 1) {
+	    int count_packets_good = statistics[0]["count_packets_good"];
+	    double assembler_thread_waiting_usec = statistics[0]["assembler_thread_waiting_usec"];
+	    double assembler_thread_working_usec = statistics[0]["assembler_thread_working_usec"];
+	    double assembler_thread_workfrac = assembler_thread_working_usec / (assembler_thread_waiting_usec + assembler_thread_working_usec);
+	    
+	    cout << "    count_packets_good: " << count_packets_good << endl;
+	    cout << "    assembler_thread_workfrac: " << assembler_thread_workfrac << endl;
+	    continue;
+	}
 	
 	for (unsigned int irec = 0; irec < statistics.size(); irec++) {
 	    cout << "    record " << irec  << endl;
@@ -610,17 +622,21 @@ int main(int argc, char **argv)
     }
 
     for (int ibeam = 0; ibeam < nbeams; ibeam++) {
-	cerr << "spawning thread " << ibeam << endl;
 	int nbeams_per_stream = xdiv(nbeams, nstreams);
 	int istream = ibeam / nbeams_per_stream;
+
+	if (config.l1_verbosity >= 1) {
+	    cout << "spawning dedispersion thread " << ibeam << ", beam_id=" << config.beam_ids[ibeam] 
+		 << ", stream=" << config.ipaddr[istream] << ":" << config.port[istream] << endl;
+	}
+
 	threads[ibeam] = std::thread(dedispersion_thread_main, config, input_streams[istream], ibeam);
     }
 
     for (int ibeam = 0; ibeam < nbeams; ibeam++)
 	threads[ibeam].join();
 
-    if (config.l1_verbosity >= 2)
-	print_statistics(config, input_streams);
+    print_statistics(config, input_streams, config.l1_verbosity);
 
     return 0;
 }
