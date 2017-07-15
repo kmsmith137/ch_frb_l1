@@ -349,6 +349,22 @@ The L1 server can run in one of two modes:
 This is a placeholder section!  Soon it will contain a description
 of the McGill two-node backend, and some examples which can be run.
 
+**Example 3:**
+
+  - Start the L1 server:
+    ```
+    ./ch-frb-l1  \
+       l1_configs/l1_example3.yaml  \
+       rfi_configs/rfi_placeholder.json  \
+       bonsai_configs/bonsai_noups_nbeta1.txt  \
+       l1b_config_placeholder
+    ```
+    There are four configuration files, which will be described shortly!
+
+  - In another window, start the L0 simulator:
+    ```
+    ./ch-frb-simulate-l0 l0_configs/l0_example3.yaml 300
+    ```
 
   - Right now the following ports are open on the firewalls of the compute nodes: 10252/udp, 6677/udp, 6677/tcp.
     If you need to open more, the syntax is:
@@ -362,6 +378,12 @@ of the McGill two-node backend, and some examples which can be run.
     after throwing an exception, because it is trying to write its core dump.  My solution is
     `sudo killall -9 abrt-hook-ccpp` in another window.  Let me know if you find a better one!
 
+|      | frb-compute-0 | frb-compute-1  |
+|------|---------------|----------------|
+| eno1 | 10.0.0.100    | 10.0.0.101     |
+| eno2 | 10.0.1.100    | 10.0.1.101     |
+| eno3 | 10.0.2.100    | 10.0.2.101     |
+| eno3 | 10.0.3.100    | 10.0.3.101     |
 
 <a name="l1-config"></a>
 ### CONFIG FILE REFERENCE: L1 SERVER
