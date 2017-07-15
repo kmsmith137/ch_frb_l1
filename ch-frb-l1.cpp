@@ -4,10 +4,10 @@
 //   - Distributed logging is not integrated
 //   - If anything goes wrong, the L1 server will crash!
 //
-// The L1 server can run in two modes: either a "full-scale" mode with 16 beams and 20 cores,
+// The L1 server can run in two modes: either a "production-scale" mode with 16 beams and 20 cores,
 // or a "subscale" mode with (nbeams <= 4) and no core-pinning.
 //
-// The "full-scale" mode is hardcoded to assume the NUMA setup of the CHIMEFRB L1 nodes:
+// The "production-scale" mode is hardcoded to assume the NUMA setup of the CHIMEFRB L1 nodes:
 //   - Dual CPU
 //   - 10 cores/cpu
 //   - Hyperthreading enabled
@@ -72,7 +72,7 @@ struct l1_params {
     int nfreq = 0;
     int nstreams = 0;
 
-    // The L1 server can run in two modes: either a "full-scale" mode with 16 beams and 20 cores,
+    // The L1 server can run in two modes: either a "production-scale" mode with 16 beams and 20 cores,
     // or a "subscale" mode with (nbeams <= 4) and no core-pinning.
     bool is_subscale = true;
     
@@ -81,7 +81,7 @@ struct l1_params {
     // are much slower.
     //
     // Note 1: the slow kernels are too slow for non-subscale use!  If slow kernels are used on
-    // the "full-scale" L1 server with (nbeams, nupfreq) = (16, 16), it may crash.
+    // the "production-scale" L1 server with (nbeams, nupfreq) = (16, 16), it may crash.
     //
     // Note 2: the fast kernels can only be used if certain conditions are met.  As of this writing,
     // the conditions are: (a) nupfreq must be even, and (b) nt_per_packet must be 16.  In particular,
@@ -103,13 +103,22 @@ struct l1_params {
     // If unspecified, 'beam_ids' defaults to { 0, ..., nbeams-1 }.
     vector<int> beam_ids;
 
-    // Buffer sizes, in time samples (as specified in config file).
-    int assembled_ringbuf_nsamples = 8192;
-    vector<int> telescoping_ringbuf_nsamples;
+    // Buffer sizes.
+    int assembled_ringbuf_nsamples = 8192;     // in time samples, as specified in config file.
+    vector<int> telescoping_ringbuf_nsamples;  // in time samples, as specified in config file.
+    double write_staging_area_gb = 0.0;
     
     // Buffer sizes, converted to assembled_chunks.
     int assembled_ringbuf_nchunks = 0;
     vector<int> telescoping_ringbuf_nchunks;
+
+    // Number of assembled_chunks which can be "live" for each beam (not counting write_staging area).
+    int live_chunks_per_beam = 0;
+
+    // Parameters of the memory_slab_pool(s)
+    int memory_slab_nbytes = 0;     // size (in bytes) of memory slab used to store assembled_chunk
+    int memory_slabs_per_pool = 0;  // total memory slabs to allocate per cpu
+    int npools = 0;
 
     // L1b linkage.  Note: assumed L1b command line is:
     //   <l1b_executable_filename> <l1b_config_filename> <beam_id>
@@ -202,6 +211,7 @@ l1_params::l1_params(int argc, char **argv)
     this->slow_kernels = p.read_scalar<bool> ("slow_kernels", false);
     this->assembled_ringbuf_nsamples = p.read_scalar<int> ("assembled_ringbuf_nsamples", 8192);
     this->telescoping_ringbuf_nsamples = p.read_vector<int> ("telescoping_ringbuf_nsamples", {});
+    this->write_staging_area_gb = p.read_scalar<double> ("write_staging_area_gb", 0.0);
     this->l1b_executable_filename = p.read_scalar<string> ("l1b_executable_filename");
     this->l1b_search_path = p.read_scalar<bool> ("l1b_search_path", false);
     this->l1b_buffer_nsamples = p.read_scalar<int> ("l1b_buffer_nsamples", 0);
@@ -246,13 +256,15 @@ l1_params::l1_params(int argc, char **argv)
 	throw runtime_error(l1_config_filename + ": 'telescoping_ringbuf_nsamples' must be a list of length <= 4");
     if ((telescoping_ringbuf_nsamples.size() > 0) && (telescoping_ringbuf_nsamples[0] < assembled_ringbuf_nsamples))
 	throw runtime_error(l1_config_filename + ": if specified, 'telescoping_ringbuf_nsamples[0]' must be >= assembled_ringbuf_nsamples");
+    if (write_staging_area_gb < 0.0)
+	throw runtime_error(l1_config_filename + ": 'write_staging_area_gb' must be >= 0.0");
 
     for (unsigned int i = 0; i < telescoping_ringbuf_nsamples.size(); i++) {
 	if (telescoping_ringbuf_nsamples[i] <= 0)
 	    throw runtime_error(l1_config_filename + ": all elements of 'telescoping_ringbuf_nsamples' must be > 0");
     }
 
-    if (nbeams % nstreams) {
+    if (nbeams % nstreams != 0) {
 	throw runtime_error(l1_config_filename + ": nbeams (=" + to_string(nbeams) + ") must be a multiple of nstreams (="
 			    + to_string(nstreams) + ", inferred from number of (ipaddr,port) pairs");
     }
@@ -263,6 +275,25 @@ l1_params::l1_params(int argc, char **argv)
 
     if (beam_ids.size() != nbeams)
 	throw runtime_error(l1_config_filename + ": 'beam_ids' must have length 'nbeams'");
+
+    // Decide whether instance is "subscale" or "production-scale".
+
+    // Factor 2 is from hyperthreading.
+    int num_cores = std::thread::hardware_concurrency() / 2;
+
+    if (nbeams <= 4)
+	this->is_subscale = true;
+    else if ((nbeams == 16) && (num_cores == 20))
+	this->is_subscale = false;
+    else {
+	cerr << "ch-frb-l1: The L1 server can currently run in two modes: either a \"production-scale\" mode\n"
+	     << "  with 16 beams and 20 cores, or a \"subscale\" mode with 4 beams and no core-pinning.\n"
+	     << "  This appears to be an instance with " << nbeams << " beams, and " << num_cores << " cores.\n";
+	exit(1);
+    }
+
+    if (!is_subscale && (nstreams % 2 == 1))
+	throw runtime_error(l1_config_filename + ": production-scale L1 server instances must have an odd number of streams");
 
     // Convert *_ringbuf_nsamples to *_ringbuf_nchunks.
 
@@ -288,22 +319,33 @@ l1_params::l1_params(int argc, char **argv)
 		 << telescoping_ringbuf_nsamples[i] << " to " << (telescoping_ringbuf_nchunks[i] * nt_c) << endl;
 	}
     }
+
+    // Figure out how many assembled_chunks can be "live" for each beam.
+    // This depends on implementation details of assembled_chunk_ringbuf!
+
+    live_chunks_per_beam = 2;   // "active" chunks
+    live_chunks_per_beam += assembled_ringbuf_nchunks;  // assembled_ringbuf
     
-    // Now decide whether instance is "subscale" or "full-scale".
+    // telescoping_ringbuf
+    for (unsigned int i = 0; i < telescoping_ringbuf_nchunks.size(); i++)
+	live_chunks_per_beam += telescoping_ringbuf_nchunks[i];
 
-    // Factor 2 is from hyperthreading.
-    int num_cores = std::thread::hardware_concurrency() / 2;
+    // temporaries in assembled_chunk::_put_assembled_chunk()
+    live_chunks_per_beam += telescoping_ringbuf_nchunks.size();
 
-    if (nbeams <= 4)
-	this->is_subscale = true;
-    else if ((nbeams == 16) && (num_cores == 20))
-	this->is_subscale = false;
-    else {
-	cerr << "ch-frb-l1: The L1 server can currently run in two modes: either a \"full-scale\" mode\n"
-	     << "  with 16 beams and 20 cores, or a \"subscale\" mode with 4 beams and no core-pinning.\n"
-	     << "  This appears to be an instance with " << nbeams << " beams, and " << num_cores << " cores.\n";
-	exit(1);
-    }
+    // probably overkill, but this fudge factor accounts for the fact that the dedispersion 
+    // thread can briefly hang on to a reference to the assembled_chunk.
+    int fudge_factor = 4;
+    if (telescoping_ringbuf_nchunks.size() > 0)
+	fudge_factor = max(4 - telescoping_ringbuf_nchunks[0], 0);
+
+    live_chunks_per_beam += fudge_factor;
+
+    // Memory slab parameters
+
+    this->npools = is_subscale ? 1 : 2;
+    this->memory_slab_nbytes = 1;
+    this->memory_slabs_per_pool = (nbeams/npools) * live_chunks_per_beam + 10;
 
     // Final warning checks.
 
@@ -345,10 +387,27 @@ l1_params::l1_params(int argc, char **argv)
 
 // -------------------------------------------------------------------------------------------------
 //
+// make_memory_pool()
+
+
+static shared_ptr<ch_frb_io::memory_slab_pool> make_memory_pool(const l1_params &config, int ipool)
+{
+    vector<int> allocation_cores;
+    bool noisy = (config.l1_verbosity >= 1);
+
+    if (!config.is_subscale)
+	allocation_cores = vrange(10*ipool, 10*(ipool+1));
+
+    return make_shared<ch_frb_io::memory_slab_pool> (config.memory_slab_nbytes, config.memory_slabs_per_pool, allocation_cores, noisy);
+}
+
+
+// -------------------------------------------------------------------------------------------------
+//
 // make_input_stream(): returns a stream object which will read packets from the correlator.
 
 
-static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l1_params &config, int istream)
+static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l1_params &config, int istream, const shared_ptr<ch_frb_io::memory_slab_pool> &pool)
 {
     assert(istream >= 0 && istream < config.nstreams);
     assert(config.beam_ids.size() == config.nbeams);
@@ -369,6 +428,7 @@ static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l
     ini_params.force_reference_kernels = config.slow_kernels;
     ini_params.assembled_ringbuf_capacity = config.assembled_ringbuf_nchunks;
     ini_params.telescoping_ringbuf_capacity = config.telescoping_ringbuf_nchunks;
+    ini_params.memory_pool = pool;
     
     // Setting this flag means that an exception will be thrown if either:
     //
@@ -387,7 +447,7 @@ static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l
     ini_params.throw_exception_on_buffer_drop = true;
 
     if (!config.is_subscale) {
-	// Core-pinning logic for the full-scale L1 server.
+	// Core-pinning logic for the production-scale L1 server.
 
 	if (nstreams % 2 == 1)
 	    throw runtime_error("ch-frb-l1: nstreams must be even, in order to divide dedispersion threads evenly between the two CPUs");
@@ -446,7 +506,7 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 
 	vector<int> allowed_cores;
 	if (!config.is_subscale) {
-	    // Core-pinning logic for full-scale L1 server.
+	    // Core-pinning logic for production-scale L1 server.
 	    int c = (ibeam / 8) * 10 + (ibeam % 8);
 	    allowed_cores = { c, c+20 };
 	}
@@ -605,15 +665,25 @@ int main(int argc, char **argv)
 {
     l1_params config(argc, argv);
 
+    int npools = config.npools;
     int nstreams = config.nstreams;
     int nbeams = config.nbeams;
 
+    assert(nstreams % npools == 0);
+    assert(nbeams % nstreams == 0);
+
+    vector<shared_ptr<ch_frb_io::memory_slab_pool>> memory_pools(npools);
     vector<shared_ptr<ch_frb_io::intensity_network_stream>> input_streams(nstreams);
     vector<shared_ptr<L1RpcServer> > rpc_servers(nbeams);
     vector<std::thread> threads(nbeams);
 
-    for (int istream = 0; istream < nstreams; istream++)
-	input_streams[istream] = make_input_stream(config, istream);
+    for (int ipool = 0; ipool < npools; ipool++)
+	memory_pools[ipool] = make_memory_pool(config, ipool);
+
+    for (int istream = 0; istream < nstreams; istream++) {
+	int ipool = istream / (nstreams / npools);
+	input_streams[istream] = make_input_stream(config, istream, memory_pools[ipool]);
+    }
 
     for (int istream = 0; istream < nstreams; istream++) {
 	rpc_servers[istream] = make_l1rpc_server(config, istream, input_streams[istream]);

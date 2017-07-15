@@ -558,6 +558,22 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
     the nearest "assembled_chunk", where the assembled_chunk size is 1024, 2048, 4096...
     depending on the level of downsampling.
 
+  - `write_staging_area_gb` (floating-point, default 0.0)
+
+    Allocates additional memory (in addition to memory reserved for the assembled_ringbuf
+    and telescoping_ringbuf) for "staging" intensity data after an RPC write request is
+    received, but before the data is actually written to disk or NFS.
+
+    The value of 'write_staging_area_gb' is the total memory reserved on the whole node
+    in GB (i.e. not memory per stream, or per beam).  It is highly recommended to set this
+    parameter to a nonzero value if you plan to save data with RPC's!
+
+    Currently, there is some guesswork involved in setting this parameter, since it's
+    hard to figure out how much memory is being used by other things (e.g. bonsai).
+    I plan to address this soon!  In the meantime, I recommend 32 GB for production-scale
+    runs, and 0.5 GB for subscale testing runs.
+
+
 <a name="l1-config-l1b"></a>
 ##### L1 config: parameters defining L1b linkage
 
