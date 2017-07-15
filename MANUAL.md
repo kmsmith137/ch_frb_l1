@@ -8,47 +8,29 @@ This manual is incomplete and some sections are placeholders!
   - [Installation](#user-content-installation)
   - [Help! My pipeline is broken](#user-content-help-my-pipeline-is-broken)
   - [Quick-start examples which can run on a laptop](#user-content-laptop)
+     - [Example 1](#user-content-example1)
+     - [Example 2](#user-content-example2)
   - [Configuration file overview](#user-content-configuration-file-overview)
   - [L1 streams](#user-content-l1-streams)
   - [Examples on the two-node McGill backend](#user-content-two-node-backend)
+     - [Example 3](#user-content-example3)
   - [Config file reference: L1 server](#user-content-l1-config)
+     - [High level parameters](#user-content-l1-config-high-level)
+     - [Buffer sizes](#user-content-l1-config-buffer-sizes)
+     - [L1b linkage](#user-content-l1-config-l1b)
+     - [Misc](#user-content-l1-config-misc)
   - [Config file reference: L0 simulator](#user-content-l0-config)
   - [RPC reference](#user-content-rpc-reference)
+
+Here are some external links to the bonsai documentation, where a lot of info on bonsai can be found:
+
+  - [bonsai/MANUAL.md](https://github.com/CHIMEFRB/bonsai/blob/master/MANUAL.md)
+  - [bonsai/examples_python](https://github.com/CHIMEFRB/bonsai/tree/master/examples_python)
 
 <a name="overview"></a>
 ### HIGH-LEVEL OVERVIEW  
 
-The L1 server is not finished yet!
-Please note the following caveats:
-
-  - **No RFI removal yet**.  Instead there is a placeholder
-    processing stage which detrends the data, but does not
-    mask RFI.
-
-  - The L0 simulator can only simulate noise; it cannot
-    simulate pulses or replay RFI captures.
-
-  - The L1 server doesn't pass timestamps (FPGA counts) to L1b yet.
-
-  - In the full CHIME parameter space (roughly DM <= 13000 and
-    pulse width <= 100 ms), there is currently a technical issue in the
-    bonsai code which requires an artificially large bonsai chunk size
-    (8 seconds).  This will be fixed soon!  This issue only affects the
-    "production-scale" examples, not the subscale examples which can
-    run on a laptop.
-
-  - The L1 server is fragile; if anything goes wrong
-    (such as a thread running slow and filling a ring buffer)
-    then it will throw an exception and die.
-
-    I find that this is actually convenient for debugging, but
-    for production we need to carefully enumerate corner cases and
-    make sure that the L1 server recovers sensibly.
-    
-  - The code is in a "pre-alpha" state, and serious testing
-    will probably uncover bugs!
-
-The main high-level components are:
+**Ingredients.** The main high-level components of the L1 code are:
 
   - ch-frb-l1: The "L1 server".
 
@@ -67,6 +49,39 @@ The main high-level components are:
 
   - Monitoring webapp.  (To be documented later.)
 
+**Caveats.** The L1 server is not finished yet! Please note the following caveats:
+
+  - **No RFI removal yet**.  Instead there is a placeholder
+    processing stage which detrends the data, but does not
+    mask RFI.
+
+  - The L0 simulator can only simulate noise; it cannot
+    simulate pulses or replay RFI captures.
+
+  - The L1 server doesn't pass timestamps (FPGA counts) to L1b yet.
+
+  - In the full CHIME parameter space (roughly DM <= 13000 and
+    pulse width <= 100 ms), there is currently a technical issue in the
+    bonsai code which requires an artificially large bonsai chunk size
+    (8 seconds).  This will be fixed soon!  This issue only affects the
+    "production-scale" examples, not the subscale examples which can
+    run on a laptop.
+
+  - There is another technical issue in the bonsai code which sometimes
+    causes false positive events at low DM near the beginning of the timestream.  
+    (This shows up in e.g. [example3](#user-content-example3) below.)
+    We're working on this next!
+
+  - The L1 server is fragile; if anything goes wrong
+    (such as a thread running slow and filling a ring buffer)
+    then it will throw an exception and die.
+
+    I find that this is actually convenient for debugging, but
+    for production we need to carefully enumerate corner cases and
+    make sure that the L1 server recovers sensibly.
+    
+  - The code is in a "pre-alpha" state, and serious testing
+    will probably uncover bugs!
 
 <a name="installation"></a>
 ### INSTALLATION
@@ -131,6 +146,7 @@ update from git, and rebuild everything from scratch.
 <a name="laptop"></a>
 ### QUICK-START EXAMPLES WHICH CAN RUN ON A LAPTOP
 
+<a name="example1"></a>
 **Example 1:** simplest example: one beam, 1024 frequency channels, one dedispersion tree.
 The L0 simulator and L1 server run on the same machine (e.g. a laptop), and exchange packets 
 over the loopback interface (127.0.0.1).
@@ -160,6 +176,7 @@ over the loopback interface (127.0.0.1).
     is pure noise.
 
 
+<a name="example2"></a>
 **Example 2:** similar to example 1, but slightly more complicated as follows.
 
 We process 4 beams, which are divided between UDP ports 6677 and 6688 (two beams per UDP port).
@@ -346,12 +363,45 @@ The L1 server can run in one of two modes:
 <a name="two-node-backend"></a>
 ### EXAMPLES ON THE TWO-NODE MCGILL BACKEND
 
-This is a placeholder section!  Soon it will contain a description
-of the McGill two-node backend, and some examples which can be run.
+For now, the "two-node McGill backend" refers to the network below.
+The nodes are in a non-link-bonded configuration, with each of their four
+1 Gbps NIC's on a separate /24 network.
 
+![two_node_backend](two_node_backend.png)
+
+Future versions of the manual will include examples which include
+more machines, for example a file server.
+
+<a name="example3"></a>
 **Example 3:**
 
-  - Start the L1 server:
+  - This is a two-node example, with the L0 simulator running on frb-compute-0
+    and the L1 server running on frb-compute-1.  We process 16 beams with 16384
+    frequency channels and 1 ms sampling.  The total bandwidth is 2.2 Gbps,
+    distributed on 4x1 Gbps NIC's by assigning four beams to each NIC.  These
+    parameters are representative of what we'll use in production.
+
+    The dedispersion doesn't use an upsampled tree, and searches one trial
+    spectral index.  We use "placeholder" RFI removal, which doesn't actually
+    mask RFI, but does detrend the data.  These search parameters are a little
+    underpowered compared to what we'll use in production.
+
+  - First, check that the node is in the network configuration shown above.
+    This is not guaranteed to be the case, since we're still experimenting with	
+    the networking!  You can check the configuration by doing `ifconfig -a`
+    on each node, and checking that the IP addresses of each 1 Gbps NIC (eno*)
+    are as follows:
+    
+
+    |      | frb-compute-0 | frb-compute-1  |
+    |------|---------------|----------------|
+    | eno1 | 10.0.0.100    | 10.0.0.101     |
+    | eno2 | 10.0.1.100    | 10.0.1.101     |
+    | eno3 | 10.0.2.100    | 10.0.2.101     |
+    | eno4 | 10.0.3.100    | 10.0.3.101     |
+
+
+  - On **frb-compute-1**, start the L1 server:
     ```
     ./ch-frb-l1  \
        l1_configs/l1_example3.yaml  \
@@ -359,14 +409,26 @@ of the McGill two-node backend, and some examples which can be run.
        bonsai_configs/bonsai_noups_nbeta1.txt  \
        l1b_config_placeholder
     ```
-    There are four configuration files, which will be described shortly!
+    It will take 5-10 seconds for all threads and processes to start
+    (it's best to wait until all toy-l1b.py processes have started).
 
-  - In another window, start the L0 simulator:
+  - On **frb-compute-0**, start the L0 simulator:
     ```
     ./ch-frb-simulate-l0 l0_configs/l0_example3.yaml 300
     ```
+    This simulates 300 seconds of data.  If you switch back to the L1 server,
+    you'll see some incremental output, as coarse-grained triggers are received
+    by the toy-l1b processes.
 
-  - Right now the following ports are open on the firewalls of the compute nodes: 10252/udp, 6677/udp, 6677/tcp.
+  - When the simulation ends (after 5 minutes), the toy-l1b processes will write
+    their trigger plots (toy_l1b_beam*.png).  These will be large files (4000-by-4000 pixels)!
+    You'll see some false positive events at low DM near the beginning of the simulation.
+    As noted at the beginning of this manual, this is a technical issue in the bonsai code 
+    which we're working on next!
+
+**Notes on the two-node backed:**
+
+  - Right now the following ports are open on the firewalls of the compute nodes: 5555/tcp, 6677/udp, 6677/tcp.
     If you need to open more, the syntax is:
     ```
     sudo firewall-cmd --zone=public --add-port=10252/udp --permanent
@@ -378,12 +440,8 @@ of the McGill two-node backend, and some examples which can be run.
     after throwing an exception, because it is trying to write its core dump.  My solution is
     `sudo killall -9 abrt-hook-ccpp` in another window.  Let me know if you find a better one!
 
-|      | frb-compute-0 | frb-compute-1  |
-|------|---------------|----------------|
-| eno1 | 10.0.0.100    | 10.0.0.101     |
-| eno2 | 10.0.1.100    | 10.0.1.101     |
-| eno3 | 10.0.2.100    | 10.0.2.101     |
-| eno3 | 10.0.3.100    | 10.0.3.101     |
+    A related issue: core dumps can easily fill the / filesystem.  My solution  
+    here is `sudo su; rm -rf /var/spool/abrt/ccpp*` (careful!)
 
 <a name="l1-config"></a>
 ### CONFIG FILE REFERENCE: L1 SERVER
@@ -391,6 +449,7 @@ of the McGill two-node backend, and some examples which can be run.
 The L1 configuration file is a YAML file.
 There are some examples in the `ch_frb_l1/l1_configs` directory.
 
+<a name="l1-config-high-level"></a>
 ##### L1 config: high-level parameters
 
   - `nbeams` (integer).
@@ -451,6 +510,7 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
     to use 16 times samples per packet on the simulator (this can lead to awkwardly small
     packets in subscale cases).
 
+<a name="l1-config-buffer-sizes"></a>
 ##### L1 config: parameters defining buffer sizes
 
   - `assembled_ringbuf_nsamples` (integer, default 8192).
@@ -498,6 +558,7 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
     the nearest "assembled_chunk", where the assembled_chunk size is 1024, 2048, 4096...
     depending on the level of downsampling.
 
+<a name="l1-config-l1b"></a>
 ##### L1 config: parameters defining L1b linkage
 
   - `l1b_executable_filename` (string).
@@ -579,6 +640,7 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
     If true, then L1a's writes to the pipe will be blocking.
     This has the same effect as setting l1b_pipe_timeout to a huge value.
 
+<a name="l1-config-misc"></a>
 ##### L1 config: miscellaneous parameters
 
   - `track_global_trigger_max` (boolean, default=false).
