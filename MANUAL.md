@@ -536,12 +536,22 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
 <a name="l1-config-buffer-sizes"></a>
 ##### L1 config: parameters defining buffer sizes
 
+
+  - `unassembled_ringbuf_nsamples` (integer, default 4096).
+
+    The "unassembled" ring buffer sits between the network thread and assembler thread.
+    If the assembler thread is running slow, then this ring buffer will start to fill up.
+    The unassembled_ringbuf_nsamples parameter sets the size of the ring buffer, in time samples.
+
+    Currently, if the unassembled ring buffer fills up, then the L1 server throws an exception.
+    This behavior will eventually be replaced with some recovery logic which resets the dedispersion	
+    state.
+
   - `assembled_ringbuf_nsamples` (integer, default 8192).
 
     The "assembled" ring buffer sits between the assembler thread and the dedispersion threads.
     If the dedispersion threads are running slow, then this ring buffer will start to fill up.
-    The assembled_ringbuf_nsamples parameter sets the size of the ring buffer, in time samples
-    (i.e. milliseconds).
+    The assembled_ringbuf_nsamples parameter sets the size of the ring buffer, in time samples.
 
     Currently, if the assembled ring buffer fills up, then the L1 server throws an exception.
     This behavior will eventually be replaced with some recovery logic which resets the dedispersion	

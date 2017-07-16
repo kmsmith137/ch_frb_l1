@@ -22,7 +22,7 @@
 #include <thread>
 #include <fstream>
 
-#include <ch_frb_io.hpp>
+#include <ch_frb_io_internals.hpp>
 #include <rf_pipelines.hpp>
 #include <bonsai.hpp>
 #include <l1-rpc.hpp>
@@ -110,12 +110,18 @@ struct l1_params {
     // If unspecified, 'beam_ids' defaults to { 0, ..., nbeams-1 }.
     vector<int> beam_ids;
 
-    // Buffer sizes.
-    int assembled_ringbuf_nsamples = 8192;     // in time samples, as specified in config file.
-    vector<int> telescoping_ringbuf_nsamples;  // in time samples, as specified in config file.
+    // Buffer sizes, as specified in config file.
+    int unassembled_ringbuf_nsamples = 4096;
+    int assembled_ringbuf_nsamples = 8192;
+    vector<int> telescoping_ringbuf_nsamples;
     double write_staging_area_gb = 0.0;
     
-    // Buffer sizes, converted to assembled_chunks.
+    // "Derived" unassembled ringbuf parameters.
+    int unassembled_ringbuf_capacity = 0;
+    int unassembled_nbytes_per_list = 0;
+    int unassembled_npackets_per_list = 0;
+
+    // "Derived" assembled and telescoping ringbuf parameters.
     int assembled_ringbuf_nchunks = 0;
     vector<int> telescoping_ringbuf_nchunks;
 
@@ -217,6 +223,7 @@ l1_params::l1_params(int argc, char **argv)
     this->port = p.read_vector<int> ("port");
     this->rpc_address = p.read_vector<string> ("rpc_address");
     this->slow_kernels = p.read_scalar<bool> ("slow_kernels", false);
+    this->unassembled_ringbuf_nsamples = p.read_scalar<int> ("unassembled_ringbuf_nsamples", 4096);
     this->assembled_ringbuf_nsamples = p.read_scalar<int> ("assembled_ringbuf_nsamples", 8192);
     this->telescoping_ringbuf_nsamples = p.read_vector<int> ("telescoping_ringbuf_nsamples", {});
     this->write_staging_area_gb = p.read_scalar<double> ("write_staging_area_gb", 0.0);
@@ -268,6 +275,8 @@ l1_params::l1_params(int argc, char **argv)
 	throw runtime_error(l1_config_filename + ": l1b_buffer_nsamples must be >= 0");
     if (l1b_pipe_timeout < 0.0)
 	throw runtime_error(l1_config_filename + ": l1b_pipe_timeout must be >= 0.0");
+    if (unassembled_ringbuf_nsamples <= 0)
+	throw runtime_error(l1_config_filename + ": 'unassembled_ringbuf_nsamples' must be >= 1");	
     if (assembled_ringbuf_nsamples <= 0)
 	throw runtime_error(l1_config_filename + ": 'assembled_ringbuf_nsamples' must be >= 1");
     if (telescoping_ringbuf_nsamples.size() > 4)
@@ -313,7 +322,21 @@ l1_params::l1_params(int argc, char **argv)
     if (!is_subscale && (nstreams % 2 == 1))
 	throw runtime_error(l1_config_filename + ": production-scale L1 server instances must have an odd number of streams");
 
-    // Convert *_ringbuf_nsamples to *_ringbuf_nchunks.
+    // "Derived" unassembled ringbuf params.
+
+    int fp = nt_per_packet * fpga_counts_per_sample;   // FPGA counts per packet
+    int np = int(40000/fp) + 1;                        // number of packets in 100 ms, rounded up.  This will correspond to one unassembled packet list.
+    int nb = ch_frb_io::intensity_packet::packet_size(nbeams/nstreams, 1, nfreq/nfreq_c, nt_per_packet);
+
+    this->unassembled_ringbuf_capacity = int(unassembled_ringbuf_nsamples / (np * nt_per_packet)) + 1;
+    this->unassembled_nbytes_per_list = np * nfreq * nb;
+    this->unassembled_npackets_per_list = np * nfreq;
+
+    cout << "XXX unassembled_ringbuf_capacity = " << unassembled_ringbuf_capacity << endl
+	 << "XXX unassembled_nbytes_per_list = " << unassembled_nbytes_per_list << endl
+	 << "XXX unassembled_npackets_per_list = " << unassembled_npackets_per_list << endl;
+
+    // "Derived" assembled and telescoping ringbuf params.
 
     int nt_c = ch_frb_io::constants::nt_per_assembled_chunk;
     this->assembled_ringbuf_nchunks = (assembled_ringbuf_nsamples + nt_c - 1) / nt_c;
@@ -461,6 +484,9 @@ static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l
     ini_params.fpga_counts_per_sample = config.fpga_counts_per_sample;
     ini_params.force_fast_kernels = !config.slow_kernels;
     ini_params.force_reference_kernels = config.slow_kernels;
+    ini_params.unassembled_ringbuf_capacity = config.unassembled_ringbuf_capacity;
+    ini_params.max_unassembled_packets_per_list = config.unassembled_npackets_per_list;
+    ini_params.max_unassembled_nbytes_per_list = config.unassembled_nbytes_per_list;
     ini_params.assembled_ringbuf_capacity = config.assembled_ringbuf_nchunks;
     ini_params.telescoping_ringbuf_capacity = config.telescoping_ringbuf_nchunks;
     ini_params.memory_pool = pool;
