@@ -22,7 +22,7 @@ This manual is incomplete and some sections are placeholders!
   - [Config file reference: L0 simulator](#user-content-l0-config)
   - [RPC reference](#user-content-rpc-reference)
 
-Here are some external links to the bonsai documentation, where a lot of info on bonsai can be found:
+Here are some external links to the bonsai documentation, which may also be useful:
 
   - [bonsai/MANUAL.md](https://github.com/CHIMEFRB/bonsai/blob/master/MANUAL.md)
   - [bonsai/examples_python](https://github.com/CHIMEFRB/bonsai/tree/master/examples_python)
@@ -570,8 +570,8 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
 
     Currently, there is some guesswork involved in setting this parameter, since it's
     hard to figure out how much memory is being used by other things (e.g. bonsai).
-    I plan to address this soon!  In the meantime, I recommend 32 GB for production-scale
-    runs, and 0.5 GB for subscale testing runs.
+    I plan to address this soon!  In the meantime, I recommend 2 GB/beam for production-scale
+    runs, and 0.1 GB/beam for subscale testing runs.
 
 
 <a name="l1-config-l1b"></a>

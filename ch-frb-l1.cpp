@@ -114,9 +114,6 @@ struct l1_params {
     int assembled_ringbuf_nchunks = 0;
     vector<int> telescoping_ringbuf_nchunks;
 
-    // Number of assembled_chunks which can be "live" for each beam (not counting write_staging area).
-    int live_chunks_per_beam = 0;
-
     // Parameters of the memory_slab_pool(s)
     int memory_slab_nbytes = 0;     // size (in bytes) of memory slab used to store assembled_chunk
     int memory_slabs_per_pool = 0;  // total memory slabs to allocate per cpu
@@ -324,18 +321,23 @@ l1_params::l1_params(int argc, char **argv)
 	}
     }
 
-    // Figure out how many assembled_chunks can be "live" for each beam.
-    // This depends on implementation details of assembled_chunk_ringbuf!
+    // Memory slab parameters (npools, memory_slab_nbytes, memory_slabs_per_pool)
+    //
+    // The total memory usage consists of
+    //   - live_chunks_per_beam (active + assembled_ringbuf + telescoping_ringbuf)
+    //   - temporary_chunks_per_stream (temporaries in assembled_chunk::_put_assembled_chunk())
+    //   - staging_chunks_per_pool (derived from config param 'write_staging_area_gb')
 
-    live_chunks_per_beam = 2;   // "active" chunks
+    // FIXME placeholder logic here
+    this->npools = is_subscale ? 1 : 2;
+    this->memory_slab_nbytes = is_subscale ? 1085504 : 17367168;
+
+    int live_chunks_per_beam = 2;   // "active" chunks
     live_chunks_per_beam += assembled_ringbuf_nchunks;  // assembled_ringbuf
     
     // telescoping_ringbuf
     for (unsigned int i = 0; i < telescoping_ringbuf_nchunks.size(); i++)
 	live_chunks_per_beam += telescoping_ringbuf_nchunks[i];
-
-    // temporaries in assembled_chunk::_put_assembled_chunk()
-    live_chunks_per_beam += telescoping_ringbuf_nchunks.size();
 
     // probably overkill, but this fudge factor accounts for the fact that the dedispersion 
     // thread can briefly hang on to a reference to the assembled_chunk.
@@ -345,13 +347,29 @@ l1_params::l1_params(int argc, char **argv)
 
     live_chunks_per_beam += fudge_factor;
 
-    // Memory slab parameters
+    int temporary_chunks_per_stream = max(1, (int)elescoping_ringbuf_nchunks.size());
+    int staging_chunks_per_pool = pow(2,30.) * write_staging_area_gb / (npools * memory_slab_nbytes);
 
-    this->npools = is_subscale ? 1 : 2;
-    this->memory_slab_nbytes = is_subscale ? 1085504 : 17367168;
-    this->memory_slabs_per_pool = (nbeams/npools) * live_chunks_per_beam + 10;
+    assert(nbeams % npools == 0);
+    assert(nstreams % npools == 0);
 
-    // Final warning checks.
+    this->memory_slabs_per_pool = ((nbeams/npools) * live_chunks_per_beam 
+				   + (nstreams/npools) * temporary_chunks_per_stream 
+				   + staging_chunks_per_pool);
+
+    if (l1_verbosity >= 1) {
+	double gb1 = live_chunks_per_beam * double(memory_slab_nbytes) / pow(2.,30.);
+	double gb2 = temporary_chunks_per_stream * double(memory_slab_nbytes) / pow(2.,30.);
+	double gb3 = staging_chunks_per_pool * double(memory_slab_nbytes) / pow(2.,30.);
+
+	cout << "Total assembled_chunk memory on node: "
+	     << (nbeams*gb1 + nstreams*gb2 + npools*gb3) << " GB"
+	     << " (= " << nbeams << " * " << gb1
+	     << " + " << nstreams << " * " << gb2
+	     << " + " << npools << " * " << gb3 << ")" << endl;
+    }
+
+    // Warnings that can be overridden with -f.
 
     bool have_warnings = false;
 

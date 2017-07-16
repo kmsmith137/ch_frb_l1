@@ -20,6 +20,7 @@ slow_kernels: True
 
 assembled_ringbuf_nsamples: 4000
 telescoping_ringbuf_nsamples: [ 4000, 4000, 4000 ]
+write_staging_area_gb: 0.4
 
 # L1b configuration.
 #
