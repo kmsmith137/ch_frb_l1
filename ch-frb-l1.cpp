@@ -679,7 +679,7 @@ int main(int argc, char **argv)
     vector<shared_ptr<ch_frb_io::memory_slab_pool>> memory_pools(npools);
     vector<shared_ptr<ch_frb_io::intensity_network_stream>> input_streams(nstreams);
     vector<shared_ptr<L1RpcServer> > rpc_servers(nbeams);
-    vector<std::thread> threads(nbeams);
+    vector<std::thread> dedispersion_threads(nbeams);
 
     for (int ipool = 0; ipool < npools; ipool++)
 	memory_pools[ipool] = make_memory_pool(config, ipool);
@@ -704,11 +704,11 @@ int main(int argc, char **argv)
 		 << ", stream=" << config.ipaddr[istream] << ":" << config.port[istream] << endl;
 	}
 
-	threads[ibeam] = std::thread(dedispersion_thread_main, config, input_streams[istream], ibeam);
+	dedispersion_threads[ibeam] = std::thread(dedispersion_thread_main, config, input_streams[istream], ibeam);
     }
 
     for (int ibeam = 0; ibeam < nbeams; ibeam++)
-	threads[ibeam].join();
+	dedispersion_threads[ibeam].join();
 
     print_statistics(config, input_streams, config.l1_verbosity);
 
