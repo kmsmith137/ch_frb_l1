@@ -1,9 +1,28 @@
+# This is "example 3", in the section "Examples on the two-node McGill backend"
+# in MANUAL.md.
+
+
+# This is a production-scale example which will monopolize both 20-core nodes
+# frb-compute-0 (which acts as the L0 simulator) and frb-compute-1 (which acts
+# as the L1 server).  The L1 server will dedisperse 16 beams, with 16384 frequency
+# channels.
+#
+# nt_per_packet=16 is important here, since the 'fast' kernels are hardcoded to
+# use nt_per_packet=16.  See MANUAL.md for more dicussion!
+
 nbeams: 16
 nfreq: 16384
 nt_per_packet: 16
 
+
+# This example assumes the nodes are in a non-link-bonded configuration, where
+# each of the four 1 Gbps NIC's is on an independent /24 network.  We use UDP
+# port 6677 on all four NIC's.  Traffic is divided between NIC's "per beam", 
+# i.e. four beams will be sent to each NIC.
+
 ipaddr: [ "10.0.0.101", "10.0.1.101", "10.0.2.101", "10.0.3.101" ]
 port: 6677
+
 
 # Total number of threads used by the L0 simulator.
 # Note: nthreads must be a multiple of the number of "streams", which

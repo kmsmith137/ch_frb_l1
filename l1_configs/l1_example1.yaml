@@ -3,26 +3,39 @@
 
 
 # This toy L1 server instance expects 1 beam, with 1024 frequencies.
+#
+# In subscale test programs, the value of 'nt_per_packet' isn't very important, but
+# should be the same on the L0 simulator and the L1 server.  (For discussion, see
+# "Config file reference: L1 server" in MANUAL.md.)
 
 nbeams: 1
 nfreq: 1024
 nt_per_packet: 64
 
+
 # Configure the L1 server to use the loopback interface 127.0.0.1 and UDP port 6677.
+# The RPC server will run on TCP port 5555.
 
 ipaddr: "127.0.0.1"
 port: 6677
 rpc_address: "tcp://127.0.0.1:5555"
 
 
-# slow_kernels=True makes sense in subscale test instances, but not in the
-# production real-time search.  See MANUAL.md for discussion!
+
+# slow_kernels=True is the only option here, since nfreq is not a multiple
+# of 2048.  Using slow kernels is OK in subscale test instances.  For more
+# discussion, see "Config file reference: L1 server" in MANUAL.md.
 
 slow_kernels: True
+
+
+# Buffer configuration.  For documentation on these parameters, see 
+# "Config file reference: L1 server" in MANUAL.md.
 
 assembled_ringbuf_nsamples: 4096
 telescoping_ringbuf_nsamples: [ 4096, 4096, 4096 ]
 write_staging_area_gb: 0.1
+
 
 # L1b configuration.
 #
@@ -37,4 +50,3 @@ write_staging_area_gb: 0.1
 l1b_executable_filename: "./toy-l1b.py"
 l1b_buffer_nsamples: 0
 l1b_pipe_timeout: 5.0
-
