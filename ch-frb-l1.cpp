@@ -347,7 +347,7 @@ l1_params::l1_params(int argc, char **argv)
 
     live_chunks_per_beam += fudge_factor;
 
-    int temporary_chunks_per_stream = max(1, (int)elescoping_ringbuf_nchunks.size());
+    int temporary_chunks_per_stream = max(1, (int)telescoping_ringbuf_nchunks.size());
     int staging_chunks_per_pool = pow(2,30.) * write_staging_area_gb / (npools * memory_slab_nbytes);
 
     assert(nbeams % npools == 0);
