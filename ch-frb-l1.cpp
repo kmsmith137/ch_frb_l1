@@ -358,15 +358,12 @@ l1_params::l1_params(int argc, char **argv)
 				   + staging_chunks_per_pool);
 
     if (l1_verbosity >= 1) {
-	double gb1 = live_chunks_per_beam * double(memory_slab_nbytes) / pow(2.,30.);
-	double gb2 = temporary_chunks_per_stream * double(memory_slab_nbytes) / pow(2.,30.);
-	double gb3 = staging_chunks_per_pool * double(memory_slab_nbytes) / pow(2.,30.);
+	double gb = npools * memory_slabs_per_pool * double(memory_slab_nbytes) / pow(2.,30.);
 
-	cout << "Total assembled_chunk memory on node: "
-	     << (nbeams*gb1 + nstreams*gb2 + npools*gb3) << " GB"
-	     << " (= " << nbeams << " * " << gb1
-	     << " + " << nstreams << " * " << gb2
-	     << " + " << npools << " * " << gb3 << ")" << endl;
+	cout << "Total assembled_chunk memory on node: " << gb << " GB"
+	     << " (chunk counts: " << nbeams << "*" << live_chunks_per_beam
+	     << " + " << nstreams << "*" << temporary_chunks_per_stream
+	     << " + " << npools << "*" << staging_chunks_per_pool << ")" << endl;
     }
 
     // Warnings that can be overridden with -f.
