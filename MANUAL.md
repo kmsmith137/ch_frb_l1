@@ -151,9 +151,9 @@ over the loopback interface (127.0.0.1).
   - Start the L1 server:
     ```
     ./ch-frb-l1  \
-       l1_configs/l1_toy_1beam.yaml  \
+       l1_configs/l1_example1.yaml  \
        rfi_configs/rfi_placeholder.json  \
-       bonsai_configs/bonsai_toy_1tree.txt  \
+       bonsai_configs/bonsai_example1.txt  \
        l1b_config_placeholder
     ```
     There are four configuration files, which will be described in the
@@ -164,7 +164,7 @@ over the loopback interface (127.0.0.1).
 
   - In another window, start the L0 simulator:
     ```
-    ./ch-frb-simulate-l0 l0_configs/l0_toy_1beam.yaml 30
+    ./ch-frb-simulate-l0 l0_configs/l0_example1.yaml 30
     ```
     This will simulate 30 seconds of data.  If you switch back to the L1 server's window,
     you'll see some incremental output, as chunks of data are processed.  After it finishes, you'll see
@@ -191,16 +191,16 @@ This is more representative of the real search, where we plan to use
   - Start the L1 server:
     ```
     ./ch-frb-l1  \
-       l1_configs/l1_toy_4beams.yaml  \
+       l1_configs/l1_example2.yaml  \
        rfi_configs/rfi_placeholder.json  \
-       bonsai_configs/bonsai_toy_3trees.txt  \
+       bonsai_configs/bonsai_example2.txt  \
        l1b_config_placeholder
     ```
     There are four configuration files, which will be described shortly!
 
   - In another window, start the L0 simulator:
     ```
-    ./ch-frb-simulate-l0 l0_configs/l0_toy_4beams.yaml 30
+    ./ch-frb-simulate-l0 l0_configs/l0_example2.yaml 30
     ```
 
 After the example finishes, you should see four plots toy_l1b_beam$N.png,
