@@ -5,7 +5,7 @@
 
 nbeams: 1
 nfreq: 1024
-nt_per_packet: 16
+nt_per_packet: 64
 
 # Send data to the loopback address (127.0.0.1), UDP port 6677.
 

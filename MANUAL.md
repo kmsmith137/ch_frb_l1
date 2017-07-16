@@ -8,12 +8,9 @@ This manual is incomplete and some sections are placeholders!
   - [Installation](#user-content-installation)
   - [Help! My pipeline is broken](#user-content-help-my-pipeline-is-broken)
   - [Quick-start examples which can run on a laptop](#user-content-laptop)
-     - [Example 1](#user-content-example1)
-     - [Example 2](#user-content-example2)
   - [Configuration file overview](#user-content-configuration-file-overview)
   - [L1 streams](#user-content-l1-streams)
   - [Examples on the two-node McGill backend](#user-content-two-node-backend)
-     - [Example 3](#user-content-example3)
   - [Config file reference: L1 server](#user-content-l1-config)
      - [High level parameters](#user-content-l1-config-high-level)
      - [Buffer sizes](#user-content-l1-config-buffer-sizes)
@@ -456,6 +453,37 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
   - `nbeams` (integer).
 
     Number of beams processed by the node.
+    Must match the value of nbeams in the L0 simulator's config file.
+
+  - `nfreq` (integer).
+
+    Number of frequency channels (usually 1024 in subscale testing, or 16384 in production-scale).
+    Must match the value of nfreq in the L0 simulator's config file.
+
+  - `nt_per_packet` (integer).
+
+    Number of time samples sent in each UDP packet.  Must match the value of nt_per_packet
+    in the L0 simulator's config file.
+
+    There is currently a restriction that in order to use fast kernels (see below),
+    nt_per_packet must be 16.  In particular, you should take nt_per_packet=16 in production-scale
+    runs, where fast kernels are usually a necessity.  If you're using slow kernels,	
+    then the value of nt_per_packet is probably not very important.
+
+  - `fpga_counts_per_sample` (integer, default 384).
+
+    Number of FPGA counts per time sample.  Must match the value of fpga_counts_per_sample
+    in the L0 simulator's config file.
+
+    This is an indirect way of specifiying the sampling rate.  One FPGA count corresponds to	
+    2.5 microseconds (hardcoded).  Therefore, the default value fpga_counts_per_sample=384
+    corresponds to a sampling rate of 0.983 milliseconds.
+
+    One use for this parameter is to artificially speed up or slow down test instances.
+    For example, to run a "stress test" in which the L1 server is required to run 10%
+    faster than normal, you can take fpga_counts_per_sample=349.  (Note that you'll also
+    need to decrease the value of 'dt_sample' in the bonsai config file by 10%, and the
+    max DM of the search will decrease by 10%.)
 
   - `ipaddr` (either a string, or a list of strings).
 
@@ -496,20 +524,14 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
   - `slow_kernels` (boolean, default=false).
 
     By default (slow_kernels=false), the L1 server uses fast assembly-language kernels
-    for packet-level operations such as decoding and buffer assembly.  However, these
-    are only implemented if the L0 simulator sends 16 time samples per packet, the number
-    of frequencies is >= 2048, and the CPU has the AVX2 instruction set.  If slow_kernels=true,
-    then slow reference kernels will be used.
+    for packet-level operations such as decoding and buffer assembly.  However, there
+    is currently a restriction: the slow kernels assume that nt_per_packet=16, and
+    nfreq is divisible by 2048.  If these conditions are not satisfied, you'll need
+    to use slow_kernels=true.
 
-    When running the L1 server in its "production-scale" mode on 20-core nodes, I recommend
-    setting slow_kernels=false, since the reference kernels may be too slow to keep
-    up with the data.  You may need to force the L0 simulator to send 16 time samples
-    per packet, by setting nt_per_packet=16 in its yaml file.
-
-    When running the L1 server on subscale test instances, I recommend setting slow_kernels=true,
-    since you may not have the AVX2 instruction set (e.g. on a laptop), and you may not want
-    to use 16 times samples per packet on the simulator (this can lead to awkwardly small
-    packets in subscale cases).
+    When running the L1 server at production-scale (~16 beams, ~16384 frequencies),
+    you'll probably need to set slow_kernels=false, since the slow reference kernels
+    may be too slow to keep up with the data.
 
 <a name="l1-config-buffer-sizes"></a>
 ##### L1 config: parameters defining buffer sizes
@@ -673,11 +695,33 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
 
   - `nbeams` (integer).
 
-    Number of beams to be simulated.  (Usually 16 in production-scale, or 1-4 in subscale testing.)
+    Number of beams being simulated.
+    Must match the value of nbeams in the L1 server's config file.
 
   - `nfreq` (integer).
 
-    Number of frequency channels to be simulated.  (Usually 16384 in production-scale, or 1024 in subscale testing.)
+    Number of frequency channels (usually 1024 in subscale testing, or 16384 in production-scale).
+    Must match the value of nfreq in the L1 server's config file.
+
+  - `nt_per_packet` (integer).
+
+    Number of time samples sent in each UDP packet.  Must match the value of nt_per_packet
+    in the L1 server's config file.
+
+  - `fpga_counts_per_sample` (integer, default 384).
+
+    Number of FPGA counts per time sample.  Must match the value of fpga_counts_per_sample
+    in the L1 server's config file.
+
+    This is an indirect way of specifiying the sampling rate.  One FPGA count corresponds to	
+    2.5 microseconds (hardcoded).  Therefore, the default value fpga_counts_per_sample=384
+    corresponds to a sampling rate of 0.983 milliseconds.
+
+    One use for this parameter is to artificially speed up or slow down test instances.
+    For example, to run a "stress test" in which the L1 server is required to run 10%
+    faster than normal, you can take fpga_counts_per_sample=349.  (Note that you'll also
+    need to decrease the value of 'dt_sample' in the bonsai config file by 10%, and the
+    max DM of the search will decrease by 10%.)
   
   - `ipaddr` (either a string, or a list of strings).
 
@@ -700,11 +744,6 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
     streams (i.e. the number of distinct (ipaddr,udp_port) pairs), since each stream uses
     independent threads.  Usually I just set nthreads = nstreams.
   
-  - `fpga_counts_per_sample` (integer, default 384).
-
-     Note that each FPGA count corresponds to 2.56 microseconds (hardcoded), so the
-     default value of 384 FPGA counts per sample corresponds to 0.983 milliseconds.
-  
   - `gbps_per_stream` (floating-point, optional).
   
     This optional parameter provides a way of speeding up or slowing down the
@@ -722,17 +761,6 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
     bytes is a good choice.  Otherwise, I suggest 1400.
 
   - `nfreq_coarse_per_packet` (integer, optional).
-
-  - `nt_per_packet` (integer, optional).
-  
-    These optional parameters determine the number of frequency channels and time
-    samples sent per packet.  If unspecified, then reasonable defaults should be
-    chosen.
-
-    As mentioned above (under '[slow_kernels](#user-content-slow-kernels)' in the
-    L1 config reference), if you're using fast assembly language kernels on the L1
-    sever (slow_kernels=false), then you should set nt_per_packet=16 on the L0
-    simulator.
 
 
 <a name="rpc reference"></a>
