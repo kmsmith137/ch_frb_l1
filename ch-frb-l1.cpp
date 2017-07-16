@@ -260,6 +260,10 @@ l1_params::l1_params(int argc, char **argv)
 	throw runtime_error(l1_config_filename + ": 'fpga_counts_per_sample' must be >= 1");
     if (rpc_address.size() != (unsigned int)nstreams)
 	throw runtime_error(l1_config_filename + ": 'rpc_address' must be a list whose length is the number of (ip_addr,port) pairs");
+    if (!slow_kernels && (nt_per_packet != 16))
+	throw runtime_error(l1_config_filename + ": fast kernels (slow_kernels=false) currently require nt_per_packet=16");
+    if (!slow_kernels && (nfreq % (2*nfreq_c)))
+	throw runtime_error(l1_config_filename + ": fast kernels (slow_kernels=false) currently require nfreq divisible by " + to_string(2*nfreq_c));
     if (l1b_buffer_nsamples < 0)
 	throw runtime_error(l1_config_filename + ": l1b_buffer_nsamples must be >= 0");
     if (l1b_pipe_timeout < 0.0)
@@ -394,11 +398,6 @@ l1_params::l1_params(int argc, char **argv)
 
     if (is_subscale && (bonsai_config.nfreq > 4096)) {
 	cout << l1_config_filename << ": subscale instance with > 4096 frequency channels, presumably unintentional?" << endl;
-	have_warnings = true;
-    }
-
-    if (is_subscale && !slow_kernels) {
-	cout << l1_config_filename << ": subscale instance with slow_kernels=false, presumably unintentional?" << endl;
 	have_warnings = true;
     }
 
