@@ -277,7 +277,7 @@ l1_params::l1_params(int argc, char **argv)
     
     this->beam_ids = p.read_vector<int> ("beam_ids", vrange(0,nbeams));
 
-    if (beam_ids.size() != nbeams)
+    if (beam_ids.size() != (unsigned)nbeams)
 	throw runtime_error(l1_config_filename + ": 'beam_ids' must have length 'nbeams'");
 
     // Decide whether instance is "subscale" or "production-scale".
@@ -414,7 +414,7 @@ static shared_ptr<ch_frb_io::memory_slab_pool> make_memory_pool(const l1_params 
 static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l1_params &config, int istream, const shared_ptr<ch_frb_io::memory_slab_pool> &pool)
 {
     assert(istream >= 0 && istream < config.nstreams);
-    assert(config.beam_ids.size() == config.nbeams);
+    assert(config.beam_ids.size() == (unsigned)config.nbeams);
 
     int nbeams = config.nbeams;
     int nstreams = config.nstreams;
