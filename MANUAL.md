@@ -409,16 +409,17 @@ more machines, for example a file server.
        bonsai_configs/bonsai_noups_nbeta1.txt  \
        l1b_config_placeholder
     ```
-    It will take 5-10 seconds for all threads and processes to start
-    (it's best to wait until all toy-l1b.py processes have started).
+    It may take around 30 seconds for all threads and processes to start!
+    Before going on to the next step, you should wait until messages of the 
+    form "toy-l1b.py: starting..." appear.
 
   - On **frb-compute-0**, start the L0 simulator:
     ```
     ./ch-frb-simulate-l0 l0_configs/l0_example3.yaml 300
     ```
-    This simulates 300 seconds of data.  If you switch back to the L1 server,
-    you'll see some incremental output, as coarse-grained triggers are received
-    by the toy-l1b processes.
+    This simulates 300 seconds of data.  If you switch back to the L1 server window,
+    you'll see some incremental output every 10 seconds or so, as coarse-grained triggers 
+    are received by the toy-l1b processes.
 
   - When the simulation ends (after 5 minutes), the toy-l1b processes will write
     their trigger plots (toy_l1b_beam*.png).  These will be large files (4000-by-4000 pixels)!
