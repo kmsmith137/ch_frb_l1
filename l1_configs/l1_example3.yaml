@@ -1,0 +1,34 @@
+# This is "example 3".
+
+# Unlike examples 1 and 2, this is a production-scale example which
+# requires taking over a node!
+
+nbeams: 16
+nfreq: 16384
+nt_per_packet: 16
+
+# Intended to run on frb-compute-1 in its non-link-bonded
+# network configuration, where the four 1 Gbps NIC's have
+# IP addresses 10.0.0.101, 10.0.1.101, 10.0.2.101, 10.0.3.101.
+
+ipaddr: [ "10.0.0.101", "10.0.1.101", "10.0.2.101", "10.0.3.101" ]
+port: 6677
+
+rpc_address: [ "tcp://10.0.0.101:5555", 
+	       "tcp://10.0.1.101:5555", 
+	       "tcp://10.0.2.101:5555", 
+	       "tcp://10.0.3.101:5555" ]
+
+
+# Definitely can't run with slow_kernels here!
+slow_kernels: False
+
+
+assembled_ringbuf_nsamples: 10000
+telescoping_ringbuf_nsamples: [ 30000, 60000, 60000 ]
+write_staging_area_gb: 32.0
+
+# No L1b in this example.
+l1b_executable_filename: "./toy-l1b.py"
+l1b_buffer_nsamples: 4000
+l1b_pipe_timeout: 0
