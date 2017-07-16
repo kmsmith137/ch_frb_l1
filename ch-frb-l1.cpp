@@ -139,6 +139,9 @@ struct l1_params {
     double l1b_pipe_timeout = 0.0;    // timeout in seconds between L1a and L1
     bool l1b_pipe_blocking = false;   // setting this to true is equivalent to a very large l1b_pipe_timeout
 
+    // "Derived" parameter: L1b pipe capacity (derived from l1b_buffer_nsamples)
+    int l1b_pipe_capacity = 0;
+
     // Occasionally useful for debugging: If track_global_trigger_max is true, then when 
     // the L1 server exits, it will print the (DM, arrival time) of the most significant FRB.
 
@@ -340,7 +343,8 @@ l1_params::l1_params(int argc, char **argv)
 
     if ((l1_verbosity >= 1) && (assembled_ringbuf_nsamples != assembled_ringbuf_nchunks * nt_c)) {
 	cout << l1_config_filename << ": assembled_ringbuf_nsamples increased from " 
-	     << assembled_ringbuf_nsamples << " to " << (assembled_ringbuf_nchunks * nt_c) << endl;
+	     << assembled_ringbuf_nsamples << " to " << (assembled_ringbuf_nchunks * nt_c) 
+	     << " (rounding up to multiple of ch_frb_io::nt_per_assembled_chunk)" << endl;
     }
 
     int nr = telescoping_ringbuf_nsamples.size();
@@ -353,7 +357,8 @@ l1_params::l1_params(int argc, char **argv)
 
 	if ((l1_verbosity >= 1) && (telescoping_ringbuf_nsamples[i] != telescoping_ringbuf_nchunks[i] * nt_c)) {
 	    cout << l1_config_filename << ": telescoping_ringbuf_nsamples[" << i << "] increased from "
-		 << telescoping_ringbuf_nsamples[i] << " to " << (telescoping_ringbuf_nchunks[i] * nt_c) << endl;
+		 << telescoping_ringbuf_nsamples[i] << " to " << (telescoping_ringbuf_nchunks[i] * nt_c)
+		 << " (rounding up to multiple of ch_frb_io::nt_per_assembled_chunk)" << endl;
 	}
     }
 
@@ -401,6 +406,29 @@ l1_params::l1_params(int argc, char **argv)
 	     << " (chunk counts: " << nbeams << "*" << live_chunks_per_beam
 	     << " + " << nstreams << "*" << temporary_chunks_per_stream
 	     << " + " << npools << "*" << staging_chunks_per_pool << ")" << endl;
+    }
+
+    // l1b_pipe_capacity
+
+    if (l1b_buffer_nsamples > 0) {
+	int nt_chunk = bonsai_config.nt_chunk;
+	int nchunks = (l1b_buffer_nsamples + nt_chunk - 1) / nt_chunk;
+
+	if ((l1_verbosity >= 2) && (l1b_buffer_nsamples != nchunks * nt_chunk)) {
+	    cout << l1_config_filename << ": increasing l1b_buffer_nsamples: "
+		 << l1b_buffer_nsamples << " -> " << (nchunks * nt_chunk) 
+		 << " (rounding up to multiple of bonsai_nt_chunk)" << endl;
+	}
+
+	// Base capacity for config_params + a little extra for miscellaneous metadata...
+	this->l1b_pipe_capacity = bonsai_config.serialize_to_buffer().size() + 1024;
+
+	// ... plus capacity for coarse-grained triggers.
+	for (int itree = 0; itree < bonsai_config.ntrees; itree++)
+	    this->l1b_pipe_capacity += nchunks * bonsai_config.ntriggers_per_chunk[itree] * sizeof(float);
+
+	if (l1_verbosity >= 2)
+	    cout << l1_config_filename << ": l1b pipe_capacity will be " << l1b_pipe_capacity << " bytes" << endl;
     }
 
     // Warnings that can be overridden with -f.
@@ -605,27 +633,7 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 	    l1b_initializer.blocking = config.l1b_pipe_blocking;
 	    l1b_initializer.search_path = config.l1b_search_path;
 	    l1b_initializer.verbosity = config.l1b_pipe_io_debug ? 3: config.l1_verbosity;
-
-	    if (config.l1b_buffer_nsamples > 0) {
-		int nt_chunk = bonsai_config.nt_chunk;
-		int nchunks = (config.l1b_buffer_nsamples + nt_chunk - 1) / nt_chunk;
-
-		if ((config.l1_verbosity >= 1) && (config.l1b_buffer_nsamples != nchunks * nt_chunk)) {
-		    cout << "ch-frb-l1: increasing l1b_buffer_nsamples: "
-			 << config.l1b_buffer_nsamples << " -> " << (nchunks * nt_chunk) 
-			 << " (rounding up to multiple of bonsai_config.nt_chunk)" << endl;
-		}
-
-		// Base capacity for config_params + a little extra for miscellaneous metadata...
-		l1b_initializer.pipe_capacity = bonsai_config.serialize_to_buffer().size() + 1024;
-
-		// ... plus capacity for coarse-grained triggers.
-		for (int itree = 0; itree < bonsai_config.ntrees; itree++)
-		    l1b_initializer.pipe_capacity += nchunks * bonsai_config.ntriggers_per_chunk[itree] * sizeof(float);
-
-		if (config.l1_verbosity >= 2)
-		    cout << "ch-frb-l1: l1b pipe_capacity will be " << l1b_initializer.pipe_capacity << " bytes" << endl;
-	    }
+	    l1b_initializer.pipe_capacity = config.l1b_pipe_capacity;
 
 	    // Important: pin L1b child process to same core as L1a parent thread.
 	    // Note that in the subscale case, 'allowed_cores' is an empty vector, and the child process is not core-pinned.
@@ -748,12 +756,15 @@ int main(int argc, char **argv)
         rpc_servers[istream]->start();
     }
 
+    if (config.l1_verbosity >= 1)
+	cout << "ch-frb-l1: spawning " << nbeams << " dedispersion thread(s)" << endl;
+
     for (int ibeam = 0; ibeam < nbeams; ibeam++) {
 	int nbeams_per_stream = xdiv(nbeams, nstreams);
 	int istream = ibeam / nbeams_per_stream;
 
-	if (config.l1_verbosity >= 1) {
-	    cout << "spawning dedispersion thread " << ibeam << ", beam_id=" << config.beam_ids[ibeam] 
+	if (config.l1_verbosity >= 2) {
+	    cout << "ch-frb-l1: spawning dedispersion thread " << ibeam << ", beam_id=" << config.beam_ids[ibeam] 
 		 << ", stream=" << config.ipaddr[istream] << ":" << config.port[istream] << endl;
 	}
 
