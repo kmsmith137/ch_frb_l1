@@ -6,7 +6,7 @@ The L1 code consists of the following git repositories.
 Depending on what you're doing, you may only need a subset of these!
 In particular, the modules marked "frb1 only" include hardcoded pathnames on
 frb1.physics.mcgill.ca, and probably won't be useful on other machines.
-For a dependency graph, see [dependencies.png](./dependencies.png).
+For a dependency graph, see [doc/dependencies.png](./doc/dependencies.png).
 
   - [kiyo-masui/bitshuffle](https://github.com/kiyo-masui/bitshuffle):
     "bitwise" compression algorithm used throughout CHIME.

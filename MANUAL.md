@@ -90,7 +90,7 @@ The L1 code consists of the following git repositories.
 Depending on what you're doing, you may only need a subset of these!
 In particular, the modules marked "frb1 only" include hardcoded pathnames on
 frb1.physics.mcgill.ca, and probably won't be useful on other machines.
-For a dependency graph, see [dependencies.png](./dependencies.png).
+For a dependency graph, see [doc/dependencies.png](./doc/dependencies.png).
 
   - [kiyo-masui/bitshuffle](https://github.com/kiyo-masui/bitshuffle):
     "bitwise" compression algorithm used throughout CHIME.
@@ -367,7 +367,7 @@ For now, the "two-node McGill backend" refers to the network below.
 The nodes are in a non-link-bonded configuration, with each of their four
 1 Gbps NIC's on a separate /24 network.
 
-![two_node_backend](two_node_backend.png)
+![two_node_backend](doc/two_node_backend.png)
 
 Future versions of the manual will include examples which include
 more machines, for example a file server.

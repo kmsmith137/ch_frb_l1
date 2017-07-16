@@ -47,7 +47,7 @@ L1_OBJS := l1-rpc.o
 CPP_CFLAGS ?=
 CPP_CFLAGS += -I$(CPPZMQ_INC_DIR) -I$(MSGPACK_INC_DIR)
 
-dependencies.png: dependencies.dot
+doc/dependencies.png: doc/dependencies.dot
 	dot -Tpng $< -o $@
 
 %.o: %.cpp $(INCFILES)
