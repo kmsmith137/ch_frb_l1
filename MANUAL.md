@@ -743,17 +743,6 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
     Number of threads used by the L0 simulator.  This must be a multiple of the number of
     streams (i.e. the number of distinct (ipaddr,udp_port) pairs), since each stream uses
     independent threads.  Usually I just set nthreads = nstreams.
-  
-  - `gbps_per_stream` (floating-point, optional).
-  
-    This optional parameter provides a way of speeding up or slowing down the
-    L0 server.  If specified, the L0 server will run faster or slower, in order
-    to match the specified bandwidth per stream.
-
-    Note: this is not a very convenient way of parametrizing the L0 simulator's
-    speed, and I plan to change it soon!  It would be better to have a 'speedup'
-    parameter which sets the simulator speed to a given fraction of realtime
-    (where speedup > 1 would correspond to faster than realtime).
     
   - `max_packet_size` (integer, default 8900).
 
