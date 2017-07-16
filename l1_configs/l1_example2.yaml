@@ -3,6 +3,7 @@
 
 nbeams: 4
 nfreq: 1024
+nt_per_packet: 32
 
 # Configure the L1 server to expect 4 beam, on the loopback 
 # interface (127.0.0.1).  Just for fun, we split the input data

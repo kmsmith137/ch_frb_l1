@@ -5,6 +5,7 @@
 
 nbeams: 4
 nfreq: 1024
+nt_per_packet: 32
 
 # In this example, we split the data between UDP ports 6677 and 6678.
 # (Beam IDs 0+1 will be sent to port 6677, and beam IDs 2+3 will be sent to port 6678.)
