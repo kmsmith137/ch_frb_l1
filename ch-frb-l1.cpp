@@ -329,12 +329,8 @@ l1_params::l1_params(int argc, char **argv)
     int nb = ch_frb_io::intensity_packet::packet_size(nbeams/nstreams, 1, nfreq/nfreq_c, nt_per_packet);
 
     this->unassembled_ringbuf_capacity = int(unassembled_ringbuf_nsamples / (np * nt_per_packet)) + 1;
-    this->unassembled_nbytes_per_list = np * nfreq * nb;
-    this->unassembled_npackets_per_list = np * nfreq;
-
-    cout << "XXX unassembled_ringbuf_capacity = " << unassembled_ringbuf_capacity << endl
-	 << "XXX unassembled_nbytes_per_list = " << unassembled_nbytes_per_list << endl
-	 << "XXX unassembled_npackets_per_list = " << unassembled_npackets_per_list << endl;
+    this->unassembled_nbytes_per_list = np * nfreq_c * nb;
+    this->unassembled_npackets_per_list = np * nfreq_c;
 
     // "Derived" assembled and telescoping ringbuf params.
 
