@@ -1,0 +1,12 @@
+nbeams: 16
+nfreq: 16384
+nt_per_packet: 16
+
+ipaddr: [ "10.0.0.101", "10.0.1.101", "10.0.2.101", "10.0.3.101" ]
+port: 6677
+
+# Total number of threads used by the L0 simulator.
+# Note: nthreads must be a multiple of the number of "streams", which
+# is the number of distinct (ipaddr,port) pairs (in this case nsteams=2).
+
+nthreads: 4
