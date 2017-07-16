@@ -36,10 +36,11 @@ using namespace ch_frb_l1;
 
 static void usage()
 {
-    cerr << "Usage: ch-frb-l1 [-vp] <l1_config.yaml> <rfi_config.json> <bonsai_config.txt> <l1b_config_file>\n"
-	 << "  The -v flag increases verbosity of the toplevel ch-frb-l1 logic\n"
-	 << "  The -p flag enables a very verbose debug trace of the pipe I/O between L1a and L1b\n"
-	 << "  The -f flag forces the L1 server to run, even if the config files look fishy\n";
+    cerr << "Usage: ch-frb-l1 [-fvpm] <l1_config.yaml> <rfi_config.json> <bonsai_config.txt> <l1b_config_file>\n"
+	 << "  -f forces the L1 server to run, even if the config files look fishy\n"
+	 << "  -v increases verbosity of the toplevel ch-frb-l1 logic\n"
+	 << "  -p enables a very verbose debug trace of the pipe I/O between L1a and L1b\n"
+	 << "  -m enables a very verbose debug trace of the memory_slab_pool allocation\n";
 
     exit(2);
 }
@@ -62,9 +63,10 @@ struct l1_params {
     // l1_verbosity=1: pretty quiet
     // l1_verbosity=2: pretty noisy
     // I may add l1_verbosity=0 and l1_verbosity=3 later!
+    bool fflag = false;
     int l1_verbosity = 1;
     bool l1b_pipe_io_debug = false;
-    bool fflag = false;
+    bool memory_pool_debug = false;
 
     // nstreams is automatically determined by the number of (ipaddr, port) pairs.
     // There will be one (network_thread, assembler_thread, rpc_server) triple for each stream.
@@ -153,10 +155,12 @@ l1_params::l1_params(int argc, char **argv)
 	for (int j = 1; argv[i][j] != 0; j++) {
 	    if (argv[i][j] == 'v')
 		this->l1_verbosity = 2;
-	    else if (argv[i][j] == 'p')
-		this->l1b_pipe_io_debug = true;
 	    else if (argv[i][j] == 'f')
 		this->fflag = true;
+	    else if (argv[i][j] == 'p')
+		this->l1b_pipe_io_debug = true;
+	    else if (argv[i][j] == 'm')
+		this->memory_pool_debug = true;
 	    else
 		usage();
 	}
@@ -344,7 +348,7 @@ l1_params::l1_params(int argc, char **argv)
     // Memory slab parameters
 
     this->npools = is_subscale ? 1 : 2;
-    this->memory_slab_nbytes = 1;
+    this->memory_slab_nbytes = 1085504;
     this->memory_slabs_per_pool = (nbeams/npools) * live_chunks_per_beam + 10;
 
     // Final warning checks.
@@ -393,12 +397,12 @@ l1_params::l1_params(int argc, char **argv)
 static shared_ptr<ch_frb_io::memory_slab_pool> make_memory_pool(const l1_params &config, int ipool)
 {
     vector<int> allocation_cores;
-    bool noisy = (config.l1_verbosity >= 1);
+    int verbosity = config.memory_pool_debug ? 2 : 1;
 
     if (!config.is_subscale)
 	allocation_cores = vrange(10*ipool, 10*(ipool+1));
 
-    return make_shared<ch_frb_io::memory_slab_pool> (config.memory_slab_nbytes, config.memory_slabs_per_pool, allocation_cores, noisy);
+    return make_shared<ch_frb_io::memory_slab_pool> (config.memory_slab_nbytes, config.memory_slabs_per_pool, allocation_cores, verbosity);
 }
 
 
