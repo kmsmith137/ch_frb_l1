@@ -52,6 +52,7 @@ static void usage()
 struct l1_params {
     l1_params(int argc, char **argv);
 
+    // Command-line arguments
     string l1_config_filename;
     string rfi_config_filename;
     string bonsai_config_filename;
@@ -60,9 +61,11 @@ struct l1_params {
     Json::Value rfi_transform_chain_json;
     bonsai::config_params bonsai_config;
 
-    // l1_verbosity=1: pretty quiet
-    // l1_verbosity=2: pretty noisy
-    // I may add l1_verbosity=0 and l1_verbosity=3 later!
+    // Command-line flags
+    // Currently, l1_verbosity can have the following values (I may add more later):
+    //   1: pretty quiet
+    //   2: pretty noisy
+
     bool fflag = false;
     int l1_verbosity = 1;
     bool l1b_pipe_io_debug = false;
@@ -73,6 +76,8 @@ struct l1_params {
     int nbeams = 0;
     int nfreq = 0;
     int nstreams = 0;
+    int nt_per_packet = 0;
+    int fpga_counts_per_sample = 384;
 
     // The L1 server can run in two modes: either a "production-scale" mode with 16 beams and 20 cores,
     // or a "subscale" mode with (nbeams <= 4) and no core-pinning.
@@ -206,6 +211,8 @@ l1_params::l1_params(int argc, char **argv)
     // These parameters can be read right away.
     this->nbeams = p.read_scalar<int> ("nbeams");
     this->nfreq = p.read_scalar<int> ("nfreq");
+    this->nt_per_packet = p.read_scalar<int> ("nt_per_packet");
+    this->fpga_counts_per_sample = p.read_scalar<int> ("fpga_counts_per_sample", 384);
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
     this->rpc_address = p.read_vector<string> ("rpc_address");
@@ -243,8 +250,14 @@ l1_params::l1_params(int argc, char **argv)
 	throw runtime_error(l1_config_filename + ": 'nfreq' must be >= 1");
     if (nfreq % nfreq_c)
 	throw runtime_error(l1_config_filename + ": 'nfreq' must be a multiple of " + to_string(nfreq_c));
+    if (nfreq > 16384)
+	throw runtime_error(l1_config_filename + ": nfreq > 16384 is currently not allowed");
     if (nstreams <= 0)
 	throw runtime_error(l1_config_filename + ": 'ip_addr' and 'port' must have length >= 1");
+    if (nt_per_packet <= 0)
+	throw runtime_error(l1_config_filename + ": 'nt_per_packet' must be >= 1");
+    if (fpga_counts_per_sample <= 0)
+	throw runtime_error(l1_config_filename + ": 'fpga_counts_per_sample' must be >= 1");
     if (rpc_address.size() != (unsigned int)nstreams)
 	throw runtime_error(l1_config_filename + ": 'rpc_address' must be a list whose length is the number of (ip_addr,port) pairs");
     if (l1b_buffer_nsamples < 0)
@@ -329,8 +342,9 @@ l1_params::l1_params(int argc, char **argv)
     //   - staging_chunks_per_pool (derived from config param 'write_staging_area_gb')
 
     // FIXME placeholder logic here
+    int nupfreq = xdiv(nfreq, nfreq_c);
+    this->memory_slab_nbytes = ch_frb_io::assembled_chunk::get_memory_slab_size(nupfreq, nt_per_packet);
     this->npools = is_subscale ? 1 : 2;
-    this->memory_slab_nbytes = is_subscale ? 1085504 : 17367168;
 
     int live_chunks_per_beam = 2;   // "active" chunks
     live_chunks_per_beam += assembled_ringbuf_nchunks;  // assembled_ringbuf
@@ -443,6 +457,9 @@ static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l
     ini_params.ipaddr = config.ipaddr[istream];
     ini_params.udp_port = config.port[istream];
     ini_params.beam_ids = vector<int> (beam_id0, beam_id1);
+    ini_params.nupfreq = xdiv(config.nfreq, ch_frb_io::constants::nfreq_coarse_tot);
+    ini_params.nt_per_packet = config.nt_per_packet;
+    ini_params.fpga_counts_per_sample = config.fpga_counts_per_sample;
     ini_params.force_fast_kernels = !config.slow_kernels;
     ini_params.force_reference_kernels = config.slow_kernels;
     ini_params.assembled_ringbuf_capacity = config.assembled_ringbuf_nchunks;

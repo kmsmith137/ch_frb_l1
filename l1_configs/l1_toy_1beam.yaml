@@ -6,6 +6,7 @@
 
 nbeams: 1
 nfreq: 1024
+nt_per_packet: 16
 
 # Configure the L1 server to use the loopback interface 127.0.0.1 and UDP port 6677.
 

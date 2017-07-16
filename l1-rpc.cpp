@@ -548,7 +548,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         // Grab snapshot of all ringbufs...
         vector<tuple<uint64_t, uint64_t, uint64_t, uint64_t> > allchunks;
 
-        intensity_network_stream::initializer ini = _stream->get_initializer();
+        intensity_network_stream::initializer ini = _stream->ini_params;
         for (auto beamit = ini.beam_ids.begin(); beamit != ini.beam_ids.end(); beamit++) {
             // Retrieve one beam at a time
             int beam = *beamit;

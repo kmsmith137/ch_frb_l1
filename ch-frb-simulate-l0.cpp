@@ -30,6 +30,7 @@ struct l0_params {
     int nbeams_tot = 0;
     int nthreads_tot = 0;
     int nfreq_fine = 0;
+    int nt_per_packet = 0;
 
     // The 'ipaddr' and 'port' vectors have the same length 'nstreams'
     // nstreams evenly divides nthreads.
@@ -43,12 +44,9 @@ struct l0_params {
     // Note: max_packet_size=8900 is appropriate for 9000-byte jumbo ethernet frames, minus 100 bytes for IP and UDP headers.
     int fpga_counts_per_sample = 384;
     int max_packet_size = 8900;
-    
-    // Optional params.  These will be assigned reasonable defaults if not specified in the config file.
-    // Note: the total number of coarse frequencies is hardcoded (1024), but the number of coarse frequencies per
-    // packet is a configurable parameter.
+
+    // Optional, will be assigned a reasonable default if not specified in the config file.
     int nfreq_coarse_per_packet = 0;
-    int nt_per_packet = 0;
 
     // If the optional parameter 'gbps_per_stream' is specified, then it determines the transmit rate.
     // Otherwise, the transmit rate will be automatically determined by fpga_counts_per_sample.
@@ -71,6 +69,7 @@ l0_params::l0_params(const string &filename)
     this->nbeams_tot = p.read_scalar<int> ("nbeams");
     this->nthreads_tot = p.read_scalar<int> ("nthreads");
     this->nfreq_fine = p.read_scalar<int> ("nfreq");
+    this->nt_per_packet = p.read_scalar<int> ("nt_per_packet");
 
     if (p.has_param("fpga_counts_per_sample"))
 	this->fpga_counts_per_sample = p.read_scalar<int> ("fpga_counts_per_sample");
@@ -106,6 +105,9 @@ l0_params::l0_params(const string &filename)
     for (int i = 0; i < nstreams; i++)
 	assert((port[i] > 0) && (port[i] < 65536));
 
+    if ((nt_per_packet <= 0) || !is_power_of_two(nt_per_packet))
+	throw runtime_error(filename + ": nt_per_packet(=" + to_string(nt_per_packet) + " must be a power of two");
+
     if (nbeams_tot % nstreams != 0) {
 	throw runtime_error(filename + ": nbeams (=" + to_string(nbeams_tot) + ") must be a multiple of nstreams (=" 
 			    + to_string(nstreams) + ", inferred by counting (ipaddr,port) pairs)");
@@ -130,21 +132,15 @@ l0_params::l0_params(const string &filename)
     this->nfreq_coarse_per_thread = xdiv(nfreq_coarse, nthreads_per_stream);
     this->nupfreq = xdiv(nfreq_fine, nfreq_coarse);
 
-    // Logic for nfreq_coarse_per_packet, nt_per_packet can be a little complicated!
 
-    if (p.has_param("nfreq_coarse_per_packet") && p.has_param("nt_per_packet")) {
-	// Case 1: both parameters are specified in file.
+    if (p.has_param("nfreq_coarse_per_packet")) {
 	this->nfreq_coarse_per_packet = p.read_scalar<int> ("nfreq_coarse_per_packet");
-	this->nt_per_packet = p.read_scalar<int> ("nt_per_packet");
 
 	if ((nfreq_coarse_per_packet <= 0) || (nfreq_coarse_per_thread % nfreq_coarse_per_packet)) {
 	    throw runtime_error(filename + ": nfreq_coarse_per_packet(=" + to_string(nfreq_coarse_per_packet)
 				+ " must be > 0 and evenly divide nfreq_coarse_per_thread(=" 
 				+ to_string(nfreq_coarse_per_thread) + ")");
 	}
-
-	if ((nt_per_packet <= 0) || !is_power_of_two(nt_per_packet))
-	    throw runtime_error(filename + ": nt_per_packet(=" + to_string(nt_per_packet) + " must be a power of two");
 
 	int p = ch_frb_io::intensity_packet::packet_size(nbeams_per_stream, nfreq_coarse_per_packet, nupfreq, nt_per_packet);
 	
@@ -153,25 +149,15 @@ l0_params::l0_params(const string &filename)
 				+ ") exceeds max_packet_size (=" + to_string(max_packet_size));
 	}
     }
-    else if (!p.has_param("nfreq_coarse_per_packet") && !p.has_param("nt_per_packet")) {
-	// Case 2: neither parameter is specified in file
+    else {
+	int p0 = ch_frb_io::intensity_packet::packet_size(nbeams_per_stream, 1, nupfreq, nt_per_packet);
 
-	// Heuristically determined 
-	double f = 0.0027 * max_packet_size / double(nbeams_per_stream);
-	this->nfreq_coarse_per_packet = min(round_up_to_power_of_two(f), nfreq_coarse_per_thread);
+	if (p0 > max_packet_size)
+	    throw runtime_error(filename + ": couldn't assign nfreq_coarse_per_packet: max_packet_size is exceeded for nfreq_coarse_per_packet=1!");
 
-	int h = ch_frb_io::intensity_packet::header_size(nbeams_per_stream, nfreq_coarse_per_packet);
-	double t = (max_packet_size - h) / double(nbeams_per_stream * nfreq_coarse_per_packet * nupfreq);
-
-	if (t < 1.01) {
-	    throw runtime_error(filename + ": internal error: couldn't determine nt_per_packet.  Maybe max_packet_size (="
-				+ to_string(max_packet_size) + ") is too small?");
-	}
-
-	this->nt_per_packet = round_down_to_power_of_two(t);
+	this->nfreq_coarse_per_packet = round_down_to_power_of_two(max_packet_size / p0);
+	this->nfreq_coarse_per_packet = min(nfreq_coarse_per_packet, nfreq_coarse_per_thread);
     }
-    else
-	throw runtime_error(filename + ": currently, either both parameters 'nfreq_coarse_per_packet', 'nt_per_packet' must be specified, or neither parameter");
 
     this->packet_size = ch_frb_io::intensity_packet::packet_size(nbeams_per_stream, nfreq_coarse_per_packet, nupfreq, nt_per_packet);
 
