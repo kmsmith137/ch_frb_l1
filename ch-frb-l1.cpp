@@ -335,13 +335,19 @@ l1_params::l1_params(int argc, char **argv)
     this->unassembled_nbytes_per_list = np * nfreq_c * nb;
     this->unassembled_npackets_per_list = np * nfreq_c;
 
+    if (l1_verbosity >= 2) {
+	cout << l1_config_filename << ": setting unassembled_ringbuf_capacity=" << unassembled_ringbuf_capacity << endl
+	     << l1_config_filename << ": setting unassembled_nbytes_per_list=" << unassembled_nbytes_per_list << endl
+	     << l1_config_filename << ": setting unassembled_npackets_per_list=" << unassembled_npackets_per_list << endl;
+    }
+
     // "Derived" assembled and telescoping ringbuf params.
 
     int nt_c = ch_frb_io::constants::nt_per_assembled_chunk;
     this->assembled_ringbuf_nchunks = (assembled_ringbuf_nsamples + nt_c - 1) / nt_c;
     this->assembled_ringbuf_nchunks = max(assembled_ringbuf_nchunks, 2);
 
-    if ((l1_verbosity >= 1) && (assembled_ringbuf_nsamples != assembled_ringbuf_nchunks * nt_c)) {
+    if ((l1_verbosity >= 2) && (assembled_ringbuf_nsamples != assembled_ringbuf_nchunks * nt_c)) {
 	cout << l1_config_filename << ": assembled_ringbuf_nsamples increased from " 
 	     << assembled_ringbuf_nsamples << " to " << (assembled_ringbuf_nchunks * nt_c) 
 	     << " (rounding up to multiple of ch_frb_io::nt_per_assembled_chunk)" << endl;
@@ -355,7 +361,7 @@ l1_params::l1_params(int argc, char **argv)
 	this->telescoping_ringbuf_nchunks[i] = (telescoping_ringbuf_nsamples[i] + nt_c - 1) / nt_c;
 	this->telescoping_ringbuf_nchunks[i] = max(telescoping_ringbuf_nchunks[i], 2);
 
-	if ((l1_verbosity >= 1) && (telescoping_ringbuf_nsamples[i] != telescoping_ringbuf_nchunks[i] * nt_c)) {
+	if ((l1_verbosity >= 2) && (telescoping_ringbuf_nsamples[i] != telescoping_ringbuf_nchunks[i] * nt_c)) {
 	    cout << l1_config_filename << ": telescoping_ringbuf_nsamples[" << i << "] increased from "
 		 << telescoping_ringbuf_nsamples[i] << " to " << (telescoping_ringbuf_nchunks[i] * nt_c)
 		 << " (rounding up to multiple of ch_frb_io::nt_per_assembled_chunk)" << endl;
