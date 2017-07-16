@@ -348,7 +348,7 @@ l1_params::l1_params(int argc, char **argv)
     // Memory slab parameters
 
     this->npools = is_subscale ? 1 : 2;
-    this->memory_slab_nbytes = 1085504;
+    this->memory_slab_nbytes = is_subscale ? 1085504 : 17367168;
     this->memory_slabs_per_pool = (nbeams/npools) * live_chunks_per_beam + 10;
 
     // Final warning checks.
