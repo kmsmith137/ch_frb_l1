@@ -34,10 +34,13 @@ endif
 #
 #
 
-BINARIES := ch-frb-l1 ch-frb-simulate-l0 rpc-client test-l1-rpc sim-l0-set hdf5-stream terminus-l1
+# Is this the correct split into installed/non-installed?
+INSTALLED_BINARIES := ch-frb-l1 ch-frb-simulate-l0 terminus-l1
+NON_INSTALLED_BINARIES := rpc-client test-l1-rpc sim-l0-set hdf5-stream
 
-all: $(BINARIES)
-.PHONY: all
+all: $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES)
+
+.PHONY: all install uninstall
 
 INCFILES := ch_frb_l1.hpp l0-sim.hpp l1-rpc.hpp rpc.hpp
 
@@ -81,13 +84,14 @@ terminus-l1: terminus-l1.o $(L1_OBJS)
 	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lrf_pipelines -lbonsai -lch_frb_io $(LIBS) -lsimpulse -lzmq
 
 clean:
-	rm -f *.o *~ $(BINARIES)
+	rm -f *.o *~ $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES)
 
-install:
-	echo 'Nothing to install here!'
+install: $(INSTALLED_BINARIES)
+	mkdir -p $(BINDIR)
+	for f in $(INSTALLED_BINARIES); do cp $$f $(BINDIR)/; done
 
 uninstall:
-	echo 'Nothing to uninstall here!'
+	for f in $(INSTALLED_BINARIES); do rm -f $(BINDIR)/$$f; done
 
 
 # These are files; don't apply implicit make rules
