@@ -71,7 +71,7 @@ before_script:
     - cd
     - git clone https://github.com/CHIMEFRB/ch_frb_io.git
     - cd ch_frb_io
-    - git checkout l1_prerelease
+    - git checkout l1_prerelease2
     - ln -s site/Makefile.local.travis Makefile.local
     - pwd
     - make
@@ -112,6 +112,7 @@ before_script:
     - cd
     - git clone https://github.com/kmsmith137/rf_pipelines.git
     - cd rf_pipelines
+    - git checkout l1_prerelease2
     - ln -s site/Makefile.local.travis Makefile.local
     - make
     - make install
