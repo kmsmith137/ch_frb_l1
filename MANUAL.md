@@ -65,7 +65,7 @@ Here are some external links to the bonsai documentation, which may also be usef
     run on a laptop.
 
   - There is another technical issue in the bonsai code which sometimes
-    causes false positive events at low DM near the beginning of the timestream.  
+    causes false positive events at low DM near the beginning of the timestream.
     (This shows up in e.g. [example3](#user-content-example3) below.)
     We're working on this next!
 
@@ -212,10 +212,11 @@ rows of output, corresponding to the three dedispersion trees in this example.
 
 The command-line syntax for ch-frb-l1 is:
 ```
-Usage: ch-frb-l1 [-vpf] <l1_config.yaml> <rfi_config.json> <bonsai_config.txt> <l1b_config_file>
-  The -v flag increases verbosity of the toplevel ch-frb-l1 logic
-  The -p flag enables a very verbose debug trace of the pipe I/O between L1a and L1b
-  The -f flag forces the L1 server to run, even if the config files look fishy
+Usage: ch-frb-l1 [-fvpm] <l1_config.yaml> <rfi_config.json> <bonsai_config.txt> <l1b_config_file>
+  -f forces the L1 server to run, even if the config files look fishy
+  -v increases verbosity of the toplevel ch-frb-l1 logic
+  -p enables a very verbose debug trace of the pipe I/O between L1a and L1b
+  -m enables a very verbose debug trace of the memory_slab_pool allocation
 ```
 The L1 server takes four parameter files as follows:
 
@@ -232,7 +233,7 @@ The L1 server takes four parameter files as follows:
   - The RFI config file (rfi_config.json)
 
     This is a JSON file which defines the RFI removal algorithm.  Currently,
-    it is mostly a placeholder, since we need to make some low-level changes
+    it is a placeholder, since we need to make some low-level changes
     before we can do "real" RFI removal in the real-time pipeline.  In the
     meantime, there is the file rfi_configs/rfi_placeholder.json which
     does some high-pass filtering (but no RFI masking).
@@ -251,7 +252,8 @@ The L1 server takes four parameter files as follows:
     The utility `bonsai-show-config` is useful for viewing the contents of
     a bonsai parameter file, including derived parameters such as the max DM
     of each tree.  The utility `bonsai-time-dedisperser` is useful for estimating
-    the CPU cost of dedispersion, given a bonsai config file.
+    the CPU cost of dedispersion, given a bonsai config file.  (These utilities
+    are part of bonsai, not part of ch-frb-l1.)
 
   - The L1b config file.
 
@@ -267,7 +269,7 @@ The L1 server takes four parameter files as follows:
     ```
     <l1b_executable_filename> <l1b_config_file> <beam_id>
     ```
-    where the second argument is just passed through from the L1 command line.
+    where the second argument is passed through from the L1 command line.
 
     In the quick-start examples from the previous section, the L1b subprocesses
     are instances of the 'toy-l1b.py' executable in the ch_frb_l1 repository.
@@ -290,7 +292,7 @@ channels, etc.
 I recommend looking at the toy examples first (l0_configs/l0_toy_1beam.yaml and
 l0_configs/l0_toy_4beams.yaml) to get a general sense of what they contain.  For
 detailed information on the L1 config file, see the section
-[Config file reference: L0 simulator](#user-content-l0-simulator) below.
+[Config file reference: L0 simulator](#user-content-l0-config) below.
 
 <a name="l1-streams"></a>
 ### L1 STREAMS
@@ -315,23 +317,25 @@ is divided into multiple streams, with the following properties:
    If the node has multiple CPU's, then each stream's threads will be
    "pinned" to one of the CPU's.
 
-The stream configuration of an L1 node is determined by the `ipaddr`, `port`,
-and `rpc_address` fields in the L1 configuration file.  See the section
+The stream configuration of an L1 node is determined by the `ipaddr` and `port`
+fields in the L1 configuration file.  There is one stream for each distinct
+(ipaddr, port) pair.  See the section
 [Config file reference: L1 server](#user-content-l1-config) for more info.
 
 Now let's consider some examples.
 
   - The "production-scale" 16-beam L1 server, running on an L1 node with
-    two CPU's, four 1Gbps NIC's, and no link bonding.
+    two CPU's, four 1 Gbps NIC's, and no link bonding.
 
-    In this case, the L1 node would need to be configured to use
-    four streams (one each NIC), and the correlator nodes would need
+    In this case, we need to use a different IP address on each NIC.
+    Therefore, the L1 node would be configured to use four streams (one
+    for each NIC), and the correlator nodes would need
     to be configured to send four beams to each IP address.
 
   - The "production-scale" L1 server with link bonding.
 
     In this case, the four NIC's behave as one virtual NIC with
-    4 Gbps bandwidth and one IP address.  We would still
+    4 Gbps bandwidth and one IP address.  However, we still
     need to use two streams (rather than one), to divide processing
     between the two CPU's in the node.  The two streams would have
     the same IP address, but would use different UDP ports.  The
@@ -339,21 +343,21 @@ Now let's consider some examples.
     to each UDP port.
 
   - A subscale test case running on a laptop.  In this case there
-    is usually no reason to use more than one stream.
+    is no reason to use more than one stream, but we sometimes use
+    multiple streams for testing.
 
 The L1 server can run in one of two modes:
 
   - A "production-scale" mode which assumes 16 beams, two 10-core CPU's,
     and either 2 or 4 streams.  In this mode, we usually use 16384
-    frequency channels, which means that the L1 server needs 160 GB
-    of memory!
+    frequency channels.  The L1 server will use 150-200 GB of memory!
 
   - A "subscale" mode which assumes <=4 beams, and either 1, 2, or 4 streams.
   
     This is intended for development/debugging (e.g. on a laptop).  In this
     case, you'll almost certainly want to decrease the number of frequency
     channels, so that the memory and CPU usage are reasonable.  With 1024
-    frequency channels and <= 4 beams, the L0 simulator and L1 server should
+    frequency channels and 1-4 beams, the L0 simulator and L1 server should
     easily run on a laptop over the "loopback" network interface.
 
 
@@ -367,12 +371,12 @@ The nodes are in a non-link-bonded configuration, with each of their four
 ![two_node_backend](doc/two_node_backend.png)
 
 Future versions of the manual will include examples which include
-more machines, for example a file server.
+alternate network configurations, and more machines, for example a file server.
 
 <a name="example3"></a>
 **Example 3:**
 
-  - This is a two-node example, with the L0 simulator running on frb-compute-0
+  - This is a two-node example, with the L0 simulator running on frb-compute-0,
     and the L1 server running on frb-compute-1.  We process 16 beams with 16384
     frequency channels and 1 ms sampling.  The total bandwidth is 2.2 Gbps,
     distributed on 4x1 Gbps NIC's by assigning four beams to each NIC.  These
@@ -385,8 +389,8 @@ more machines, for example a file server.
 
   - First, check that the node is in the network configuration shown above.
     This is not guaranteed to be the case, since we're still experimenting with	
-    the networking!  You can check the configuration by doing `ifconfig -a`
-    on each node, and checking that the IP addresses of each 1 Gbps NIC (eno*)
+    alternate network configurations!  You can check the configuration by doing `ifconfig -a`
+    on each node, and checking that the IP addresses of each built-in gigabit NIC (eno*)
     are as follows:
     
 
@@ -438,8 +442,13 @@ more machines, for example a file server.
     after throwing an exception, because it is trying to write its core dump.  My solution is
     `sudo killall -9 abrt-hook-ccpp` in another window.  Let me know if you find a better one!
 
-    A related issue: core dumps can easily fill the / filesystem.  My solution  
-    here is `sudo su; rm -rf /var/spool/abrt/ccpp*` (careful!)
+    A related issue: core dumps can easily fill the / filesystem.  My solution here is
+    ```
+    sudo su
+    rm -rf /var/spool/abrt/ccpp*
+    exit
+    ```
+    ...but be careful with rm -rf as root!
 
 <a name="l1-config"></a>
 ### CONFIG FILE REFERENCE: L1 SERVER
@@ -453,26 +462,27 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
   - `nbeams` (integer).
 
     Number of beams processed by the node.
-    Must match the value of nbeams in the L0 simulator's config file.
+    Must match the value of 'nbeams' in the L0 simulator's config file.
 
   - `nfreq` (integer).
 
     Number of frequency channels (usually 1024 in subscale testing, or 16384 in production-scale).
-    Must match the value of nfreq in the L0 simulator's config file.
+    Must match the value of 'nfreq' in the L0 simulator's config file.
 
   - `nt_per_packet` (integer).
 
-    Number of time samples sent in each UDP packet.  Must match the value of nt_per_packet
+    Number of time samples sent in each UDP packet.  Must match the value of 'nt_per_packet'
     in the L0 simulator's config file.
 
-    There is currently a restriction that in order to use fast kernels (see below),
+    There is currently a restriction that in order to use fast kernels,
     nt_per_packet must be 16.  In particular, you should take nt_per_packet=16 in production-scale
     runs, where fast kernels are usually a necessity.  If you're using slow kernels,	
-    then the value of nt_per_packet is probably not very important.
+    then the value of nt_per_packet is probably not very important.  (For more discussion
+    of slow-vs-fast kernels, see 'slow_kernels' below.)
 
   - `fpga_counts_per_sample` (integer, default 384).
 
-    Number of FPGA counts per time sample.  Must match the value of fpga_counts_per_sample
+    Number of FPGA counts per time sample.  Must match the value of 'fpga_counts_per_sample'
     in the L0 simulator's config file.
 
     This is an indirect way of specifiying the sampling rate.  One FPGA count corresponds to	
@@ -483,7 +493,7 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
     For example, to run a "stress test" in which the L1 server is required to run 10%
     faster than normal, you can take fpga_counts_per_sample=349.  (Note that you'll also
     need to decrease the value of 'dt_sample' in the bonsai config file by 10%, and the
-    max DM of the search will decrease by 10%.)
+    max DM of the search will automatically decrease by 10%.)
 
   - `ipaddr` (either a string, or a list of strings).
 
@@ -504,8 +514,8 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
     is equal to the number of streams on the L1 node, that is, the number of distinct
     (ipaddr, udp_port) pairs.
 
-    The RPC address of each stream must be different (for example, by using a different
-    TCP port for each stream).
+    The RPC address of each stream must be different (by specifying either a different IP
+    address or TCP port for each stream).
 
   - `beam_ids` (list of integers, optional).
 
@@ -525,8 +535,8 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
 
     By default (slow_kernels=false), the L1 server uses fast assembly-language kernels
     for packet-level operations such as decoding and buffer assembly.  However, there
-    is currently a restriction: the slow kernels assume that nt_per_packet=16, and
-    nfreq is divisible by 2048.  If these conditions are not satisfied, you'll need
+    is currently a restriction: to use fast kernels, 'nt_per_packet' must be equal to 16,
+    and 'nfreq' must be divisible by 2048.  If these conditions are not satisfied, you'll need
     to use slow_kernels=true.
 
     When running the L1 server at production-scale (~16 beams, ~16384 frequencies),
@@ -544,8 +554,7 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
     The unassembled_ringbuf_nsamples parameter sets the size of the ring buffer, in time samples.
 
     Currently, if the unassembled ring buffer fills up, then the L1 server throws an exception.
-    This behavior will eventually be replaced with some recovery logic which resets the dedispersion	
-    state.
+    This behavior will eventually be replaced with some recovery logic which resets the server.
 
   - `assembled_ringbuf_nsamples` (integer, default 8192).
 
@@ -554,8 +563,7 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
     The assembled_ringbuf_nsamples parameter sets the size of the ring buffer, in time samples.
 
     Currently, if the assembled ring buffer fills up, then the L1 server throws an exception.
-    This behavior will eventually be replaced with some recovery logic which resets the dedispersion	
-    state.
+    This behavior will eventually be replaced with some recovery logic which resets the server.
 
   - `telescoping_ringbuf_nsamples` (list of integers, optional).
 
@@ -587,10 +595,6 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
     telescoping ring buffer is disabled, and the node will not save data for RPC-based
     retrieval.
 
-    An implementation detail: the telescoping_ringbuf_nsamples will be rounded up to
-    the nearest "assembled_chunk", where the assembled_chunk size is 1024, 2048, 4096...
-    depending on the level of downsampling.
-
   - `write_staging_area_gb` (floating-point, default 0.0)
 
     Allocates additional memory (in addition to memory reserved for the assembled_ringbuf
@@ -621,9 +625,9 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
      (see [configuration file overview](#user-content-configuration-file-overview) above for the 
      L1 server command-line syntax).  The beam_id is an integer.
 
-     When each L1b subprocess is spawned, its standard input will be connected to a unix pipe
+     When each L1b subprocess is spawned, its standard input (file descriptor 0) will be connected to a unix pipe
      which will be used to send coarse-grained triggers from L1a to L1b.  The bonsai configuration
-     information (e.g. dimensions of coarse-grained trigger) arrays will also be sent over the
+     information (e.g. dimensions of coarse-grained trigger arrays) will also be sent over the
      pipe, so there is no need for the bonsai_config_filename to appear on the L1b command line.
 
      Currently, the L1b process should be written in python, and the `bonsai.PipedDedisperser`
@@ -653,7 +657,7 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
     you get a permissions failure when increasing pipe capacity, then you probably need to
     increase the maximum (as root).
 
-    When the L1 server computes the pipe capacity from l1b_buffer_nsamples, the buffer size
+    A minor detail: when the L1 server computes the pipe capacity from l1b_buffer_nsamples, the buffer size
     will be rounded up to a multiple of the bonsai chunk size ('nt_chunk' in the bonsai config 
     file), and a little bit of padding will be added for metadata.
 
@@ -661,11 +665,11 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
 
     Timeout in seconds for the unix pipe connecting L1a and L1b.
 
-    This parameter determines what happens when L1a tries to write to the pipe, and the pipe
+    This parameter determines what happens when L1a tries to write to the pipe and the pipe
     is full (presumably because L1b is running slow).  The dedispersion thread will sleep
     until the timeout expires, or the pipe becomes writeable, whichever comes first.  If a
     second write also fails because the pipe is full, then the L1 server will throw an
-    exception.
+    exception.  (This will be replaced later by some recovery logic which resets the server.)
 
     **Important:** the default parameters (l1b_buffer_nsamples = l1b_pipe_timeout = 0) are asking for trouble!  
     In this case, the L1 server will crash if the pipe fills for an instant, and the pipe capacity will be a system 
@@ -676,13 +680,13 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
     In the production L1 server, we plan to set l1b_pipe_timeout=0,
     but set l1b_buffer_nsamples to some reasonable value (say 4096, corresponding to a 4-second buffer).
     This solution is suitable for a real-time search, since it puts a hard limit on how far L1b can
-    fall behind in its processing (4 seconds) before it is considered an error.  It only works on Linux,
-    which is fine for the real L1 nodes, but can't be emulated on an osx laptop.
+    fall behind in its processing (4 seconds) before it is considered an error.  This configuration only works on Linux,
+    which is OK for the real L1 nodes.  This configuration is used in example 3 above.
 
-    In subscale testing, I like to set l1b_pipe_timeout to seom reasonable value (a few seconds).
+    In subscale testing, I like to set l1b_pipe_timeout to a reasonable value (a few seconds).
     In this configuration, there is no hard limit on how far L1b can fall behind cumulatively,
     as long as it calls PipedDedisperser.get_triggers() frequently enough.  This configuration
-    is used in all the toy L1 config file examples.
+    is used in examples 1 and 2 above.
 
   - `l1b_pipe_blocking` (boolean, default=false).
 
@@ -706,21 +710,21 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
   - `nbeams` (integer).
 
     Number of beams being simulated.
-    Must match the value of nbeams in the L1 server's config file.
+    Must match the value of 'nbeams' in the L1 server's config file.
 
   - `nfreq` (integer).
 
     Number of frequency channels (usually 1024 in subscale testing, or 16384 in production-scale).
-    Must match the value of nfreq in the L1 server's config file.
+    Must match the value of 'nfreq' in the L1 server's config file.
 
   - `nt_per_packet` (integer).
 
-    Number of time samples sent in each UDP packet.  Must match the value of nt_per_packet
+    Number of time samples sent in each UDP packet.  Must match the value of 'nt_per_packet'
     in the L1 server's config file.
 
   - `fpga_counts_per_sample` (integer, default 384).
 
-    Number of FPGA counts per time sample.  Must match the value of fpga_counts_per_sample
+    Number of FPGA counts per time sample.  Must match the value of 'fpga_counts_per_sample'
     in the L1 server's config file.
 
     This is an indirect way of specifiying the sampling rate.  One FPGA count corresponds to	
@@ -731,7 +735,7 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
     For example, to run a "stress test" in which the L1 server is required to run 10%
     faster than normal, you can take fpga_counts_per_sample=349.  (Note that you'll also
     need to decrease the value of 'dt_sample' in the bonsai config file by 10%, and the
-    max DM of the search will decrease by 10%.)
+    max DM of the search will automatically decrease by 10%.)
   
   - `ipaddr` (either a string, or a list of strings).
 
@@ -751,8 +755,7 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
   - `nthreads` (integer).
 
     Number of threads used by the L0 simulator.  This must be a multiple of the number of
-    streams (i.e. the number of distinct (ipaddr,udp_port) pairs), since each stream uses
-    independent threads.  Usually I just set nthreads = nstreams.
+    streams, i.e. the number of distinct (ipaddr, udp_port) pairs.  Usually I just set nthreads = nstreams.
     
   - `max_packet_size` (integer, default 8900).
 
@@ -761,6 +764,14 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
 
   - `nfreq_coarse_per_packet` (integer, optional).
 
+    If specified, this determines the number of "coarse" frequency channels sent per packet.
+    A "coarse" frequency channel is always 1/1024 of the full CHIME band.  For example, if
+    nfreq=16384, then one coarse frequency channel contains 16 "fine" frequency channels.
+
+    If unspecified, then nfreq_coarse_per_packet will be automatically determined by
+    the max_packet_size.  (We send as many frequency channels as possible, given the
+    max packet size constraint, the number of beams and time samples, and some
+    internal constraints of the code.)
 
 <a name="rpc reference"></a>
 ### RPC REFERENCE
