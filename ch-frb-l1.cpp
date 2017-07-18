@@ -152,6 +152,12 @@ struct l1_params {
     // the L1 server exits, it will print the (DM, arrival time) of the most significant FRB.
 
     bool track_global_trigger_max = false;
+
+    // Also intended for debugging.  If the optional parameter 'stream_filename_pattern'
+    // is specified, then the L1 server will auto-stream all chunks to disk.  Warning:
+    // it's very easy to use a lot of disk space this way!
+    
+    string stream_filename_pattern;
 };
 
 
@@ -245,6 +251,7 @@ l1_params::l1_params(int argc, char **argv)
     this->l1b_pipe_timeout = p.read_scalar<double> ("l1b_pipe_timeout", 0.0);
     this->l1b_pipe_blocking = p.read_scalar<bool> ("l1b_pipe_blocking", false);
     this->track_global_trigger_max = p.read_scalar<bool> ("track_global_trigger_max", false);
+    this->stream_filename_pattern = p.read_scalar<string> ("stream_filename_pattern");
 
     // Lots of sanity checks.
     // First check that we have a consistent 'nstreams'.
@@ -600,7 +607,12 @@ static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l
 	ini_params.network_thread_cores = vconcat(vrange(0,10), vrange(20,30));
     }
 
-    return ch_frb_io::intensity_network_stream::make(ini_params);
+    auto ret = ch_frb_io::intensity_network_stream::make(ini_params);
+
+    // If config.stream_filename_pattern is an empty string, then stream_to_files() doesn't do anything.
+    ret->stream_to_files(config.stream_filename_pattern, 0);
+
+    return ret;
 }
 
 
