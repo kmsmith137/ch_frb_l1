@@ -251,7 +251,7 @@ l1_params::l1_params(int argc, char **argv)
     this->l1b_pipe_timeout = p.read_scalar<double> ("l1b_pipe_timeout", 0.0);
     this->l1b_pipe_blocking = p.read_scalar<bool> ("l1b_pipe_blocking", false);
     this->track_global_trigger_max = p.read_scalar<bool> ("track_global_trigger_max", false);
-    this->stream_filename_pattern = p.read_scalar<string> ("stream_filename_pattern");
+    this->stream_filename_pattern = p.read_scalar<string> ("stream_filename_pattern", "");
 
     // Lots of sanity checks.
     // First check that we have a consistent 'nstreams'.
