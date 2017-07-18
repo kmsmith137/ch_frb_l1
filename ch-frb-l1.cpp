@@ -391,7 +391,6 @@ l1_params::l1_params(int argc, char **argv)
     //   - temporary_chunks_per_stream (temporaries in assembled_chunk::_put_assembled_chunk())
     //   - staging_chunks_per_pool (derived from config param 'write_staging_area_gb')
 
-    // FIXME placeholder logic here
     int nupfreq = xdiv(nfreq, nfreq_c);
     this->memory_slab_nbytes = ch_frb_io::assembled_chunk::get_memory_slab_size(nupfreq, nt_per_packet);
     this->npools = is_subscale ? 1 : 2;
