@@ -8,11 +8,13 @@
 using namespace std;
 using namespace ch_frb_io;
 
-void write_chunk(L1RpcServer* rpc, shared_ptr<assembled_chunk> chunk) {
-    string filename = chunk->format_filename("chunk-(BEAM)-(CHUNK)+(NCHUNK).msgpack");
-    chlog("Enqueuing for write:" << filename);
-    rpc->enqueue_write_request(chunk, filename);
-}
+// KMS: removed this callback, since the equivalent can now be done with output_devices.
+//
+//void write_chunk(L1RpcServer* rpc, shared_ptr<assembled_chunk> chunk) {
+//    string filename = chunk->format_filename("chunk-(BEAM)-(CHUNK)+(NCHUNK).msgpack");
+//    chlog("Enqueuing for write:" << filename);
+//    rpc->enqueue_write_request(chunk, filename);
+//}
 
 int main(int argc, char** argv) {
     int beam = 77;
@@ -92,7 +94,8 @@ int main(int argc, char** argv) {
     L1RpcServer rpc(stream, port);
     rpc.start();
 
-    stream->add_assembled_chunk_callback(std::bind(write_chunk, &rpc, std::placeholders::_1));
+    // KMS: removed this callback, since the equivalent can now be done with output_devices.
+    // stream->add_assembled_chunk_callback(std::bind(write_chunk, &rpc, std::placeholders::_1));
 
     int nupfreq = 4;
     int nt_per = 16;
