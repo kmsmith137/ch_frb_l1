@@ -833,6 +833,15 @@ int main(int argc, char **argv)
     for (int ibeam = 0; ibeam < nbeams; ibeam++)
 	dedispersion_threads[ibeam].join();
 
+    cout << "All dedispersion threads joined, waiting for pending write requests..." << endl;
+
+    for (int idev = 0; idev < ndevices; idev++) {
+	output_devices[idev]->end_stream(true);   // wait=true
+	output_devices[idev]->join_thread();
+    }
+
+    cout << "All write requests written, i/o threads joined" << endl;
+
     print_statistics(config, input_streams, config.l1_verbosity);
 
     return 0;
