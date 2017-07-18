@@ -14,7 +14,7 @@ const int default_port_l1_rpc = 5555;
 
 // implementation detail: a struct used to communicate between threads
 // of the RPC server.
-struct write_chunk_request;
+struct zmq_write_chunk_request;
 
 // The main L1 RPC server object.
 class L1RpcServer {
@@ -37,7 +37,7 @@ public:
     bool is_shutdown();
 
     // called by RPC worker threads.
-    write_chunk_request* pop_write_request();
+    zmq_write_chunk_request* pop_write_request();
 
     // called by RPC worker threads to update status for a write_chunks request
     void set_writechunk_status(std::string filename,
@@ -57,7 +57,7 @@ protected:
     // enqueues the given request to write an assembled_chunk to disk;
     // will be processed by worker threads.  Handles the priority
     // queuing.
-    void _add_write_request(write_chunk_request* req);
+    void _add_write_request(zmq_write_chunk_request* req);
 
     // retrieves assembled_chunks overlapping the given range of
     // FPGA-count values from the ring buffers for the given beam IDs.
@@ -88,7 +88,7 @@ private:
     std::string _port;
 
     // the queue of write requests to be run by the RpcWorker(s)
-    std::deque<write_chunk_request*> _write_reqs;
+    std::deque<zmq_write_chunk_request*> _write_reqs;
     // (and the mutex for it)
     std::mutex _q_mutex;
     // (and a conditions variable for when the queue is not empty)

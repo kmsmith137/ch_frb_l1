@@ -75,7 +75,7 @@ static string msg_string(zmq::message_t &msg) {
 // struct.  (this is used to queue requests *within* the RPC server --
 // requests are pulled off the "frontend" socket by the main RPC
 // server thread and queued for processing by the RpcWorker thread(s).
-struct write_chunk_request {
+struct zmq_write_chunk_request {
     std::vector<std::pair<zmq::message_t*, uint32_t> > clients;
     std::string filename;
     int priority;
@@ -120,7 +120,7 @@ public:
             zmq::message_t msg;
 
             // Pull a write_chunk_request off the queue!
-            write_chunk_request* w = _server->pop_write_request();
+            zmq_write_chunk_request* w = _server->pop_write_request();
             if (!w) {
                 // Quit!
                 chlog("Rpc worker: received NULL write_chunk_request; exiting.");
@@ -237,8 +237,8 @@ bool L1RpcServer::is_shutdown() {
 }
 
 // Called by the RpcWorker thread(s) to get more work.
-write_chunk_request* L1RpcServer::pop_write_request() {
-    write_chunk_request* wreq;
+zmq_write_chunk_request* L1RpcServer::pop_write_request() {
+    zmq_write_chunk_request* wreq;
     ulock u(_q_mutex);
     for (;;) {
         if (_shutdown) {
@@ -272,7 +272,7 @@ void L1RpcServer::set_writechunk_status(string filename,
 void L1RpcServer::enqueue_write_request(std::shared_ptr<ch_frb_io::assembled_chunk> chunk,
                                         std::string filename,
                                         int priority) {
-    write_chunk_request* w = new write_chunk_request();
+    zmq_write_chunk_request* w = new zmq_write_chunk_request();
     w->filename = filename;
     w->priority = priority;
     w->chunk = chunk;
@@ -629,7 +629,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         vector<WriteChunks_Reply> reply;
 
         for (auto chunk = chunks.begin(); chunk != chunks.end(); chunk++) {
-            write_chunk_request* w = new write_chunk_request();
+            zmq_write_chunk_request* w = new zmq_write_chunk_request();
 
             // Format the filename the chunk will be written to.
             w->filename = (*chunk)->format_filename(req.filename_pattern);
@@ -638,7 +638,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             zmq::message_t* client_copy = new zmq::message_t();
             client_copy->copy(client);
 
-            // Create and enqueue a write_chunk_request for each chunk.
+            // Create and enqueue a zmq_write_chunk_request for each chunk.
             w->clients.push_back(std::make_pair(client_copy, token));
             w->priority = req.priority;
             w->chunk = *chunk;
@@ -720,7 +720,7 @@ int L1RpcServer::_send_frontend_message(zmq::message_t& clientmsg,
 }
 
 // Enqueues a new request to write a chunk.
-void L1RpcServer::_add_write_request(write_chunk_request* req) {
+void L1RpcServer::_add_write_request(zmq_write_chunk_request* req) {
 
     ulock u(_q_mutex);
 
@@ -729,7 +729,7 @@ void L1RpcServer::_add_write_request(write_chunk_request* req) {
     // Highest priority goes at the front of the queue.
     // Search for the first element with priority lower than this one's.
     // AND search for a higher-priority duplicate of this element.
-    deque<write_chunk_request*>::iterator it;
+    deque<zmq_write_chunk_request*>::iterator it;
     for (it = _write_reqs.begin(); it != _write_reqs.end(); it++) {
         if (((*it)->chunk == req->chunk) &&
             ((*it)->filename == req->filename)) {
@@ -764,7 +764,7 @@ void L1RpcServer::_add_write_request(write_chunk_request* req) {
     // Remember where the newly-inserted request is, because if we
     // find another request for the same chunk but lower priority,
     // we'll append clients.
-    deque<write_chunk_request*>::iterator newreq = it;
+    deque<zmq_write_chunk_request*>::iterator newreq = it;
 
     it++;
     for (; it != _write_reqs.end(); it++) {
