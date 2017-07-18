@@ -30,8 +30,12 @@ rpc_address: [ "tcp://10.0.0.101:5555",
 	       "tcp://10.0.3.101:5555" ]
 
 
-# Need to use fast kernels in this example (slow kernels are too slow.)
+# Currently we use a single I/O thread for all writes.
+# This is a placeholder until the SSD/NFS setup of the L1 nodes is decided!
+output_devices: ""
 
+
+# Need to use fast kernels in this example (slow kernels are too slow.)
 slow_kernels: False
 
 
