@@ -795,7 +795,8 @@ int main(int argc, char **argv)
     vector<shared_ptr<ch_frb_io::output_device>> output_devices(ndevices);
     vector<shared_ptr<ch_frb_io::memory_slab_pool>> memory_pools(npools);
     vector<shared_ptr<ch_frb_io::intensity_network_stream>> input_streams(nstreams);
-    vector<shared_ptr<L1RpcServer> > rpc_servers(nbeams);
+    vector<shared_ptr<L1RpcServer> > rpc_servers(nstreams);
+    vector<std::thread> rpc_threads(nstreams);
     vector<std::thread> dedispersion_threads(nbeams);
 
     for (int idev = 0; idev < ndevices; idev++)
@@ -811,8 +812,7 @@ int main(int argc, char **argv)
 
     for (int istream = 0; istream < nstreams; istream++) {
 	rpc_servers[istream] = make_l1rpc_server(config, istream, input_streams[istream]);
-        // returns std::thread
-        rpc_servers[istream]->start();
+        rpc_threads[istream] = rpc_servers[istream]->start();
     }
 
     if (config.l1_verbosity >= 1)
@@ -840,8 +840,13 @@ int main(int argc, char **argv)
 	output_devices[idev]->join_thread();
     }
 
-    cout << "All write requests written, i/o threads joined" << endl;
+    cout << "All write requests written, all i/o threads joined, shutting down RPC servers..." << endl;
 
+    for (int istream = 0; istream < nstreams; istream++) {
+	rpc_servers[istream]->do_shutdown();
+	rpc_threads[istream].join();
+    }
+    
     print_statistics(config, input_streams, config.l1_verbosity);
 
     return 0;

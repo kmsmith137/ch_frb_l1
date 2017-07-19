@@ -12,9 +12,8 @@
 
 const int default_port_l1_rpc = 5555;
 
-// implementation detail: a struct used to communicate between threads
-// of the RPC server.
-struct zmq_write_chunk_request;
+// implementation detail: a struct used to communicate between I/O threads and the RpcServer.
+class l1_backend_queue;
 
 // The main L1 RPC server object.
 class L1RpcServer {
@@ -35,9 +34,9 @@ public:
 
     // Returns True if an RPC shutdown() call has been received.
     bool is_shutdown();
-
-    // called by RPC worker threads.
-    zmq_write_chunk_request* pop_write_request();
+    
+    // equivalent to receiving a shutdown() RPC.
+    void do_shutdown();
 
     // called by RPC worker threads to update status for a write_chunks request
     void set_writechunk_status(std::string filename,
@@ -54,18 +53,13 @@ protected:
     // reply or queuing work for worker threads.
     int _handle_request(zmq::message_t* client, zmq::message_t* request);
 
-    // enqueues the given request to write an assembled_chunk to disk;
-    // will be processed by worker threads.  Handles the priority
-    // queuing.
-    void _add_write_request(zmq_write_chunk_request* req);
+    void _check_backend_queue();
 
     // retrieves assembled_chunks overlapping the given range of
     // FPGA-count values from the ring buffers for the given beam IDs.
     void _get_chunks(std::vector<uint64_t> &beams,
                      uint64_t min_fpga, uint64_t max_fpga,
                      std::vector<std::shared_ptr<ch_frb_io::assembled_chunk> > &chunks);
-
-    void _do_shutdown();
 
     int _send_frontend_message(zmq::message_t& clientmsg,
                                zmq::message_t& tokenmsg,
@@ -81,23 +75,24 @@ private:
     // Client-facing socket
     zmq::socket_t _frontend;
 
-    // RPC worker thread-facing socket.
-    zmq::socket_t _backend;
+    // The "backend queue" is used by the I/O threads, to send WriteChunk_Reply
+    // objects back to the RpcServer, when write requests complete.
+    std::shared_ptr<l1_backend_queue> _backend_queue;
+    
+    // Pool of I/O threads (one thread for each physical device), which accept 
+    // write_chunk_requests from the RpcServer.
+    ch_frb_io::output_device_pool _output_devices;
 
     // Port the client-facing socket is listening on.
     std::string _port;
-
-    // the queue of write requests to be run by the RpcWorker(s)
-    std::deque<zmq_write_chunk_request*> _write_reqs;
-    // (and the mutex for it)
-    std::mutex _q_mutex;
-    // (and a conditions variable for when the queue is not empty)
-    std::condition_variable _q_cond;
 
     // a vector of result codes for write_chunk_request() calls.
     std::map<std::string, std::pair<std::string, std::string> > _write_chunk_status;
     // (and the mutex for it)
     std::mutex _status_mutex;
+
+    // Only protects _shutdown!
+    std::mutex _q_mutex;
 
     // flag when we are shutting down.
     bool _shutdown;
