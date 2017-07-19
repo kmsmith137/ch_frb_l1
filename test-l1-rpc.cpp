@@ -78,6 +78,14 @@ int main(int argc, char** argv) {
     if (udpport)
         ini.udp_port = udpport;
 
+    output_device::initializer out_params;
+    out_params.device_name = "";
+    // debug
+    out_params.verbosity = 3;
+    std::shared_ptr<output_device> outdev = output_device::make(out_params);
+
+    ini.output_devices.push_back(outdev);
+
     shared_ptr<intensity_network_stream> stream = intensity_network_stream::make(ini);
     stream->start_stream();
 
@@ -91,7 +99,7 @@ int main(int argc, char** argv) {
 
     chlog("Starting RPC server on port " << port);
     L1RpcServer rpc(stream, port);
-    rpc.start();
+    std::thread rpc_thread = rpc.start();
 
     std::random_device rd;
     std::mt19937 rng(rd());
@@ -207,6 +215,8 @@ int main(int argc, char** argv) {
             break;
     }
     chlog("Exiting");
+
+    rpc_thread.join();
 }
 
 

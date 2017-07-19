@@ -206,7 +206,7 @@ void l1_write_request::write_callback(const string &error_message)
     rep.beam = chunk->beam_id;
     rep.fpga0 = chunk->fpga_begin;
     rep.fpgaN = chunk->fpga_end - chunk->fpga_begin;
-    rep.success = false;
+    rep.success = (error_message.size() == 0);
     rep.filename = this->filename;
     rep.error_message = error_message;
 
