@@ -8,14 +8,6 @@
 using namespace std;
 using namespace ch_frb_io;
 
-// KMS: removed this callback, since the equivalent can now be done with output_devices.
-//
-//void write_chunk(L1RpcServer* rpc, shared_ptr<assembled_chunk> chunk) {
-//    string filename = chunk->format_filename("chunk-(BEAM)-(CHUNK)+(NCHUNK).msgpack");
-//    chlog("Enqueuing for write:" << filename);
-//    rpc->enqueue_write_request(chunk, filename);
-//}
-
 int main(int argc, char** argv) {
     int beam = 77;
     string port = "";
@@ -72,8 +64,15 @@ int main(int argc, char** argv) {
     chime_log_open_socket();
     chime_log_set_thread_name("main");
 
+    int nupfreq = 4;
+    int nt_per = 16;
+    int fpga_per = 400;
+
     intensity_network_stream::initializer ini;
     ini.beam_ids.push_back(beam);
+    ini.nupfreq = nupfreq;
+    ini.nt_per_packet = nt_per;
+    ini.fpga_counts_per_sample = fpga_per;
     //ini.force_fast_kernels = HAVE_AVX2;
 
     if (udpport)
@@ -94,13 +93,6 @@ int main(int argc, char** argv) {
     L1RpcServer rpc(stream, port);
     rpc.start();
 
-    // KMS: removed this callback, since the equivalent can now be done with output_devices.
-    // stream->add_assembled_chunk_callback(std::bind(write_chunk, &rpc, std::placeholders::_1));
-
-    int nupfreq = 4;
-    int nt_per = 16;
-    int fpga_per = 400;
-
     std::random_device rd;
     std::mt19937 rng(rd());
     rng.seed(42);
@@ -119,8 +111,8 @@ int main(int argc, char** argv) {
 	ini_params.fpga_counts_per_sample = fpga_per;
 	ini_params.ichunk = i;
 
-	assembled_chunk *ch = new assembled_chunk(ini_params);
-
+	unique_ptr<assembled_chunk> uch = assembled_chunk::make(ini_params);
+        assembled_chunk* ch = uch.release();
         chlog("Injecting " << i);
         if (stream->inject_assembled_chunk(ch))
             chlog("Injected " << i);

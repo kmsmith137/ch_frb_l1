@@ -51,7 +51,7 @@ before_script:
     # Cached hdf5 source code install
     - cd
     - if [ -d "hdf5" ]; then (cd hdf5 && make all install) || rm -R hdf5; fi
-    - if [ ! -d "hdf5" ]; then (wget https://support.hdfgroup.org/ftp/HDF5/current18/src/hdf5-1.8.19.tar.gz && tar xzf hdf5-1.8.19.tar.gz && mv hdf5-1.8.19 hdf5 && cd hdf5 && ./configure --prefix=$HOME/chime --enable-cxx && make all install); fi
+    - if [ ! -d "hdf5" ]; then (wget https://support.hdfgroup.org/ftp/HDF5/current18/src/hdf5-1.8.19.tar.gz && tar xzf hdf5-1.8.19.tar.gz && mv hdf5-1.8.19 hdf5 && cd hdf5 && ./configure --prefix=$HOME/chime --enable-cxx && make all install > hdf5.log); fi
 
     - export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:~/chime/lib
 
@@ -71,7 +71,7 @@ before_script:
     - cd
     - git clone https://github.com/CHIMEFRB/ch_frb_io.git
     - cd ch_frb_io
-    - git checkout l1_prerelease2
+    - git checkout rpc_cleanup
     - ln -s site/Makefile.local.travis Makefile.local
     - pwd
     - make
@@ -112,7 +112,7 @@ before_script:
     - cd
     - git clone https://github.com/kmsmith137/rf_pipelines.git
     - cd rf_pipelines
-    - git checkout l1_prerelease2
+    #- git checkout l1_prerelease2
     - ln -s site/Makefile.local.travis Makefile.local
     - make
     - make install
@@ -127,7 +127,6 @@ script:
     # - ls ~/lib
     # - ls ~/include
     # - nm -CD ~/chime/lib/librf_pipelines.so
-    
     - make COVERAGE=yes OPTIMIZE=no
     # run some, ahem, unit tests...
     - ./test-l1-rpc &
@@ -141,18 +140,17 @@ after_success:
 addons:
   apt:
     packages:
-#      - libhdf5-serial-dev   # need newer version for sp_hdf5
       - liblz4-dev
       - libyaml-cpp-dev
       - libboost-dev
       - libjsoncpp-dev  # for rf_pipelines
       - python-numpy    # for rpc_client.py and simpulse
       - libfftw3-dev    # for simpulse
+
+# Versions in trusty are too old:
+#      - libzmq-dev (2.1 vs current = 4.2.0)
+#      - libhdf5-serial-dev   # need newer version for sp_hdf5
 #      - cython          # for simpulse  -- need a version newer than 0.20.1 ?
-
-
-# Version in trusty is too old (2.1 vs current = 4.2.0)
-#      - libzmq-dev
 # see ch_frb_io re: libmsgpack-dev
 
 cache:
