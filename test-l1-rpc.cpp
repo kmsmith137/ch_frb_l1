@@ -10,6 +10,8 @@ using namespace ch_frb_io;
 
 #include "CivetServer.h"
 
+int metric_counter = 0;
+
 class ExampleHandler : public CivetHandler {
 public:
     bool
@@ -20,7 +22,13 @@ public:
                   "HTTP/1.1 200 OK\r\n"
                   "Content-Type: text/plain\r\n"
                   "Connection: close\r\n\r\n");
-        mg_printf(conn, "Hello world.\r\n");
+
+        metric_counter++;
+        const char* name = "chime_frb_l1_metrics_count";
+        mg_printf(conn,
+                  "# HELP %s Number of times Prometheus metrics have been polled\n"
+                  "# TYPE %s gauge\n"
+                  "%s %i\n", name, name, name, metric_counter);
         return true;
     }
 };
@@ -30,8 +38,15 @@ shared_ptr<CivetServer> start_web_server(int port) {
     std::vector<std::string> options;
     options.push_back("listening_ports");
     options.push_back(to_string(port));
-    shared_ptr<CivetServer> server = make_shared<CivetServer>(options);
-    // we're going to memory-leak this guy.
+    shared_ptr<CivetServer> server;
+    try {
+        server = make_shared<CivetServer>(options);
+    } catch (CivetException &e) {
+        cout << "Failed to start web server on port " << port << ": "
+             << e.what() << endl;
+        return server;
+    }
+    // we're going to memory-leak this handler object
     ExampleHandler* h_ex = new ExampleHandler();
     server->addHandler("/metrics", h_ex);
     return server;
@@ -95,6 +110,9 @@ int main(int argc, char** argv) {
 
     int web_port = 8081;
     shared_ptr<CivetServer> webserver = start_web_server(web_port);
+    if (!webserver) {
+        return -1;
+    }
     cout << "Started web server on port " << web_port << endl;
     
     int nupfreq = 4;
