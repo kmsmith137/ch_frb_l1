@@ -8,6 +8,35 @@
 using namespace std;
 using namespace ch_frb_io;
 
+#include "CivetServer.h"
+
+class ExampleHandler : public CivetHandler {
+public:
+    bool
+    handleGet(CivetServer *server, struct mg_connection *conn)
+    {
+        cout << "handle GET" << endl;
+        mg_printf(conn,
+                  "HTTP/1.1 200 OK\r\n"
+                  "Content-Type: text/plain\r\n"
+                  "Connection: close\r\n\r\n");
+        mg_printf(conn, "Hello world.\r\n");
+        return true;
+    }
+};
+
+shared_ptr<CivetServer> start_web_server(int port) {
+    //"document_root", DOCUMENT_ROOT, "listening_ports", PORT, 0};
+    std::vector<std::string> options;
+    options.push_back("listening_ports");
+    options.push_back(to_string(port));
+    shared_ptr<CivetServer> server = make_shared<CivetServer>(options);
+    // we're going to memory-leak this guy.
+    ExampleHandler* h_ex = new ExampleHandler();
+    server->addHandler("/metrics", h_ex);
+    return server;
+}
+
 int main(int argc, char** argv) {
     int beam = 77;
     string port = "";
@@ -64,6 +93,10 @@ int main(int argc, char** argv) {
     chime_log_open_socket();
     chime_log_set_thread_name("main");
 
+    int web_port = 8081;
+    shared_ptr<CivetServer> webserver = start_web_server(web_port);
+    cout << "Started web server on port " << web_port << endl;
+    
     int nupfreq = 4;
     int nt_per = 16;
     int fpga_per = 400;
@@ -216,6 +249,7 @@ int main(int argc, char** argv) {
     }
     chlog("Exiting");
 
+    rpc.do_shutdown();
     rpc_thread.join();
 }
 
