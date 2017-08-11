@@ -870,6 +870,9 @@ int main(int argc, char **argv)
 	dedispersion_threads[ibeam] = std::thread(dedispersion_thread_main, config, input_streams[istream], l1b_subprocesses[ibeam], ibeam);
     }
 
+    if (!config.is_subscale)
+	cout << "ch-frb-l1: server is now running, but you will want to wait ~60 seconds before sending packets, or it may crash!  This will be fixed soon..." << endl;
+
     for (int ibeam = 0; ibeam < nbeams; ibeam++)
 	dedispersion_threads[ibeam].join();
 
