@@ -8,14 +8,6 @@
 using namespace std;
 using namespace ch_frb_io;
 
-// KMS: removed this callback, since the equivalent can now be done with output_devices.
-//
-//void write_chunk(L1RpcServer* rpc, shared_ptr<assembled_chunk> chunk) {
-//    string filename = chunk->format_filename("chunk-(BEAM)-(CHUNK)+(NCHUNK).msgpack");
-//    chlog("Enqueuing for write:" << filename);
-//    rpc->enqueue_write_request(chunk, filename);
-//}
-
 int main(int argc, char** argv) {
     int beam = 77;
     string port = "";
@@ -72,12 +64,27 @@ int main(int argc, char** argv) {
     chime_log_open_socket();
     chime_log_set_thread_name("main");
 
+    int nupfreq = 4;
+    int nt_per = 16;
+    int fpga_per = 400;
+
     intensity_network_stream::initializer ini;
     ini.beam_ids.push_back(beam);
+    ini.nupfreq = nupfreq;
+    ini.nt_per_packet = nt_per;
+    ini.fpga_counts_per_sample = fpga_per;
     //ini.force_fast_kernels = HAVE_AVX2;
 
     if (udpport)
         ini.udp_port = udpport;
+
+    output_device::initializer out_params;
+    out_params.device_name = "";
+    // debug
+    out_params.verbosity = 3;
+    std::shared_ptr<output_device> outdev = output_device::make(out_params);
+
+    ini.output_devices.push_back(outdev);
 
     shared_ptr<intensity_network_stream> stream = intensity_network_stream::make(ini);
     stream->start_stream();
@@ -92,14 +99,7 @@ int main(int argc, char** argv) {
 
     chlog("Starting RPC server on port " << port);
     L1RpcServer rpc(stream, port);
-    rpc.start();
-
-    // KMS: removed this callback, since the equivalent can now be done with output_devices.
-    // stream->add_assembled_chunk_callback(std::bind(write_chunk, &rpc, std::placeholders::_1));
-
-    int nupfreq = 4;
-    int nt_per = 16;
-    int fpga_per = 400;
+    std::thread rpc_thread = rpc.start();
 
     std::random_device rd;
     std::mt19937 rng(rd());
@@ -119,8 +119,8 @@ int main(int argc, char** argv) {
 	ini_params.fpga_counts_per_sample = fpga_per;
 	ini_params.ichunk = i;
 
-	assembled_chunk *ch = new assembled_chunk(ini_params);
-
+	unique_ptr<assembled_chunk> uch = assembled_chunk::make(ini_params);
+        assembled_chunk* ch = uch.release();
         chlog("Injecting " << i);
         if (stream->inject_assembled_chunk(ch))
             chlog("Injected " << i);
@@ -215,6 +215,8 @@ int main(int argc, char** argv) {
             break;
     }
     chlog("Exiting");
+
+    rpc_thread.join();
 }
 
 
