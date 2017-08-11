@@ -32,7 +32,7 @@ rpc_address: [ "tcp://10.2.1.101:5555",
 
 # Currently we use a single I/O thread for all writes.
 # This is a placeholder until the SSD/NFS setup of the L1 nodes is decided!
-output_devices: ""
+output_devices: [ "/ssd", "/frb-archiver-1", "/frb-archiver-2", "/frb-archiver-3", "/frb-archiver-4" ]
 
 
 # Need to use fast kernels in this example (slow kernels are too slow.)
@@ -41,10 +41,13 @@ slow_kernels: False
 
 # Buffer configuration.  For documentation on these parameters, see 
 # "Config file reference: L1 server" in MANUAL.md.
+#
+# Note: with write_staging_area_gb=64, the L1 server will use 
+# ~231 GB memory (the L1 node has 256 GB available).
 
 assembled_ringbuf_nsamples: 10000
 telescoping_ringbuf_nsamples: [ 30000, 60000, 60000 ]
-write_staging_area_gb: 32.0
+write_staging_area_gb: 64.0
 
 
 # L1b configuration.
@@ -63,4 +66,11 @@ l1b_buffer_nsamples: 4000
 l1b_pipe_timeout: 0
 
 
-# stream_filename_pattern: "chunk_(BEAM)_(CHUNK)_(NCHUNK).msg"
+# stream_filename_pattern
+#
+# If this is uncommented, the L1 node will continuously stream all of its
+# data to disk.  The first line below streams to SSD, and the second line
+# streams to NFS.
+
+# stream_filename_pattern: "/ssd/kmsmith/chunk_(BEAM)_(CHUNK)_(NCHUNK).msg"
+# stream_filename_pattern: "/frb-archiver-(STREAM)/kmsmith/chunk_(BEAM)_(CHUNK)_(NCHUNK).msg"
