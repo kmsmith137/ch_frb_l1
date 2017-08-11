@@ -485,6 +485,58 @@ l1_params::l1_params(int argc, char **argv)
 }
 
 
+// -------------------------------------------------------------------------------------------------
+//
+// make_l1b_subprocess().
+//
+// Note: the 'ibeam' argument is an index satisfying 0 <= ibeam < config.nbeams, 
+// where config.nbeams is the number of beams on the node.   Not a beam_id!
+
+
+static shared_ptr<bonsai::trigger_pipe> make_l1b_subprocess(const l1_params &config, int ibeam)
+{
+    assert(ibeam >= 0 && ibeam < config.nbeams);
+
+    if (config.l1b_executable_filename.size() == 0) {
+	if (config.l1_verbosity >= 1)
+	    cout << "ch-frb-l1: config parameter 'l1b_executable_filename' is an empty string, L1b processes will not be spawned\n";
+	return shared_ptr<bonsai::trigger_pipe> ();
+    }
+
+    int beam_id = config.beam_ids[ibeam];
+    vector<int> allowed_cores;
+
+    // FIXME: cut-and-paste between dedispersion_thread_main() and here.
+    // (The L1b-spawning logic was originally part of dedispersion_thread_main(), then got hacked into its own function.)
+
+    if (!config.is_subscale) {
+	// Core-pinning logic for production-scale L1 server.
+	int c = (ibeam / 8) * 10 + (ibeam % 8);
+	allowed_cores = { c, c+20 };
+    }
+
+    // L1b command line is: <l1_executable> <l1b_config> <beam_id>
+    vector<string> l1b_command_line = {
+	config.l1b_executable_filename,
+	config.l1b_config_filename,
+	std::to_string(beam_id)
+    };
+
+    bonsai::trigger_pipe::initializer l1b_initializer;
+    l1b_initializer.timeout = config.l1b_pipe_timeout;
+    l1b_initializer.blocking = config.l1b_pipe_blocking;
+    l1b_initializer.search_path = config.l1b_search_path;
+    l1b_initializer.verbosity = config.l1b_pipe_io_debug ? 3: config.l1_verbosity;
+    l1b_initializer.pipe_capacity = config.l1b_pipe_capacity;
+    
+    // Important: pin L1b child process to same core as L1a parent thread.
+    // Note that in the subscale case, 'allowed_cores' is an empty vector, and the child process is not core-pinned.
+    l1b_initializer.child_cores = allowed_cores;
+    
+    // The trigger_pipe constructor will spawn the L1b child process.
+    return make_shared<bonsai::trigger_pipe> (l1b_command_line, l1b_initializer);
+}
+
 
 // -------------------------------------------------------------------------------------------------
 //
@@ -554,6 +606,7 @@ static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l
     ini_params.nupfreq = xdiv(config.nfreq, ch_frb_io::constants::nfreq_coarse_tot);
     ini_params.nt_per_packet = config.nt_per_packet;
     ini_params.fpga_counts_per_sample = config.fpga_counts_per_sample;
+    ini_params.stream_id = istream + 1;   // +1 here since first NFS mount is /frb-archive-1, not /frb-archive-0
     ini_params.force_fast_kernels = !config.slow_kernels;
     ini_params.force_reference_kernels = config.slow_kernels;
     ini_params.unassembled_ringbuf_capacity = config.unassembled_ringbuf_capacity;
@@ -636,14 +689,18 @@ static shared_ptr<L1RpcServer> make_l1rpc_server(const l1_params &config, int is
 // Note: the 'ibeam' argument is an index satisfying 0 <= ibeam < config.nbeams, 
 // where config.nbeams is the number of beams on the node.   Not a beam_id!
 
-static void dedispersion_thread_main(const l1_params &config, const shared_ptr<ch_frb_io::intensity_network_stream> &sp, int ibeam)
+
+static void dedispersion_thread_main(const l1_params &config, const shared_ptr<ch_frb_io::intensity_network_stream> &sp, const shared_ptr<bonsai::trigger_pipe> &l1b_trigger_pipe, int ibeam)
 {
     assert(ibeam >= 0 && ibeam < config.nbeams);
 
     try {
 	const bonsai::config_params &bonsai_config = config.bonsai_config;
-
 	vector<int> allowed_cores;
+
+	// FIXME: cut-and-paste between make_l1b_subprocess() and here.
+	// (The L1b-spawning logic was originally part of dedispersion_thread_main(), then got hacked into its own function.)
+
 	if (!config.is_subscale) {
 	    // Core-pinning logic for production-scale L1 server.
 	    int c = (ibeam / 8) * 10 + (ibeam % 8);
@@ -666,7 +723,7 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 	transform_chain.push_back(rf_pipelines::make_bonsai_dedisperser(dedisperser));
 
 	// Trigger processors.
-	shared_ptr<bonsai::trigger_pipe> l1b_trigger_pipe;
+
 	shared_ptr<bonsai::global_max_tracker> max_tracker;
 
 	if (config.track_global_trigger_max) {
@@ -674,31 +731,8 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 	    dedisperser->add_processor(max_tracker);
 	}
 
-	if (config.l1b_executable_filename.size() > 0) {
-	    // Assumed L1b command line is: <l1_executable> <l1b_config> <beam_id>
-	    vector<string> l1b_command_line = {
-		config.l1b_executable_filename,
-		config.l1b_config_filename,
-		std::to_string(beam_id)
-	    };
-
-	    bonsai::trigger_pipe::initializer l1b_initializer;
-	    l1b_initializer.timeout = config.l1b_pipe_timeout;
-	    l1b_initializer.blocking = config.l1b_pipe_blocking;
-	    l1b_initializer.search_path = config.l1b_search_path;
-	    l1b_initializer.verbosity = config.l1b_pipe_io_debug ? 3: config.l1_verbosity;
-	    l1b_initializer.pipe_capacity = config.l1b_pipe_capacity;
-
-	    // Important: pin L1b child process to same core as L1a parent thread.
-	    // Note that in the subscale case, 'allowed_cores' is an empty vector, and the child process is not core-pinned.
-	    l1b_initializer.child_cores = allowed_cores;
-
-	    // The trigger_pipe constructor will spawn the L1b child process.
-	    l1b_trigger_pipe = make_shared<bonsai::trigger_pipe> (l1b_command_line, l1b_initializer);
+	if (l1b_trigger_pipe)
 	    dedisperser->add_processor(l1b_trigger_pipe);
-	}
-	else if (config.l1_verbosity >= 1)
-	    cout << "ch-frb-l1: config parameter 'l1b_executable_filename' is an empty string, L1b processes will not be spawned\n";
 
 	// (transform_chain, outdir, json_output, verbosity)
 	stream->run(transform_chain, string(), nullptr, 0);
@@ -792,12 +826,18 @@ int main(int argc, char **argv)
     assert(nstreams % npools == 0);
     assert(nbeams % nstreams == 0);
 
+    vector<shared_ptr<bonsai::trigger_pipe>> l1b_subprocesses(nbeams);
     vector<shared_ptr<ch_frb_io::output_device>> output_devices(ndevices);
     vector<shared_ptr<ch_frb_io::memory_slab_pool>> memory_pools(npools);
     vector<shared_ptr<ch_frb_io::intensity_network_stream>> input_streams(nstreams);
     vector<shared_ptr<L1RpcServer> > rpc_servers(nstreams);
     vector<std::thread> rpc_threads(nstreams);
     vector<std::thread> dedispersion_threads(nbeams);
+
+    // It seems to be best to spawn L1b subprocesses as the very first step,
+    // before allocating anything!
+    for (int ibeam = 0; ibeam < nbeams; ibeam++)
+	l1b_subprocesses[ibeam] = make_l1b_subprocess(config, ibeam);
 
     for (int idev = 0; idev < ndevices; idev++)
 	output_devices[idev] = make_output_device(config, idev);
@@ -827,7 +867,7 @@ int main(int argc, char **argv)
 		 << ", stream=" << config.ipaddr[istream] << ":" << config.port[istream] << endl;
 	}
 
-	dedispersion_threads[ibeam] = std::thread(dedispersion_thread_main, config, input_streams[istream], ibeam);
+	dedispersion_threads[ibeam] = std::thread(dedispersion_thread_main, config, input_streams[istream], l1b_subprocesses[ibeam], ibeam);
     }
 
     for (int ibeam = 0; ibeam < nbeams; ibeam++)
