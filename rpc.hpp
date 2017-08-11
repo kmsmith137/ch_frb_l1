@@ -109,7 +109,7 @@
 
      The filename pattern is not a printf-like pattern, instead it
      supports the following replacements:
-         (STREAM)  -> %02i beam_id
+         (STREAM)  -> %01i beam_id
          (BEAM)    -> %04i beam_id
          (CHUNK)   -> %08i ichunk
          (NCHUNK)  -> %02i  size in chunks
