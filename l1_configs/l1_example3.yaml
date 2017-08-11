@@ -21,13 +21,13 @@ nt_per_packet: 16
 # i.e. four beams will be sent to each NIC.  All NIC's use TCP port 5555 for
 # their RPC server.
 
-ipaddr: [ "10.0.0.101", "10.0.1.101", "10.0.2.101", "10.0.3.101" ]
+ipaddr: [ "10.2.1.101", "10.2.2.101", "10.2.3.101", "10.2.4.101" ]
 port: 6677
 
-rpc_address: [ "tcp://10.0.0.101:5555", 
-	       "tcp://10.0.1.101:5555", 
-	       "tcp://10.0.2.101:5555", 
-	       "tcp://10.0.3.101:5555" ]
+rpc_address: [ "tcp://10.2.1.101:5555", 
+	       "tcp://10.2.2.101:5555", 
+	       "tcp://10.2.3.101:5555", 
+	       "tcp://10.2.4.101:5555" ]
 
 
 # Currently we use a single I/O thread for all writes.
@@ -61,3 +61,6 @@ write_staging_area_gb: 32.0
 l1b_executable_filename: "./toy-l1b.py"
 l1b_buffer_nsamples: 4000
 l1b_pipe_timeout: 0
+
+
+# stream_filename_pattern: "chunk_(BEAM)_(CHUNK)_(NCHUNK).msg"
