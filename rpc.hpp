@@ -163,7 +163,7 @@ public:
 
 class WriteChunks_Request {
 public:
-    std::vector<uint64_t> beams;
+    std::vector<int> beams;
     uint64_t min_fpga;    // or 0 for no limit
     uint64_t max_fpga;    // or 0 for no limit
 

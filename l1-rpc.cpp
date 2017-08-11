@@ -465,7 +465,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         for (auto beamit = ini.beam_ids.begin(); beamit != ini.beam_ids.end(); beamit++) {
             // Retrieve one beam at a time
             int beam = *beamit;
-            vector<uint64_t> beams;
+            vector<int> beams;
             beams.push_back(beam);
             vector<vector<pair<shared_ptr<assembled_chunk>, uint64_t> > > chunks = _stream->get_ringbuf_snapshots(beams);
             // iterate over beams (we only requested one)
@@ -677,9 +677,9 @@ int L1RpcServer::_send_frontend_message(zmq::message_t& clientmsg,
 
 
 // Helper function to retrieve requested assembled_chunks from the ring buffer.
-void L1RpcServer::_get_chunks(vector<uint64_t> &beams,
-                            uint64_t min_fpga, uint64_t max_fpga,
-                            vector<shared_ptr<assembled_chunk> > &chunks) {
+void L1RpcServer::_get_chunks(const vector<int> &beams,
+                              uint64_t min_fpga, uint64_t max_fpga,
+                              vector<shared_ptr<assembled_chunk> > &chunks) {
     vector<vector<pair<shared_ptr<assembled_chunk>, uint64_t> > > ch;
     ch = _stream->get_ringbuf_snapshots(beams, min_fpga, max_fpga);
     // collapse vector-of-vectors to vector.

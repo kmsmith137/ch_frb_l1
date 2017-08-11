@@ -57,7 +57,7 @@ protected:
 
     // retrieves assembled_chunks overlapping the given range of
     // FPGA-count values from the ring buffers for the given beam IDs.
-    void _get_chunks(std::vector<uint64_t> &beams,
+    void _get_chunks(const std::vector<int> &beams,
                      uint64_t min_fpga, uint64_t max_fpga,
                      std::vector<std::shared_ptr<ch_frb_io::assembled_chunk> > &chunks);
 

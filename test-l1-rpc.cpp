@@ -230,7 +230,7 @@ int main(int argc, char** argv) {
     vector<vector<pair<shared_ptr<assembled_chunk>, uint64_t> > > chunks;
     chlog("Test retrieving chunks...");
     //rb->retrieve(30000000, 50000000, chunks);
-    vector<uint64_t> beams;
+    vector<int> beams;
     beams.push_back(beam);
     chunks = stream->get_ringbuf_snapshots(beams);
     stringstream ss;
