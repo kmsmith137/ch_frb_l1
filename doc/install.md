@@ -53,9 +53,9 @@ If you run into problems or have suggestions, let me know!
   or later, and the package managers (yum, brew) wanted to install an earlier
   version.  The following worked for me (assuming no root privileges):
   ```
-  wget https://support.hdfgroup.org/ftp/HDF5/current18/src/hdf5-1.8.18.tar.gz
-  tar zxvf hdf5-1.8.18.tar.gz
-  cd hdf5-1.8.18
+  wget https://support.hdfgroup.org/ftp/HDF5/current18/src/hdf5-1.8.19.tar.gz
+  tar zxvf hdf5-1.8.19.tar.gz
+  cd hdf5-1.8.19
   ./configure --prefix=$HOME --enable-cxx
   make
   make install
