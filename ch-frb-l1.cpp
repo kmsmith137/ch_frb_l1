@@ -606,6 +606,7 @@ static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l
     ini_params.nupfreq = xdiv(config.nfreq, ch_frb_io::constants::nfreq_coarse_tot);
     ini_params.nt_per_packet = config.nt_per_packet;
     ini_params.fpga_counts_per_sample = config.fpga_counts_per_sample;
+    ini_params.stream_id = istream + 1;   // +1 here since first NFS mount is /frb-archive-1, not /frb-archive-0
     ini_params.force_fast_kernels = !config.slow_kernels;
     ini_params.force_reference_kernels = config.slow_kernels;
     ini_params.unassembled_ringbuf_capacity = config.unassembled_ringbuf_capacity;
