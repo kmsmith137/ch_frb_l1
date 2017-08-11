@@ -70,13 +70,17 @@ Here are some external links to the bonsai documentation, which may also be usef
     (This shows up in e.g. [example3](#user-content-example3) below.)
     We're working on this next!
 
-  - The L1 server is fragile; if anything goes wrong
+  - The L1 server is **fragile**; if anything goes wrong
     (such as a thread running slow and filling a ring buffer)
     then it will throw an exception and die.
 
     I find that this is actually convenient for debugging, but
     for production we need to carefully enumerate corner cases and
     make sure that the L1 server recovers sensibly.
+
+    Another nuisance issue: after starting a production-scale L1 server instance, 
+    you'll need to wait ~60 seconds before sending packets, or it may crash!
+    (This is to give the L1 server enough time to do all of its initial memory allocation.)
     
   - The code is in a "pre-alpha" state, and serious testing
     will probably uncover bugs!
@@ -179,9 +183,8 @@ over the loopback interface (127.0.0.1).
 
 We process 4 beams, which are divided between UDP ports 6677 and 6688 (two beams per UDP port).
 This is more representative of the real L1 server configuration, where 16 beams
-will either be divided between four IP addresses, or divided between two UDP ports,
-depending on whether we end up using link bonding.  See the section 
-[L1 streams](#user-content-l1-streams) below for more discussion.
+will be divided between four IP addresses.
+See the section [L1 streams](#user-content-l1-streams) below for more discussion.
 
 In example 2, we also use three dedispersion trees which search different
 parts of the (DM, pulse width) parameter space.  See comments in the bonsai
@@ -218,6 +221,7 @@ Usage: ch-frb-l1 [-fvpm] <l1_config.yaml> <rfi_config.json> <bonsai_config.txt> 
   -v increases verbosity of the toplevel ch-frb-l1 logic
   -p enables a very verbose debug trace of the pipe I/O between L1a and L1b
   -m enables a very verbose debug trace of the memory_slab_pool allocation
+  -w enables a very verbose debug trace of the logic for writing chunks
 ```
 The L1 server takes four parameter files as follows:
 
@@ -303,7 +307,7 @@ is divided into multiple streams, with the following properties:
 
  - Each stream corresponds to a unique (ip_address, udp_port) pair.
    For example, a node with four network interfaces, using a single UDP
-   port on each, would use four streams.  (Assuming no link bonding!)
+   port on each, would use four streams.
 
  - The beams received by the node must be divided evenly between streams.
    For example, if a node is configured with 16 beams and 2 streams, then
@@ -333,7 +337,9 @@ Now let's consider some examples.
     for each NIC), and the correlator nodes would need
     to be configured to send four beams to each IP address.
 
-  - The "production-scale" L1 server with link bonding.
+  - The "production-scale" L1 server with link bonding.  (Link bonding
+    is something we were experimenting with at one point, but are
+    currently leaning toward not using.)
 
     In this case, the four NIC's behave as one virtual NIC with
     4 Gbps bandwidth and one IP address.  However, we still
@@ -351,7 +357,7 @@ The L1 server can run in one of two modes:
 
   - A "production-scale" mode which assumes 16 beams, two 10-core CPU's,
     and either 2 or 4 streams.  In this mode, we usually use 16384
-    frequency channels.  The L1 server will use 150-200 GB of memory!
+    frequency channels.  The L1 server will use 230 GB of memory!
 
   - A "subscale" mode which assumes <=4 beams, and either 1, 2, or 4 streams.
   
@@ -397,10 +403,10 @@ alternate network configurations, and more machines, for example a file server.
 
     |      | frb-compute-0 | frb-compute-1  |
     |------|---------------|----------------|
-    | eno1 | 10.0.0.100    | 10.0.0.101     |
-    | eno2 | 10.0.1.100    | 10.0.1.101     |
-    | eno3 | 10.0.2.100    | 10.0.2.101     |
-    | eno4 | 10.0.3.100    | 10.0.3.101     |
+    | eno1 | 10.2.1.100    | 10.2.1.101     |
+    | eno2 | 10.2.2.100    | 10.2.2.101     |
+    | eno3 | 10.2.3.100    | 10.2.3.101     |
+    | eno4 | 10.2.4.100    | 10.2.4.101     |
 
 
   - On **frb-compute-1**, start the L1 server:
