@@ -206,7 +206,7 @@ void l1_write_request::write_callback(const string &error_message)
     rep.beam = chunk->beam_id;
     rep.fpga0 = chunk->fpga_begin;
     rep.fpgaN = chunk->fpga_end - chunk->fpga_begin;
-    rep.success = false;
+    rep.success = error_message.size() == 0;
     rep.filename = this->filename;
     rep.error_message = error_message;
 
@@ -259,7 +259,10 @@ void L1RpcServer::set_writechunk_status(string filename,
     {
         ulock u(_status_mutex);
         _write_chunk_status[filename] = make_pair(status, error_message);
-	chlog("Set writechunk status for " << filename << " to " << status);
+	u.unlock();
+
+	string s = (error_message.size() > 0) ? (", error_message='" + error_message + "'") : "";
+	chlog("Set writechunk status for " << filename << " to " << status << s);
     }
 }
 
