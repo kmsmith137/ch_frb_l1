@@ -29,6 +29,11 @@ port: [ 6677, 6678 ]
 rpc_address: [ "tcp://127.0.0.1:5555", "tcp://127.0.0.1:5556" ]
 
 
+# This configures the L1 server to use a single I/O thread for all writes.
+# See 'output_devices' in MANUAL.md for discussion!
+output_devices: ""
+
+
 # slow_kernels=True is the only option here, since nfreq is not a multiple
 # of 2048.  Using slow kernels is OK in subscale test instances.  For more
 # discussion, see "Config file reference: L1 server" in MANUAL.md.

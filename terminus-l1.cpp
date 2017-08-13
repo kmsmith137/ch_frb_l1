@@ -67,7 +67,8 @@ static void processing_thread_main(shared_ptr<ch_frb_io::intensity_network_strea
 
 int main(int argc, char **argv) {
 
-    string dest = "127.0.0.1:10252";
+    //string dest = "127.0.0.1:10252";
+    string dest = "127.0.0.1:6677";
     float gbps = 0.0;
 
     string rpc_port = "";
@@ -182,7 +183,8 @@ int main(int argc, char **argv) {
     shared_ptr<Reverter> rev;
 
     // HACK -- should get these from the stream...
-    int nfreq = 16 * 1024;
+    int nupfreq = 16;
+    int nfreq = nupfreq * 1024;
     double freq_lo_mhz = 400;
     double freq_hi_mhz = 800;
 
@@ -215,6 +217,15 @@ int main(int argc, char **argv) {
     transforms.push_back(saver);
 
     ch_frb_io::intensity_network_stream::initializer ini_params;
+    ini_params.nupfreq = nupfreq;
+    ini_params.nt_per_packet = nt_per_packet;
+
+    output_device::initializer out_params;
+    out_params.device_name = "";
+    // debug
+    out_params.verbosity = 3;
+    std::shared_ptr<output_device> outdev = output_device::make(out_params);
+    ini_params.output_devices.push_back(outdev);
     
     for (size_t j=0; j<fluence_fractions.size(); j++) {
         int beam = beams[j];
@@ -265,10 +276,10 @@ int main(int argc, char **argv) {
         rpc_port = "tcp://127.0.0.1:5555";
     else if (rpc_portnum)
         rpc_port = "tcp://127.0.0.1:" + to_string(rpc_portnum);
-    
+
     chlog("Starting RPC server on " << rpc_port);
     L1RpcServer rpc(instream, rpc_port);
-    rpc.start();
+    std::thread rpc_thread = rpc.start();
     
     // Start listening for packets.
     instream->start_stream();
@@ -309,16 +320,23 @@ static void processing_thread_main(shared_ptr<ch_frb_io::intensity_network_strea
     chime_log_set_thread_name("proc-" + std::to_string(beam_id));
     chlog("Processing thread main: beam " << beam_id);
 
+    chlog("creating stream");
     auto stream = rf_pipelines::make_chime_network_stream(instream, beam_id);
+    chlog("creating transform chain");
     auto transform_chain = make_rfi_chain();
 
     bonsai::dedisperser::initializer ini_params;
     ini_params.verbosity = 0;
 	
+    chlog("creating dedisperser");
     auto dedisperser = make_shared<bonsai::dedisperser> (cp, ini_params);
+    chlog("Dedisperser nfreq: " << dedisperser->nfreq);
     transform_chain.push_back(rf_pipelines::make_bonsai_dedisperser(dedisperser));
+    chlog("Created dedisperser");
 
+    chlog("running stream...");
     // (transform_chain, outdir, json_output, verbosity)
     stream->run(transform_chain, string(), nullptr, 0);
+
 }
 

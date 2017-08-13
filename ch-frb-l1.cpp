@@ -11,7 +11,8 @@
 //   - Dual CPU
 //   - 10 cores/cpu
 //   - Hyperthreading enabled
-//   - all NIC's on the same PCI-E bus as the first CPU.
+//   - all NIC's on the same PCI-E bus as the first CPU
+//   - all SSD's on the first CPU.
 //
 // Note that the Linux scheduler defines 40 "cores":
 //   cores 0-9:    primary hyperthread on CPU1 
@@ -40,7 +41,8 @@ static void usage()
 	 << "  -f forces the L1 server to run, even if the config files look fishy\n"
 	 << "  -v increases verbosity of the toplevel ch-frb-l1 logic\n"
 	 << "  -p enables a very verbose debug trace of the pipe I/O between L1a and L1b\n"
-	 << "  -m enables a very verbose debug trace of the memory_slab_pool allocation\n";
+	 << "  -m enables a very verbose debug trace of the memory_slab_pool allocation\n"
+	 << "  -w enables a very verbose debug trace of the logic for writing chunks\n";
 
     exit(2);
 }
@@ -70,6 +72,7 @@ struct l1_params {
     int l1_verbosity = 1;
     bool l1b_pipe_io_debug = false;
     bool memory_pool_debug = false;
+    bool write_chunk_debug = false;
 
     // nstreams is automatically determined by the number of (ipaddr, port) pairs.
     // There will be one (network_thread, assembler_thread, rpc_server) triple for each stream.
@@ -130,6 +133,9 @@ struct l1_params {
     int memory_slabs_per_pool = 0;  // total memory slabs to allocate per cpu
     int npools = 0;
 
+    // List of output devices (e.g. '/ssd', '/nfs')
+    vector<string> output_devices;
+
     // L1b linkage.  Note: assumed L1b command line is:
     //   <l1b_executable_filename> <l1b_config_filename> <beam_id>
 
@@ -146,6 +152,12 @@ struct l1_params {
     // the L1 server exits, it will print the (DM, arrival time) of the most significant FRB.
 
     bool track_global_trigger_max = false;
+
+    // Also intended for debugging.  If the optional parameter 'stream_filename_pattern'
+    // is specified, then the L1 server will auto-stream all chunks to disk.  Warning:
+    // it's very easy to use a lot of disk space this way!
+    
+    string stream_filename_pattern;
 };
 
 
@@ -172,6 +184,8 @@ l1_params::l1_params(int argc, char **argv)
 		this->l1b_pipe_io_debug = true;
 	    else if (argv[i][j] == 'm')
 		this->memory_pool_debug = true;
+	    else if (argv[i][j] == 'w')
+		this->write_chunk_debug = true;
 	    else
 		usage();
 	}
@@ -230,12 +244,14 @@ l1_params::l1_params(int argc, char **argv)
     this->assembled_ringbuf_nsamples = p.read_scalar<int> ("assembled_ringbuf_nsamples", 8192);
     this->telescoping_ringbuf_nsamples = p.read_vector<int> ("telescoping_ringbuf_nsamples", {});
     this->write_staging_area_gb = p.read_scalar<double> ("write_staging_area_gb", 0.0);
+    this->output_devices = p.read_vector<string> ("output_devices");
     this->l1b_executable_filename = p.read_scalar<string> ("l1b_executable_filename");
     this->l1b_search_path = p.read_scalar<bool> ("l1b_search_path", false);
     this->l1b_buffer_nsamples = p.read_scalar<int> ("l1b_buffer_nsamples", 0);
     this->l1b_pipe_timeout = p.read_scalar<double> ("l1b_pipe_timeout", 0.0);
     this->l1b_pipe_blocking = p.read_scalar<bool> ("l1b_pipe_blocking", false);
     this->track_global_trigger_max = p.read_scalar<bool> ("track_global_trigger_max", false);
+    this->stream_filename_pattern = p.read_scalar<string> ("stream_filename_pattern", "");
 
     // Lots of sanity checks.
     // First check that we have a consistent 'nstreams'.
@@ -375,7 +391,6 @@ l1_params::l1_params(int argc, char **argv)
     //   - temporary_chunks_per_stream (temporaries in assembled_chunk::_put_assembled_chunk())
     //   - staging_chunks_per_pool (derived from config param 'write_staging_area_gb')
 
-    // FIXME placeholder logic here
     int nupfreq = xdiv(nfreq, nfreq_c);
     this->memory_slab_nbytes = ch_frb_io::assembled_chunk::get_memory_slab_size(nupfreq, nt_per_packet);
     this->npools = is_subscale ? 1 : 2;
@@ -470,6 +485,31 @@ l1_params::l1_params(int argc, char **argv)
 }
 
 
+
+// -------------------------------------------------------------------------------------------------
+//
+// make_output_device()
+
+
+static shared_ptr<ch_frb_io::output_device> make_output_device(const l1_params &config, int idev)
+{
+    ch_frb_io::output_device::initializer ini_params;
+    ini_params.device_name = config.output_devices[idev];
+    ini_params.verbosity = config.write_chunk_debug ? 3 : config.l1_verbosity;
+
+    if (!config.is_subscale) {
+	// On the real CHIME nodes, all disk controllers and NIC's are on CPU1!
+	// (See p. 1-10 of the motherboard manual.)  Therefore, we pin our I/O
+	// threads to core 9 on CPU1.  (This core currently isn't used for anything
+	// except I/O.)
+
+	ini_params.io_thread_allowed_cores = {9, 29};
+    }
+
+    return ch_frb_io::output_device::make(ini_params);
+}
+
+
 // -------------------------------------------------------------------------------------------------
 //
 // make_memory_pool()
@@ -492,7 +532,9 @@ static shared_ptr<ch_frb_io::memory_slab_pool> make_memory_pool(const l1_params 
 // make_input_stream(): returns a stream object which will read packets from the correlator.
 
 
-static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l1_params &config, int istream, const shared_ptr<ch_frb_io::memory_slab_pool> &pool)
+static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l1_params &config, int istream, 
+									 const shared_ptr<ch_frb_io::memory_slab_pool> &memory_pool,
+									 const vector<shared_ptr<ch_frb_io::output_device>> &output_devices)
 {
     assert(istream >= 0 && istream < config.nstreams);
     assert(config.beam_ids.size() == (unsigned)config.nbeams);
@@ -519,7 +561,8 @@ static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l
     ini_params.max_unassembled_nbytes_per_list = config.unassembled_nbytes_per_list;
     ini_params.assembled_ringbuf_capacity = config.assembled_ringbuf_nchunks;
     ini_params.telescoping_ringbuf_capacity = config.telescoping_ringbuf_nchunks;
-    ini_params.memory_pool = pool;
+    ini_params.memory_pool = memory_pool;
+    ini_params.output_devices = output_devices;
     
     // Setting this flag means that an exception will be thrown if either:
     //
@@ -563,7 +606,12 @@ static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l
 	ini_params.network_thread_cores = vconcat(vrange(0,10), vrange(20,30));
     }
 
-    return ch_frb_io::intensity_network_stream::make(ini_params);
+    auto ret = ch_frb_io::intensity_network_stream::make(ini_params);
+
+    // If config.stream_filename_pattern is an empty string, then stream_to_files() doesn't do anything.
+    ret->stream_to_files(config.stream_filename_pattern, 0);
+
+    return ret;
 }
 
 
@@ -736,6 +784,7 @@ int main(int argc, char **argv)
 {
     l1_params config(argc, argv);
 
+    int ndevices = config.output_devices.size();
     int npools = config.npools;
     int nstreams = config.nstreams;
     int nbeams = config.nbeams;
@@ -743,23 +792,27 @@ int main(int argc, char **argv)
     assert(nstreams % npools == 0);
     assert(nbeams % nstreams == 0);
 
+    vector<shared_ptr<ch_frb_io::output_device>> output_devices(ndevices);
     vector<shared_ptr<ch_frb_io::memory_slab_pool>> memory_pools(npools);
     vector<shared_ptr<ch_frb_io::intensity_network_stream>> input_streams(nstreams);
-    vector<shared_ptr<L1RpcServer> > rpc_servers(nbeams);
+    vector<shared_ptr<L1RpcServer> > rpc_servers(nstreams);
+    vector<std::thread> rpc_threads(nstreams);
     vector<std::thread> dedispersion_threads(nbeams);
+
+    for (int idev = 0; idev < ndevices; idev++)
+	output_devices[idev] = make_output_device(config, idev);
 
     for (int ipool = 0; ipool < npools; ipool++)
 	memory_pools[ipool] = make_memory_pool(config, ipool);
 
     for (int istream = 0; istream < nstreams; istream++) {
 	int ipool = istream / (nstreams / npools);
-	input_streams[istream] = make_input_stream(config, istream, memory_pools[ipool]);
+	input_streams[istream] = make_input_stream(config, istream, memory_pools[ipool], output_devices);
     }
 
     for (int istream = 0; istream < nstreams; istream++) {
 	rpc_servers[istream] = make_l1rpc_server(config, istream, input_streams[istream]);
-        // returns std::thread
-        rpc_servers[istream]->start();
+        rpc_threads[istream] = rpc_servers[istream]->start();
     }
 
     if (config.l1_verbosity >= 1)
@@ -780,6 +833,20 @@ int main(int argc, char **argv)
     for (int ibeam = 0; ibeam < nbeams; ibeam++)
 	dedispersion_threads[ibeam].join();
 
+    cout << "All dedispersion threads joined, waiting for pending write requests..." << endl;
+
+    for (int idev = 0; idev < ndevices; idev++) {
+	output_devices[idev]->end_stream(true);   // wait=true
+	output_devices[idev]->join_thread();
+    }
+
+    cout << "All write requests written, all i/o threads joined, shutting down RPC servers..." << endl;
+
+    for (int istream = 0; istream < nstreams; istream++) {
+	rpc_servers[istream]->do_shutdown();
+	rpc_threads[istream].join();
+    }
+    
     print_statistics(config, input_streams, config.l1_verbosity);
 
     return 0;
