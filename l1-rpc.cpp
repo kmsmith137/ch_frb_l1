@@ -259,7 +259,10 @@ void L1RpcServer::set_writechunk_status(string filename,
     {
         ulock u(_status_mutex);
         _write_chunk_status[filename] = make_pair(status, error_message);
-	chlog("Set writechunk status for " << filename << " to " << status);
+	u.unlock();
+
+	string s = (error_message.size() > 0) ? (", error_message='" + error_message + "'") : "";
+	chlog("Set writechunk status for " << filename << " to " << status << s);
     }
 }
 

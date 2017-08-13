@@ -70,13 +70,17 @@ Here are some external links to the bonsai documentation, which may also be usef
     (This shows up in e.g. [example3](#user-content-example3) below.)
     We're working on this next!
 
-  - The L1 server is fragile; if anything goes wrong
+  - The L1 server is **fragile**; if anything goes wrong
     (such as a thread running slow and filling a ring buffer)
     then it will throw an exception and die.
 
     I find that this is actually convenient for debugging, but
     for production we need to carefully enumerate corner cases and
     make sure that the L1 server recovers sensibly.
+
+    Another nuisance issue: after starting a production-scale L1 server instance, 
+    you'll need to wait ~60 seconds before sending packets, or it may crash!
+    (This is to give the L1 server enough time to do all of its initial memory allocation.)
     
   - The code is in a "pre-alpha" state, and serious testing
     will probably uncover bugs!
@@ -179,9 +183,8 @@ over the loopback interface (127.0.0.1).
 
 We process 4 beams, which are divided between UDP ports 6677 and 6688 (two beams per UDP port).
 This is more representative of the real L1 server configuration, where 16 beams
-will either be divided between four IP addresses, or divided between two UDP ports,
-depending on whether we end up using link bonding.  See the section 
-[L1 streams](#user-content-l1-streams) below for more discussion.
+will be divided between four IP addresses.
+See the section [L1 streams](#user-content-l1-streams) below for more discussion.
 
 In example 2, we also use three dedispersion trees which search different
 parts of the (DM, pulse width) parameter space.  See comments in the bonsai
@@ -218,6 +221,7 @@ Usage: ch-frb-l1 [-fvpm] <l1_config.yaml> <rfi_config.json> <bonsai_config.txt> 
   -v increases verbosity of the toplevel ch-frb-l1 logic
   -p enables a very verbose debug trace of the pipe I/O between L1a and L1b
   -m enables a very verbose debug trace of the memory_slab_pool allocation
+  -w enables a very verbose debug trace of the logic for writing chunks
 ```
 The L1 server takes four parameter files as follows:
 
@@ -303,7 +307,7 @@ is divided into multiple streams, with the following properties:
 
  - Each stream corresponds to a unique (ip_address, udp_port) pair.
    For example, a node with four network interfaces, using a single UDP
-   port on each, would use four streams.  (Assuming no link bonding!)
+   port on each, would use four streams.
 
  - The beams received by the node must be divided evenly between streams.
    For example, if a node is configured with 16 beams and 2 streams, then
@@ -333,7 +337,9 @@ Now let's consider some examples.
     for each NIC), and the correlator nodes would need
     to be configured to send four beams to each IP address.
 
-  - The "production-scale" L1 server with link bonding.
+  - The "production-scale" L1 server with link bonding.  (Link bonding
+    is something we were experimenting with at one point, but are
+    currently leaning toward not using.)
 
     In this case, the four NIC's behave as one virtual NIC with
     4 Gbps bandwidth and one IP address.  However, we still
@@ -351,7 +357,7 @@ The L1 server can run in one of two modes:
 
   - A "production-scale" mode which assumes 16 beams, two 10-core CPU's,
     and either 2 or 4 streams.  In this mode, we usually use 16384
-    frequency channels.  The L1 server will use 150-200 GB of memory!
+    frequency channels.  The L1 server will use 230 GB of memory!
 
   - A "subscale" mode which assumes <=4 beams, and either 1, 2, or 4 streams.
   
@@ -397,10 +403,10 @@ alternate network configurations, and more machines, for example a file server.
 
     |      | frb-compute-0 | frb-compute-1  |
     |------|---------------|----------------|
-    | eno1 | 10.0.0.100    | 10.0.0.101     |
-    | eno2 | 10.0.1.100    | 10.0.1.101     |
-    | eno3 | 10.0.2.100    | 10.0.2.101     |
-    | eno4 | 10.0.3.100    | 10.0.3.101     |
+    | eno1 | 10.2.1.100    | 10.2.1.101     |
+    | eno2 | 10.2.2.100    | 10.2.2.101     |
+    | eno3 | 10.2.3.100    | 10.2.3.101     |
+    | eno4 | 10.2.4.100    | 10.2.4.101     |
 
 
   - On **frb-compute-1**, start the L1 server:
@@ -618,32 +624,24 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
   - `output_devices` (list of strings).
 
     This is a list of devices (or filesystems) on the L1 server which can be written to independently.
-    Each output_device is identified by a pathname (usually the mount point of a filesystem) such as `/ssd0`
-    or `/nfs1'.  Each output_device will get a separate I/O thread.
+    Each output_device is identified by a pathname (usually the mount point of a filesystem) such as `/ssd`
+    or `/frb-archiver1'.  Each output_device will get a separate I/O thread.
 
     When the L1 server needs to write a file, it looks for a "matching" output_device whose identifying pathname is a prefix
-    of the filename being written.  For example, the output_device `/ssd0` would match the filename `/ssd0/dir/file`.
+    of the filename being written.  For example, the output_device `/ssd` would match the filename `/ssd/dir/file`.
     The file will then be queued for writing by the appropriate I/O thread.
 
     In subscale testing on a laptop, I usually set `output_devices: [""]`, which creates one output_device
     which matches all filenames, and a single I/O thread to process all write requests.
 
-    In production, we'll want to have one or more SSD output_devices, and one or more NFS output_devices.
-    If the two SSD's in the node are configured as a single RAID-0 device (say `/ssd_raid0`) then we would want one
-    `"/ssd_raid0"` output_device.  If the two SSD's are configured as independent devices `/ssd0, /ssd1` then we
-    would want separate `"/ssd0"` and `"/ssd1"` output_devices.  In the latter case, the L2 node would be responsible
-    for load-balancing the output files, for example by using filenames beginning with /ssd0 for half the L1 streams,
-    and filenames beginning with /ssd1.
-
-    The NFS output_devices are analogous.  Currently it is undecided whether to use link-bonding on the L1 nodes.
-    If we do use link bonding, then the node will have one virtual 4 Gbps NIC, and the NFS server will appear as a
-    single mount point `/nfs`.  In this case it would make sense to use one NFS output_device.
-
-    If we do not end up using link bonding, then the current plan is to configure VLANs on the switches so that the NFS server
-    appears as four moint points `/nfs0`, `/nfs1`, `/nfs2`, `/nfs3`, with I/O on each of these filesystems being
-    done over an indepdenent 1 Gbps NIC.  In this case we would want four NFS output_devices.  In the non-link-bonded
-    case, the node will have four L1 streams, and it is essential for the L2 node to load-balance writes by ensuring
-    that write requests to each stream use filenames in a different `/nfsN` filesystem.
+    On the real nodes, I usually set:
+    ```
+    output_devices: [ "/ssd", "/frb-archiver-1", "/frb-archiver-2", "/frb-archiver-3", "/frb-archiver-4" ]
+    ```
+    which defines 5 file I/O threads, corresponding to (4 NIC's) + (1 SSD) in the node.
+    Recall that the L1 node is configured so that it "thinks" the NFS server is four different
+    servers, mounted on directories /frb-archiver1, /frb-archiver2, /frb-archiver3, /frb-archiver4.  
+    File writes to each of these four filesystems will be sent from the corresponding NIC.
 
     Note that `output_devices: [ ]` (an empty list) means that the server spawns no I/O threads and all write_requests
     fail, whereas `output_devices: [""]` means that the server spawns one I/O thread which matches every write request.
@@ -821,8 +819,7 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
 <a name="rpc reference"></a>
 ### RPC REFERENCE
 
-Coming soon!
+This will be documented systematically soon!
 
-  - `get_statistics`
-
-  - `write_chunks`
+In the meantime, please see the memo [17-08-14-file-writing.pdf](./doc/17-08-14-file-writing.pdf)
+from a telecon, which mostly documents the the file-writing code.
