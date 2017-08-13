@@ -50,6 +50,9 @@ L1_OBJS := l1-rpc.o
 CPP_CFLAGS ?=
 CPP_CFLAGS += -I$(CPPZMQ_INC_DIR) -I$(MSGPACK_INC_DIR)
 
+CIVET_OBJS := civetweb/CivetServer.o civetweb/civetweb.o
+CPP_CFLAGS += -Icivetweb
+
 doc/dependencies.png: doc/dependencies.dot
 	dot -Tpng $< -o $@
 
@@ -74,7 +77,7 @@ ch-frb-test: ch-frb-test.cpp $(L1_OBJS)
 ch-frb-test-debug: ch-frb-test.cpp $(L1_OBJS) $(IO_OBJS)
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lzmq -lhdf5 -llz4
 
-test-l1-rpc: test-l1-rpc.cpp $(L1_OBJS)
+test-l1-rpc: test-l1-rpc.cpp $(L1_OBJS) $(CIVET_OBJS)
 	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lzmq -lhdf5 -llz4 -lch_frb_io
 
 hdf5-stream: hdf5-stream.cpp
