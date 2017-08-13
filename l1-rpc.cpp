@@ -210,6 +210,8 @@ void l1_write_request::write_callback(const string &error_message)
     rep.filename = this->filename;
     rep.error_message = error_message;
 
+    //cout << "l1_write_request: write_callback for " << rep.filename << "success " << rep.success << ", errmsg " << rep.error_message << endl;
+    
     backend_queue->enqueue_write_reply(e);
 }
 
@@ -640,6 +642,7 @@ void L1RpcServer::_check_backend_queue()
 	set_writechunk_status(rep.filename, status, rep.error_message);
 
 	zmq::message_t *client = w->client;
+        //cout << "Write request finished: " << rep.filename << " " << status << endl;
 	if (!client)
 	    continue;
 
