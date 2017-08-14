@@ -76,7 +76,7 @@ def index():
 
     import requests
 
-    url = 'http://localhost:9090/api/v1/query?query=up'
+    url = 'http://localhost:9090/api/v1/query?query=up{job="chime_frb_l1"}'
     r = requests.get(url)
     assert(r.status_code == 200)
     json = r.json()
@@ -99,11 +99,38 @@ def index():
     hosts.sort()
 
 
+    url = 'http://localhost:9090/api/v1/query?query=up{job="chime_frb_datacenter"}'
+    r = requests.get(url)
+    assert(r.status_code == 200)
+    json = r.json()
+    print('UP json:', json)
+    assert(json['status'] == 'success')
+    data = json['data']
+    print('Data:', data)
+    assert(data['resultType'] == 'vector')
+    data = data['result']
+    print('Data:', data)
+    nodeup = {}
+    for item in data:
+        print('  item', item)
+        timestamp,val = item['value']
+        nodeup[item['metric']['instance']] = val
+    print('Up:', nodeup)
+    nodes = nodeup.keys()
+    nodes.sort()
+
+
+    #nodes=list(enumerate(app.nodes)),
     return render_template('index-new.html',
-                           nodes=list(enumerate(app.nodes)),
                            nnodes = len(app.nodes),
                            hosts = hosts,
+                           ehosts = list(enumerate(hosts)),
                            up = up,
+
+                           nodes = nodes,
+                           enodes = list(enumerate(nodes)),
+                           nodeup = nodeup,
+
                            node_status_url='/node-status')
 
 @app.route('/2')

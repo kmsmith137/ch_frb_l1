@@ -24,7 +24,7 @@ public:
         _stream(stream) {}
 
     bool handleGet(CivetServer *server, struct mg_connection *conn) {
-        cout << "test-l1-rpc: serving metrics" << endl;
+        //cout << "test-l1-rpc: serving metrics" << endl;
         mg_printf(conn,
                   "HTTP/1.1 200 OK\r\n"
                   "Content-Type: text/plain\r\n"
