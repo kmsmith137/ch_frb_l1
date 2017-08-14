@@ -11,12 +11,17 @@ import json
 import yaml
 import msgpack
 
-from rpc_client import RpcClient
-
 #from flask import Flask, request, session, url_for, redirect, render_template, abort, g, flash, _app_ctx_stack
 
 app = Flask(__name__)
 
+_rpc_client = None
+def get_rpc_client():
+    global _rpc_client
+    if _rpc_client is None:
+        from rpc_client import RpcClient
+        _rpc_client = RpcClient(dict([(''+str(i), k) for i,k in enumerate(app.nodes)]))
+    return _rpc_client
 
 def parse_config():
     """
@@ -68,8 +73,6 @@ def parse_config():
 
 
 app.nodes = parse_config()
-
-client = None
 
 @app.route('/')
 def index():
@@ -133,6 +136,78 @@ def index():
 
                            node_status_url='/node-status')
 
+@app.route('/packet-matrix')
+def packet_matrix():
+    # Send RPC requests to all nodes, gather results into an HTML table
+    client = get_rpc_client()
+    # Make RPC requests for list_chunks and get_statistics asynchronously
+    timeout = 5.
+
+    allstats = client.get_statistics(timeout=timeout)
+    print('Stats:', allstats)
+    packets = [s[1] for s in allstats]
+    print('Packet stats:', packets)
+
+    senders = set()
+    for p in packets:
+        senders.update(p.keys())
+    senders = list(senders)
+    senders.sort()
+
+    html = '<html><body>'
+    html += '<table><tr><td></td>'
+    for i,l0 in enumerate(senders):
+        html += '<td><a href="l0/%s"> </a></td>' % l0
+    html += '</tr>\n'
+    for i,p in enumerate(packets):
+        html += '<tr><td><a href="host/%s">%i</a></td>' % (app.nodes[i].replace('tcp://',''), i+1)
+        for l0 in senders:
+            n = p.get(l0, 0)
+            html += '<td>%i</td>' % n
+        html += '</tr>\n'
+    html += '</table>'
+    html += '</body></html>'
+    return html
+
+@app.route('/packet-matrix.png')
+def packet_matrix_png():
+    import pylab as plt
+    import numpy as np
+    
+    # Send RPC requests to all nodes, gather results into a plot
+    client = get_rpc_client()
+    # Make RPC requests for list_chunks and get_statistics asynchronously
+    timeout = 5.
+
+    allstats = client.get_statistics(timeout=timeout)
+    packets = [s[1] for s in allstats]
+
+    senders = set()
+    for p in packets:
+        senders.update(p.keys())
+    senders = list(senders)
+    senders.sort()
+
+    if len(senders) == 0:
+        senders = ['null']
+    
+    npackets = np.zeros((len(app.nodes), len(senders)), int)
+    for i,p in enumerate(packets):
+        for j,l0 in enumerate(senders):
+            n = p.get(l0, 0)
+            npackets[i,j] = n
+
+    from io import BytesIO
+    out = BytesIO()
+    plt.clf()
+    plt.imshow(npackets, interpolation='nearest', origin='lower', vmin=0)
+    plt.colorbar()
+    plt.savefig(out, format='png')
+    #plt.imsave(out, npackets, format='png')
+    bb = out.getvalue()
+
+    return (bb, {'Content-type': 'image/png'})
+
 @app.route('/2')
 def index2():
     return render_template('index2.html', nodes=list(enumerate(app.nodes)),
@@ -143,10 +218,7 @@ def node_status():
     #    a = request.args.get('a', 0, type=int)
     #j = jsonify([ dict(addr=k) for k in app.nodes ])
 
-    global client
-    if client is None:
-        client = RpcClient(dict([(''+str(i), k) for i,k in enumerate(app.nodes)]))
-
+    client = get_rpc_client()
     # Make RPC requests for list_chunks and get_statistics asynchronously
     timeout = 5.
 
