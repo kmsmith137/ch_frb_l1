@@ -15,10 +15,5 @@ CPP=g++ -std=c++11 -pthread -fPIC -Wall -O3 -march=native -ffast-math -funroll-l
 # Don't forget to add . and $(LIBDIR) in your LD_LIBRARY_PATH environment variable (in this order)
 CPP_LFLAGS=-L. -L$(HOME)/lib
 
-
-# We use the C (not C++) compiler only once: to compile the 'pybitshuffle' python module.
-# We define a single Makefile variable CC_PYMODULE which contains the complete command line
-# needed to compile a python .so module, including the location of the python header files.
-# Note that you probably need the -shared flag here!
-
-CC_PYMODULE=gcc -std=c99 -shared -fPIC -I$(HOME)/include -I/usr/include/python2.7 -L$(HOME)/lib
+# We use the C (not C++) compiler only once: to compile civetweb/civetweb.o.
+CC=gcc -pthread -fPIC -Wall -O3 -march=native -ffast-math -funroll-loops -I. -I/usr/include/jsoncpp -I$(HOME)/include
