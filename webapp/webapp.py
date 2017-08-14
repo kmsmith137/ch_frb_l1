@@ -3,7 +3,7 @@
 
 from __future__ import print_function
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, redirect
 
 import os
 import sys
@@ -136,6 +136,12 @@ def index():
 
                            node_status_url='/node-status')
 
+
+@app.route('/node/<name>')
+def node(name=None):
+    return redirect('http://localhost:3000/dashboard/db/node-exporter-single-server?orgId=2&from=now-1h&to=now&var-server=%s' % name)
+
+
 @app.route('/packet-matrix')
 def packet_matrix():
     # Send RPC requests to all nodes, gather results into an HTML table
@@ -190,19 +196,27 @@ def packet_matrix_png():
 
     if len(senders) == 0:
         senders = ['null']
-    
-    npackets = np.zeros((len(app.nodes), len(senders)), int)
-    for i,p in enumerate(packets):
-        for j,l0 in enumerate(senders):
+
+    nrecv = len(app.nodes)
+    nsend = len(senders)
+        
+    npackets = np.zeros((nrecv, nsend), int)
+    for irecv,p in enumerate(packets):
+        for isend,l0 in enumerate(senders):
             n = p.get(l0, 0)
-            npackets[i,j] = n
+            npackets[irecv,isend] = n
 
     from io import BytesIO
     out = BytesIO()
     plt.clf()
     plt.imshow(npackets, interpolation='nearest', origin='lower', vmin=0)
     plt.colorbar()
+    plt.xticks(np.arange(nsend))
+    plt.xlabel('L0 senders')
+    plt.yticks(np.arange(nrecv))
+    plt.ylabel('L1 receivers')
     plt.savefig(out, format='png')
+    plt.title('Packets received matrix')
     #plt.imsave(out, npackets, format='png')
     bb = out.getvalue()
 

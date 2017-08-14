@@ -82,7 +82,7 @@ public:
         mg_printf(conn,
                   "# HELP %s Smallest FPGA-counts timestamp in the ring buffer, per beam\n"
                   "# TYPE %s gauge\n", name, name);
-        for (int i=2; i<stats.size(); i++) {
+        for (size_t i=2; i<stats.size(); i++) {
             unordered_map<string, uint64_t> bstats = stats[i];
             mg_printf(conn, "%s{beam=\"%i\"} %llu\n", name, (int)bstats["beam_id"], bstats["ringbuf_fpga_min"]);
         }
@@ -91,7 +91,7 @@ public:
         mg_printf(conn,
                   "# HELP %s Largest FPGA-counts timestamp in the ring buffer, per beam\n"
                   "# TYPE %s gauge\n", name, name);
-        for (int i=2; i<stats.size(); i++) {
+        for (size_t i=2; i<stats.size(); i++) {
             unordered_map<string, uint64_t> bstats = stats[i];
             mg_printf(conn, "%s{beam=\"%i\"} %llu\n", name, (int)bstats["beam_id"], bstats["ringbuf_fpga_max"]);
         }
