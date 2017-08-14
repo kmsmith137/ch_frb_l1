@@ -82,18 +82,18 @@ public:
         mg_printf(conn,
                   "# HELP %s Smallest FPGA-counts timestamp in the ring buffer, per beam\n"
                   "# TYPE %s gauge\n", name, name);
-        for (int i=2; i<stats.size(); i++) {
+        for (unsigned int i=2; i<stats.size(); i++) {
             unordered_map<string, uint64_t> bstats = stats[i];
-            mg_printf(conn, "%s{beam=\"%i\"} %llu\n", name, (int)bstats["beam_id"], bstats["ringbuf_fpga_min"]);
+            mg_printf(conn, "%s{beam=\"%i\"} %lu\n", name, (int)bstats["beam_id"], bstats["ringbuf_fpga_min"]);
         }
 
         name = "ringbuf_fpga_max";
         mg_printf(conn,
                   "# HELP %s Largest FPGA-counts timestamp in the ring buffer, per beam\n"
                   "# TYPE %s gauge\n", name, name);
-        for (int i=2; i<stats.size(); i++) {
+        for (unsigned int i=2; i<stats.size(); i++) {
             unordered_map<string, uint64_t> bstats = stats[i];
-            mg_printf(conn, "%s{beam=\"%i\"} %llu\n", name, (int)bstats["beam_id"], bstats["ringbuf_fpga_max"]);
+            mg_printf(conn, "%s{beam=\"%i\"} %lu\n", name, (int)bstats["beam_id"], bstats["ringbuf_fpga_max"]);
         }
 
         // Ring buffer stats per beam AND downsampling level.
@@ -129,7 +129,7 @@ public:
                   "# TYPE %s gauge\n", name, name);
         for (auto it=minfpgas.begin(); it!=minfpgas.end(); it++) {
             auto key = it->first;
-            mg_printf(conn, "%s{beam=\"%i\",level=\"%i\"} %llu\n", name, key.first, (int)key.second, it->second);
+            mg_printf(conn, "%s{beam=\"%i\",level=\"%i\"} %lu\n", name, key.first, (int)key.second, it->second);
         }
         name = "ringbuf_level_fpga_max";
         mg_printf(conn,
@@ -137,7 +137,7 @@ public:
                   "# TYPE %s gauge\n", name, name);
         for (auto it=maxfpgas.begin(); it!=maxfpgas.end(); it++) {
             auto key = it->first;
-            mg_printf(conn, "%s{beam=\"%i\",level=\"%i\"} %llu\n", name, key.first, (int)key.second, it->second);
+            mg_printf(conn, "%s{beam=\"%i\",level=\"%i\"} %lu\n", name, key.first, (int)key.second, it->second);
         }
         name = "ringbuf_level_nchunks";
         mg_printf(conn,
@@ -145,7 +145,7 @@ public:
                   "# TYPE %s gauge\n", name, name);
         for (auto it=nchunks.begin(); it!=nchunks.end(); it++) {
             auto key = it->first;
-            mg_printf(conn, "%s{beam=\"%i\",level=\"%i\"} %llu\n", name, key.first, (int)key.second, it->second);
+            mg_printf(conn, "%s{beam=\"%i\",level=\"%i\"} %lu\n", name, key.first, (int)key.second, it->second);
         }
         
         return true;
