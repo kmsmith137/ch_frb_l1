@@ -35,7 +35,3 @@ CPP_CFLAGS := -I. -I$(INCDIR) -I$(HDF5_INC_DIR)
 # Don't forget to put -L. and -L$(LIBDIR) on the command line (in this order)
 # Don't forget to add . and $(LIBDIR) in your LD_LIBRARY_PATH environment variable (in this order)
 CPP_LFLAGS=-L. -L$(LIBDIR) -L$(HDF5_LIB_DIR)
-
-# KMS guess for CC on Dustin's laptop :)
-# We use the C (not C++) compiler only once: to compile civetweb/civetweb.o.
-CC=clang -pthread -fPIC -march=native -Wall -O3 -ffast-math -funroll-loops
