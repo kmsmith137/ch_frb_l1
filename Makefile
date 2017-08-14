@@ -8,8 +8,9 @@ ifndef CPP
 $(error Fatal: Makefile.local must define CPP variable)
 endif
 
-ifndef CC_PYMODULE
-$(error Fatal: Makefile.local must define CC_PYMODULE variable)
+# CC is used to compile the only non-C++ source file, civetweb/civetweb.c
+ifndef CC
+$(error Fatal: Makefile.local must define CC variable)
 endif
 
 #
@@ -50,8 +51,14 @@ L1_OBJS := l1-rpc.o
 CPP_CFLAGS ?=
 CPP_CFLAGS += -I$(CPPZMQ_INC_DIR) -I$(MSGPACK_INC_DIR)
 
+CIVET_OBJS := civetweb/CivetServer.o civetweb/civetweb.o
+CPP_CFLAGS += -Icivetweb
+
 doc/dependencies.png: doc/dependencies.dot
 	dot -Tpng $< -o $@
+
+civetweb/civetweb.o: civetweb/civetweb.c
+	$(CC) -Icivetweb -c -o $@ $<
 
 %.o: %.cpp $(INCFILES)
 	$(CPP) -c -o $@ $< $(CPP_CFLAGS)
@@ -74,8 +81,8 @@ ch-frb-test: ch-frb-test.cpp $(L1_OBJS)
 ch-frb-test-debug: ch-frb-test.cpp $(L1_OBJS) $(IO_OBJS)
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lzmq -lhdf5 -llz4
 
-test-l1-rpc: test-l1-rpc.cpp $(L1_OBJS)
-	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lzmq -lhdf5 -llz4 -lch_frb_io
+test-l1-rpc: test-l1-rpc.cpp $(L1_OBJS) $(CIVET_OBJS)
+	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lzmq -lhdf5 -llz4 -lch_frb_io -ldl
 
 hdf5-stream: hdf5-stream.cpp
 	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $< -lrf_pipelines -lch_frb_io $(LIBS)
@@ -84,7 +91,7 @@ terminus-l1: terminus-l1.o $(L1_OBJS)
 	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lrf_pipelines -lbonsai -lch_frb_io $(LIBS) -lsimpulse -lzmq
 
 clean:
-	rm -f *.o *~ $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES)
+	rm -f *.o *~ civetweb/*.o civetweb/*~ $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES)
 
 install: $(INSTALLED_BINARIES)
 	mkdir -p $(BINDIR)

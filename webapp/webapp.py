@@ -73,8 +73,37 @@ client = None
 
 @app.route('/')
 def index():
-    return render_template('index.html', nodes=list(enumerate(app.nodes)),
+
+    import requests
+
+    url = 'http://localhost:9090/api/v1/query?query=up'
+    r = requests.get(url)
+    assert(r.status_code == 200)
+    json = r.json()
+    print('UP json:', json)
+    assert(json['status'] == 'success')
+    data = json['data']
+    print('Data:', data)
+    assert(data['resultType'] == 'vector')
+    data = data['result']
+    print('Data:', data)
+    up = {}
+    for item in data:
+        print('  item', item)
+        timestamp,val = item['value']
+        up[item['metric']['instance']] = val
+
+    print('Up:', up)
+
+    hosts = up.keys()
+    hosts.sort()
+
+
+    return render_template('index-new.html',
+                           nodes=list(enumerate(app.nodes)),
                            nnodes = len(app.nodes),
+                           hosts = hosts,
+                           up = up,
                            node_status_url='/node-status')
 
 @app.route('/2')
