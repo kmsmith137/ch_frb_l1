@@ -81,4 +81,4 @@ l1b_pipe_timeout: 0
 # streams to NFS.
 
 # stream_filename_pattern: "/ssd/kmsmith/chunk_(BEAM)_(CHUNK)_(NCHUNK).msg"
-# stream_filename_pattern: "/frb-archiver-(STREAM)/kmsmith/chunk_(BEAM)_(CHUNK)_(NCHUNK).msg"
+# stream_filename_pattern: "/frb-archiver-(STREAM)/kmsmith/dir0/chunk_(BEAM)_(CHUNK)_(NCHUNK).msg"
