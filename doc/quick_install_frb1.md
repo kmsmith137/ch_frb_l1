@@ -27,6 +27,8 @@ export HDF5_PLUGIN_PATH=$HOME/lib/hdf5_plugins
 ```
 git clone https://github.com/kiyo-masui/bitshuffle
 git clone https://github.com/kmsmith137/simd_helpers
+git clone https://github.com/kmsmith137/pyclops
+git clone https://github.com/kmsmith137/rf_kernels
 git clone https://github.com/kmsmith137/sp_hdf5
 git clone https://github.com/kmsmith137/simpulse
 git clone https://github.com/CHIMEFRB/ch_frb_io
@@ -45,6 +47,16 @@ cd ..
 cd simd_helpers
 ln -s site/Makefile.local.norootprivs Makefile.local
 make -j4 install
+cd ..
+
+cd pyclops
+ln -s site/Makefile.local.frb1 Makefile.local
+make -j4 all install
+cd ..
+
+cd rf_kernels
+ln -s site/Makefile.local.frb1 Makefile.local
+make -j4 all install
 cd ..
 
 cd sp_hdf5

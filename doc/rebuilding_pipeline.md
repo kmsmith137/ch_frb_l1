@@ -12,6 +12,20 @@ git pull
 make -j4 install
 cd ..
 
+cd pyclops
+make clean uninstall
+git checkout master
+git pull
+make -j4 all install
+cd ..
+
+cd rf_kernels
+make clean uninstall
+git checkout master
+git pull
+make -j4 all install
+cd ..
+
 cd sp_hdf5
 git checkout master
 git pull

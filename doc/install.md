@@ -17,7 +17,7 @@ If you run into problems or have suggestions, let me know!
   - A very recent cython.  I know that cython 0.24 works, and cython 0.20 is too old.  (Edit: this used to be true, but I
     suspect older versions of cython will work now.)
   - numpy/scipy/matplotlib
-  - hdf5 version 1.8.11 or later
+  - hdf5 version 1.8.11 or later, **but not version 1.10.x**
   - h5py version 2.4.0 or later
   - FFTW3 (http://fftw.org)
   - The 'PIL' python imaging library.  If you need to install it, I recommend the Pillow variant ('pip install Pillow')
@@ -49,9 +49,12 @@ If you run into problems or have suggestions, let me know!
   You might need to upgrade your cython, since bonsai currently requires a very
   recent cython (I know that cython 0.24 works, and cython 0.20 is too old).
 
-- libhdf5.  I had to build this from source, since bitshuffle requires 1.8.11
-  or later, and the package managers (yum, brew) wanted to install an earlier
-  version.  The following worked for me (assuming no root privileges):
+- libhdf5. **Currently, the pipeline requires HDF5 version 1.8.11 or later,
+  but does not work with version 1.10.x.  This will be fixed eventually!**
+
+  Given these version constraints, I needed to build libhdf5 from source (note that
+  yum and homebrew want to install a version which is too old).  The following 
+  worked for me (assuming no root privileges):
   ```
   wget https://support.hdfgroup.org/ftp/HDF5/current18/src/hdf5-1.8.19.tar.gz
   tar zxvf hdf5-1.8.19.tar.gz
@@ -176,6 +179,10 @@ These instructions apply to the following github repos:
 
   - [kmsmith137/simd_helpers](https://github.com/kmsmith137/simd_helpers):
     header-only library for writing x86 assembly language kernels.
+  - [kmsmith137/pyclops](https://github.com/kmsmith137/pyclops):
+    some hacks for writing hybrid C++/python code.
+  - [kmsmith137/rf_kernels](https://github.com/kmsmith137/rf_kernels):
+    fast C++/assembly kernels for RFI removal and related tasks.
   - [kmsmith137/sp_hdf5](https://github.com/kmsmith137/sp_hdf5):
     header-only library for reading/writing hdf5 from C++.
   - [kmsmith137/simpulse](https://github.com/kmsmith137/simpulse):
@@ -218,14 +225,15 @@ Some more notes on writing Makefile.local files:
     HAVE_PNG=y
     ```
 
-  - The rf_pipelines package has optional dependencies on bonsai and ch_frb_io which you'll want to enable.
-    There is also an optional dependency on psrfits which isn't important for CHIMEFRB.
-    Thus your Makefile.local should contain the lines
+  - The rf_pipelines package has the following optional dependencies which you'll want to enable.
     ```
     HAVE_BONSAI=y
     HAVE_CH_FRB_IO=y
-    HAVE_PSRFITS=n
+    HAVE_SIMPULSE=y
+    HAVE_HDF5=y
+    HAVE_PNG=y
     ```
+    (There is also an optional dependency on psrfits which isn't important for CHIMEFRB.)
 
   - Some of the packages need to include header files from your python installation.
     This is the case if the example Makefile.locals contain lines like these:
