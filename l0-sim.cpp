@@ -71,7 +71,7 @@ void L0Simulator::send_one_chunk() {
         intensity[i] = r0 + scale * (float)rando();
 
     int64_t fpga_count = int64_t(ichunk) * int64_t(stream->fpga_counts_per_chunk);
-    stream->send_chunk(&intensity[0], &weights[0], stride, fpga_count);
+    stream->send_chunk(&intensity[0], stride, &weights[0], stride, fpga_count);
     ichunk++;
 }
 
