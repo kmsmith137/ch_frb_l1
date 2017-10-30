@@ -67,7 +67,7 @@ rpc-client: rpc_client.o
 	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lch_frb_io -lzmq
 
 ch-frb-l1: ch-frb-l1.o yaml_paramfile.o $(L1_OBJS)
-	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lrf_pipelines -lbonsai -lch_frb_io -lzmq -lyaml-cpp -ljsoncpp
+	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lrf_pipelines -lbonsai -lch_frb_io -lrf_kernels -lzmq -lyaml-cpp -ljsoncpp
 
 sim-l0-set: sim-l0-set.cpp l0-sim.cpp
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io
@@ -85,10 +85,10 @@ test-l1-rpc: test-l1-rpc.cpp $(L1_OBJS) $(CIVET_OBJS)
 	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lzmq -lhdf5 -llz4 -lch_frb_io -ldl
 
 hdf5-stream: hdf5-stream.cpp
-	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $< -lrf_pipelines -lch_frb_io $(LIBS)
+	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $< -lrf_pipelines -lch_frb_io -lrf_kernels $(LIBS)
 
 terminus-l1: terminus-l1.o $(L1_OBJS)
-	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lrf_pipelines -lbonsai -lch_frb_io $(LIBS) -lsimpulse -lzmq
+	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lrf_pipelines -lbonsai -lch_frb_io -lrf_kernels $(LIBS) -lsimpulse -lzmq
 
 clean:
 	rm -f *.o *~ civetweb/*.o civetweb/*~ $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES)
