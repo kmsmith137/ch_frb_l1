@@ -36,12 +36,13 @@ using namespace ch_frb_l1;
 
 static void usage()
 {
-    cerr << "Usage: ch-frb-l1 [-fvpm] <l1_config.yaml> <rfi_config.json> <bonsai_config.txt> <l1b_config_file>\n"
+    cerr << "Usage: ch-frb-l1 [-fvpmc] <l1_config.yaml> <rfi_config.json> <bonsai_config.txt> <l1b_config_file>\n"
 	 << "  -f forces the L1 server to run, even if the config files look fishy\n"
 	 << "  -v increases verbosity of the toplevel ch-frb-l1 logic\n"
 	 << "  -p enables a very verbose debug trace of the pipe I/O between L1a and L1b\n"
 	 << "  -m enables a very verbose debug trace of the memory_slab_pool allocation\n"
-	 << "  -w enables a very verbose debug trace of the logic for writing chunks\n";
+	 << "  -w enables a very verbose debug trace of the logic for writing chunks\n"
+	 << "  -c deliberately crash dedispersion thread (for debugging, obviously)\n";
 
     exit(2);
 }
@@ -72,6 +73,7 @@ struct l1_params {
     bool l1b_pipe_io_debug = false;
     bool memory_pool_debug = false;
     bool write_chunk_debug = false;
+    bool deliberately_crash = false;
 
     // nstreams is automatically determined by the number of (ipaddr, port) pairs.
     // There will be one (network_thread, assembler_thread, rpc_server) triple for each stream.
@@ -185,6 +187,8 @@ l1_params::l1_params(int argc, char **argv)
 		this->memory_pool_debug = true;
 	    else if (argv[i][j] == 'w')
 		this->write_chunk_debug = true;
+	    else if (argv[i][j] == 'c')
+		this->deliberately_crash = true;
 	    else
 		usage();
 	}
@@ -623,6 +627,7 @@ static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l
     ini_params.stream_id = istream + 1;   // +1 here since first NFS mount is /frb-archive-1, not /frb-archive-0
     ini_params.force_fast_kernels = !config.slow_kernels;
     ini_params.force_reference_kernels = config.slow_kernels;
+    ini_params.deliberately_crash = config.deliberately_crash;
     ini_params.unassembled_ringbuf_capacity = config.unassembled_ringbuf_capacity;
     ini_params.max_unassembled_packets_per_list = config.unassembled_npackets_per_list;
     ini_params.max_unassembled_nbytes_per_list = config.unassembled_nbytes_per_list;
