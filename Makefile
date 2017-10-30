@@ -36,8 +36,8 @@ endif
 #
 
 # Is this the correct split into installed/non-installed?
-INSTALLED_BINARIES := ch-frb-l1 ch-frb-simulate-l0 terminus-l1
-NON_INSTALLED_BINARIES := rpc-client test-l1-rpc sim-l0-set hdf5-stream
+INSTALLED_BINARIES := ch-frb-l1 ch-frb-simulate-l0
+NON_INSTALLED_BINARIES := rpc-client test-l1-rpc sim-l0-set
 
 all: $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES)
 
@@ -84,21 +84,18 @@ ch-frb-test-debug: ch-frb-test.cpp $(L1_OBJS) $(IO_OBJS)
 test-l1-rpc: test-l1-rpc.cpp $(L1_OBJS) $(CIVET_OBJS)
 	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lzmq -lhdf5 -llz4 -lch_frb_io -ldl
 
-hdf5-stream: hdf5-stream.cpp
-	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $< -lrf_pipelines -lch_frb_io -lrf_kernels $(LIBS)
-
-terminus-l1: terminus-l1.o $(L1_OBJS)
-	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lrf_pipelines -lbonsai -lch_frb_io -lrf_kernels $(LIBS) -lsimpulse -lzmq
-
 clean:
-	rm -f *.o *~ civetweb/*.o civetweb/*~ $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES)
+	rm -f *.o *~ civetweb/*.o civetweb/*~ $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES) terminus-l1 hdf5-stream
+
+# Note that we clean up 'terminus-l1' (which has been phased out) in the targets below.
 
 install: $(INSTALLED_BINARIES)
 	mkdir -p $(BINDIR)
+	rm -f $(BINDIR)/terminus-l1
 	for f in $(INSTALLED_BINARIES); do cp $$f $(BINDIR)/; done
 
 uninstall:
-	for f in $(INSTALLED_BINARIES); do rm -f $(BINDIR)/$$f; done
+	for f in $(INSTALLED_BINARIES) terminus-l1; do rm -f $(BINDIR)/$$f; done
 
 
 # These are files; don't apply implicit make rules
