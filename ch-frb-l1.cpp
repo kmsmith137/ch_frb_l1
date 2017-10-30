@@ -1,6 +1,5 @@
 // Major features missing:
 //
-//   - RFI removal is a placeholder
 //   - Distributed logging is not integrated
 //   - If anything goes wrong, the L1 server will crash!
 //
@@ -209,13 +208,16 @@ l1_params::l1_params(int argc, char **argv)
 	throw runtime_error("ch-frb-l1: couldn't parse json file " + rfi_config_filename);
 
     // Throwaway call, to get an early check that rfi_config_file is valid.
-    auto rfi_chain = rf_pipelines::deserialize_transform_chain_from_json(this->rfi_transform_chain_json);
+    auto rfi_chain = rf_pipelines::pipeline_object::from_json(rfi_transform_chain_json);
 
+#if 0
+    // FIXME pretty-print rfi_chain
     if (l1_verbosity >= 2) {
 	cout << rfi_config_filename << ": " << rfi_chain.size() << " transforms\n";
 	for (unsigned int i = 0; i < rfi_chain.size(); i++)
 	    cout << rfi_config_filename << ": transform " << i << "/" << rfi_chain.size() << ": " << rfi_chain[i]->name << "\n";
     }
+#endif
 
     // Read bonsai_config file.
     this->bonsai_config = bonsai::config_params(bonsai_config_filename);
@@ -225,6 +227,18 @@ l1_params::l1_params(int argc, char **argv)
 	string prefix = bonsai_config_filename + ": ";
 	bonsai_config.write(cout, write_derived_params, prefix);
     }
+
+    // Check that the bonsai config file contains all transfer matrices.
+    // This will be the case if it is the output of 'bonsai-mkweight'.
+
+    bool have_transfer_matrices = true;
+
+    for (int itree = 0; itree < bonsai_config.ntrees; itree++)
+	if (!bonsai_config.transfer_matrices[itree])
+	    have_transfer_matrices = false;
+
+    if (!have_transfer_matrices)
+	throw runtime_error(bonsai_config_filename + ": transfer matrices not found.  For more info, see \"The bonsai config file\" under \"CONFIGURATION FILE OVERVIEW\" in ch_frb_l1/MANUAL.md.");
 
     // Remaining code in this function reads l1_config file.
 
@@ -695,7 +709,8 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
     assert(ibeam >= 0 && ibeam < config.nbeams);
 
     try {
-	const bonsai::config_params &bonsai_config = config.bonsai_config;
+	// Note: deep copy here, to get thread-local copy of transfer matrices!
+	bonsai::config_params bonsai_config = config.bonsai_config.deep_copy();
 	vector<int> allowed_cores;
 
 	// FIXME: cut-and-paste between make_l1b_subprocess() and here.
@@ -714,13 +729,13 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 	// Note: the distinction between 'ibeam' and 'beam_id' is a possible source of bugs!
 	int beam_id = config.beam_ids[ibeam];
         auto stream = rf_pipelines::make_chime_network_stream(sp, beam_id);
-	auto transform_chain = rf_pipelines::deserialize_transform_chain_from_json(config.rfi_transform_chain_json);
+	auto rfi_chain = rf_pipelines::pipeline_object::from_json(config.rfi_transform_chain_json);
 
 	bonsai::dedisperser::initializer ini_params;
+	ini_params.fill_rfi_mask = true;  // very important for real-time analysis!
 	ini_params.verbosity = 0;
 
 	auto dedisperser = make_shared<bonsai::dedisperser> (bonsai_config, ini_params);
-	transform_chain.push_back(rf_pipelines::make_bonsai_dedisperser(dedisperser));
 
 	// Trigger processors.
 
@@ -734,8 +749,19 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 	if (l1b_trigger_pipe)
 	    dedisperser->add_processor(l1b_trigger_pipe);
 
-	// (transform_chain, outdir, json_output, verbosity)
-	stream->run(transform_chain, string(), nullptr, 0);
+	auto bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
+	
+	auto pipeline = make_shared<rf_pipelines::pipeline> ();
+	pipeline->add(stream);
+	pipeline->add(rfi_chain);
+	pipeline->add(bonsai_transform);
+
+	rf_pipelines::run_params rparams;
+	rparams.outdir = "";  // disables
+	rparams.verbosity = 0;
+
+	// FIXME more sensible synchronization scheme!
+	pipeline->run(rparams);
 
 	if (max_tracker) {
 	    stringstream ss;
