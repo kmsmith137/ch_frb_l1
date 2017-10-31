@@ -5,7 +5,6 @@
 Makefile.local
 ch-frb-l1
 ch-frb-simulate-l0
-hdf5-stream
 pybitshuffle.so
 rpc-client
 sim-l0-set
@@ -13,4 +12,3 @@ test-l1-rpc
 l1-rpc.o
 rpc_client.o
 test-l1-rpc
-terminus-l1
