@@ -17,7 +17,7 @@ If you run into problems or have suggestions, let me know!
   - A very recent cython.  I know that cython 0.24 works, and cython 0.20 is too old.  (Edit: this used to be true, but I
     suspect older versions of cython will work now.)
   - numpy/scipy/matplotlib
-  - hdf5 version 1.8.11 or later, **but not version 1.10.x**
+  - hdf5 version 1.8.12 or later, **but not version 1.10.x**
   - h5py version 2.4.0 or later
   - FFTW3 (http://fftw.org)
   - The 'PIL' python imaging library.  If you need to install it, I recommend the Pillow variant ('pip install Pillow')
@@ -49,65 +49,45 @@ If you run into problems or have suggestions, let me know!
   You might need to upgrade your cython, since bonsai currently requires a very
   recent cython (I know that cython 0.24 works, and cython 0.20 is too old).
 
-- libhdf5. **Currently, the pipeline requires HDF5 version 1.8.11 or later,
+- libhdf5. **Currently, the pipeline requires HDF5 version 1.8.12 or later,
   but does not work with version 1.10.x.  This will be fixed eventually!**
-
-  Given these version constraints, I needed to build libhdf5 from source (note that
-  yum and homebrew want to install a version which is too old).  The following 
-  worked for me (assuming no root privileges):
-  ```
-  wget https://support.hdfgroup.org/ftp/HDF5/current18/src/hdf5-1.8.19.tar.gz
-  tar zxvf hdf5-1.8.19.tar.gz
-  cd hdf5-1.8.19
-  ./configure --prefix=$HOME --enable-cxx
-  make
-  make install
-  ```
+  In the meantime, for instructions for installing a version of HDF5
+  which is neither too old nor too new, please see
+  [kmsmith137/sp_hdf5/README.md](https://github.com/kmsmith137/sp_hdf5/README.md).
 
 - lz4.  
 
    - osx one-liner: `brew install lz4`
-
    - centos one-liner: `sudo yum install lz4-devel`
-
    - ubuntu one-liner: `sudo apt-get install liblz4-dev`
 
 - msgpack.  
 
    - osx one-liner: `brew install msgpack`
-
    - centos one-liner: `sudo yum install msgpack-devel.x86_64`
-
    - ubuntu: don't install the apt-get version, it is too old!  (e.g. it is missing /usr/include/msgpack/fbuffer.hpp)
-
    - Building from scratch.  This is easy because we only use the msgpack headers, not the compiled library.
-       
-     Kendrick's procedure:
-     ```
-     git clone https://github.com/msgpack/msgpack-c
-     sudo cp -r msgpack-c/include/* /usr/local/include
-     ```
-
-     Dustin's procedure: download the source package from, eg,
-     https://github.com/msgpack/msgpack-c/releases/download/cpp-2.1.0/msgpack-2.1.0.tar.gz
-     and then extract it and add the "msgpack-2.1.0/include" into the
-     include path.
+     - Kendrick's procedure:
+       ```
+       git clone https://github.com/msgpack/msgpack-c
+       sudo cp -r msgpack-c/include/* /usr/local/include
+       ```
+     - Dustin's procedure: download the source package from, e.g,
+       https://github.com/msgpack/msgpack-c/releases/download/cpp-2.1.0/msgpack-2.1.0.tar.gz
+       and then extract it and add the "msgpack-2.1.0/include" into the
+       include path.
 
 - zeromq and cppzmq.  
 
    - centos one-liner: `sudo yum install cppzmq-devel.x86_64`
-
    - ubuntu: don't use the apt-get packages, they are too old!.  You'll need to build both zeromq and cppzmq from scratch, see below.
-
    - osx: zeromq can be installed with `brew install zeromq`, but you'll need to build cppzmq from scratch, see below.
-   
    - Building zmq from scratch: download from zeromq.org, and then do:
      ```
      ./configure --prefix=/usr/local
      make
      sudo make install
      ```
-
    - Building cppzmq from scratch: since it's a header-only library with two source files, I just ignored the build system and did:
      ```
      git clone https://github.com/zeromq/cppzmq.git
@@ -118,11 +98,8 @@ If you run into problems or have suggestions, let me know!
 - jsoncpp (https://github.com/open-source-parsers/jsoncpp)
 
     - osx one-liner: `brew install jsoncpp`
-
     - centos one-liner: `sudo yum install jsoncpp-devel`
-
     - ubuntu one-liner: `sudo apt-get install libjsoncpp-dev`
-
     - Building jsoncpp from scratch is a pain, but the following procedure worked for me:
       ```
       git clone https://github.com/open-source-parsers/jsoncpp
@@ -135,9 +112,7 @@ If you run into problems or have suggestions, let me know!
  - yaml-cpp (https://github.com/jbeder/yaml-cpp)
 
     - osx one-liner: `brew install yaml-cpp`.
-
     - centos one-liner: `sudo yum install yaml-cpp-devel`.
-
     - ubuntu two-liner: 
       ```
       sudo apt-get install libboost-all-dev    # overkill?
