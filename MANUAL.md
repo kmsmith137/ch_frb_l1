@@ -67,20 +67,30 @@ Here are some external links to the bonsai documentation, which may also be usef
     and ~600 seconds for the highest DM's!  We will try to reduce these
     timescales in future versions.
 
+    Note: because of the "slow start" problem, the two-node backend examples
+    [3](#user-content-example3) and [4](#user-content-example4) in this manual
+    have been increased from 5-minute runs to 20-minute runs.
+
   - Currently, bonsai config files must be constructed by a two-step process as follows.
     First, a human-editable text file `bonsai_xxx.txt` is written (for an example, see
-    bonsai_configs/bonsai_example1.txt).  Second, this must be "compiled" into an HDF5
+    bonsai_configs/bonsai_example1.txt).  Second, this is be "compiled" into an HDF5
     file using the utility `bonsai-mkweight`:
     ```
     bonsai-mkweight bonsai_xxx.txt bonsai_xxx.hdf5
     ```
-    Note that the `bonsai-mkweight` utility is part of bonsai, not ch_frb_l1.
+    where that the `bonsai-mkweight` utility is part of bonsai, not ch_frb_l1.
 
-    The `bonsai_configs` directory contains .txt files, but not their .hdf5 counterparts.
-    (This is because the HDF5 files are large, and adding them to git would make the
-    repository awkwardly large over time.)  So you'll need to create the .hdf5 files
-    using `bonsai-mkweight` as above.
+    Note that we don't put the HDF5 files in git, since they are large files, so you may need
+    to create the hdf5 files by hand using the above procedure.  Exception: on the CHIME nodes, 
+    the "production" HDF5 files should already be in `/data/bonsai_configs`.
 
+  - Currently, 16K RFI removal is running slower than originally hoped (0.55 cores/beam).
+    If the L1 server is run with 16K RFI removal enabled, then you'll need use the
+    bonsai config file `bonsai_production_noups_nbeta1_xx.hdf5`.  This bonsai config
+    disables spectral index searching and low-DM upsampling, in order to save CPU time.
+    If the other "production" bonsai config files are used, the L1 server will run too
+    slow and crash!
+    
   - The L1 server is **fragile**; if anything goes wrong
     (such as a thread running slow and filling a ring buffer)
     then it will throw an exception and die.
@@ -122,11 +132,11 @@ For a dependency graph, see [doc/dependencies.png](./doc/dependencies.png).
   - [CHIMEFRB/bonsai](https://github.com/CHIMEFRB/bonsai):
     fast tree dedispersion on x86.
   - [kmsmith137/rf_pipelines](https://github.com/kmsmith137/rf_pipelines):
-    plugin-based radio astronomy pipelines.
+    plugin-based radio astronomy pipelines.  
+    (Note: this repo now includes the web viewer code which was previously
+    in [mburhanpurkar/web_viewer](https://github.com/mburhanpurkar/web_viewer).)
   - [mrafieir/ch_frb_rfi](https://github.com/mrafieir/ch_frb_rfi):
     scritping framework for RFI removal and offline L1 analysis.  **(frb1 only)**
-  - [mburhanpurkar/web_viewer](https://github.com/mburhanpurkar/web_viewer):
-    web-based visualization of L1 pipeline outputs.  **(frb1 only)**
   - [kmsmith137/ch_frb_l1](https://github.com/kmsmith137/ch_frb_l1):
     toplevel repo, whose README you're reading right now.
 
@@ -171,7 +181,7 @@ over the loopback interface (127.0.0.1).
   - **This step only needs to be done once.** Initialize the bonsai HDF5 file, 
     using the utility `bonsai-mkweight`, which should have been installed in 
     your $PATH when bonsai was built.  For more discussion of this step, 
-    see [the bonsai config file](#user-content-bonsai-config) below.
+    see the section ["The bonsai config file"](#user-content-bonsai-config) below.
     ```
     cd bonsai_configs/
     bonsai-mkweight bonsai_example1.txt bonsai_example1.hdf5
@@ -249,6 +259,10 @@ The steps below are similar to example 1, so discussion is minimal.
 
 <a name="configuration-file-overview"></a>
 ### CONFIGURATION FILE OVERVIEW
+
+Before giving more examples, we pause to give an overview
+of the various config files used in the L0 simulator
+(ch-frb-simulate-l0) and the L1 server (ch-frb-l1).
 
 #### ch-frb-simulate-l0 (the L0 simulator)
 
@@ -421,7 +435,7 @@ The nodes are in a non-link-bonded configuration, with each of their four
 ![two_node_backend](doc/two_node_backend.png)
 
 Future versions of the manual will include examples which include
-alternate network configurations, and more machines, for example a file server.
+more machines, for example a file server.
 
 <a name="example3"></a>
 **Example 3:**
@@ -436,6 +450,10 @@ alternate network configurations, and more machines, for example a file server.
     spectral index.  We use "placeholder" RFI removal, which doesn't actually
     mask RFI, but does detrend the data.  These search parameters are a little
     underpowered compared to what we'll use in production.
+
+    Note: because of the "slow start" problem described in "Caveats" at the
+    beginning of this manual, this example is now a 20-minute run (previously,
+    it was a 5-minute run).
 
   - First, check that the node is in the network configuration shown above.
     This is not guaranteed to be the case, since we're still experimenting with	
@@ -457,26 +475,28 @@ alternate network configurations, and more machines, for example a file server.
     ./ch-frb-l1  \
        l1_configs/l1_example3.yaml  \
        rfi_configs/rfi_placeholder.json  \
-       bonsai_configs/bonsai_noups_nbeta1.txt  \
+       /data/bonsai_configs/bonsai_production_noups_nbeta1_v2.hdf5  \
        l1b_config_placeholder
     ```
     It may take around 30 seconds for all threads and processes to start!
     Before going on to the next step, you should wait until messages of the 
     form "toy-l1b.py: starting..." appear.
 
+    Note: On frb-compute-1 and the other CHIME nodes, the bonsai "production" HDF5 files have
+    been precomputed for convenience, and are kept in `/data/bonsai_configs`.  This is why
+    we were able to skip the step of computing the .hdf5 file
+    from `bonsai_configs/bonsai_production_noups_nbeta1_v2.txt`.
+
   - On **frb-compute-0**, start the L0 simulator:
     ```
-    ./ch-frb-simulate-l0 l0_configs/l0_example3.yaml 300
+    ./ch-frb-simulate-l0 l0_configs/l0_example3.yaml 1200
     ```
-    This simulates 300 seconds of data.  If you switch back to the L1 server window,
+    This simulates 20 minutes of data.  If you switch back to the L1 server window,
     you'll see some incremental output every 10 seconds or so, as coarse-grained triggers 
     are received by the toy-l1b processes.
 
   - When the simulation ends (after 5 minutes), the toy-l1b processes will write
-    their trigger plots (toy_l1b_beam*.png).  These will be large files (4000-by-4000 pixels)!
-    You'll see some false positive events at low DM near the beginning of the simulation.
-    As noted at the beginning of this manual, this is a technical issue in the bonsai code 
-    which we're working on next!
+    their trigger plots (toy_l1b_beam*.png).  These will be large files (20000-by-4000 pixels)!
 
 **Notes on the two-node backend:**
 
@@ -499,6 +519,31 @@ alternate network configurations, and more machines, for example a file server.
     exit
     ```
     ...but be careful with rm -rf as root!
+
+<a name="example4"></a>
+**Example 4:**
+
+  - This is the same as example 3, except we run real 16K RFI removal
+    on the L1 server, rather than placeholder RFI removal.
+
+    Note that we re-use most of the configuration files from example 3.
+    The only difference is that `rfi_placeholder.json` has been
+    replaced by `rfi_production_v2.json`.
+
+  - On **frb-compute-1**, start the L1 server:
+    ```
+    ./ch-frb-l1  \
+       l1_configs/l1_example3.yaml  \
+       rfi_configs/rfi_production_v2.json  \
+       /data/bonsai_configs/bonsai_production_noups_nbeta1_v2.hdf5  \
+       l1b_config_placeholder
+    ```
+    and wait for it to finish initializing (takes around 1 minute).
+
+  - On **frb-compute-0**, start the L0 simulator:
+    ```
+    ./ch-frb-simulate-l0 l0_configs/l0_example3.yaml 1200
+    ```
 
 <a name="l1-config"></a>
 ### CONFIG FILE REFERENCE: L1 SERVER

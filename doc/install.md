@@ -192,7 +192,9 @@ These instructions apply to the following github repos:
   - [CHIMEFRB/bonsai](https://github.com/CHIMEFRB/bonsai):
     fast tree dedispersion on x86.
   - [kmsmith137/rf_pipelines](https://github.com/kmsmith137/rf_pipelines):
-    plugin-based radio astronomy pipelines.
+    plugin-based radio astronomy pipelines.  
+    (Note: this repo now includes the web viewer code which was previously
+    in [mburhanpurkar/web_viewer](https://github.com/mburhanpurkar/web_viewer).)
   - [mrafieir/ch_frb_rfi](https://github.com/mrafieir/ch_frb_rfi):
     scritping framework for RFI removal and offline L1 analysis.  **(frb1 only)**
   - [kmsmith137/ch_frb_l1](https://github.com/kmsmith137/ch_frb_l1):

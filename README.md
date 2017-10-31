@@ -12,6 +12,10 @@ For a dependency graph, see [doc/dependencies.png](./doc/dependencies.png).
     "bitwise" compression algorithm used throughout CHIME.
   - [kmsmith137/simd_helpers](https://github.com/kmsmith137/simd_helpers):
     header-only library for writing x86 assembly language kernels.
+  - [kmsmith137/pyclops](https://github.com/kmsmith137/pyclops):
+    some hacks for writing hybrid C++/python code.
+  - [kmsmith137/rf_kernels](https://github.com/kmsmith137/rf_kernels):
+    fast C++/assembly kernels for RFI removal and related tasks.
   - [kmsmith137/sp_hdf5](https://github.com/kmsmith137/sp_hdf5):
     header-only library for reading/writing hdf5 from C++.
   - [kmsmith137/simpulse](https://github.com/kmsmith137/simpulse):
@@ -21,11 +25,11 @@ For a dependency graph, see [doc/dependencies.png](./doc/dependencies.png).
   - [CHIMEFRB/bonsai](https://github.com/CHIMEFRB/bonsai):
     fast tree dedispersion on x86.
   - [kmsmith137/rf_pipelines](https://github.com/kmsmith137/rf_pipelines):
-    plugin-based radio astronomy pipelines.
+    plugin-based radio astronomy pipelines.  
+    (Note: this repo now includes the web viewer code which was previously
+    in [mburhanpurkar/web_viewer](https://github.com/mburhanpurkar/web_viewer).)
   - [mrafieir/ch_frb_rfi](https://github.com/mrafieir/ch_frb_rfi):
     scritping framework for RFI removal and offline L1 analysis.  **(frb1 only)**
-  - [mburhanpurkar/web_viewer](https://github.com/mburhanpurkar/web_viewer):
-    web-based visualization of L1 pipeline outputs.  **(frb1 only)**
   - [kmsmith137/ch_frb_l1](https://github.com/kmsmith137/ch_frb_l1):
     toplevel repo, whose README you're reading right now.
 
