@@ -12,3 +12,4 @@ test-l1-rpc
 l1-rpc.o
 rpc_client.o
 test-l1-rpc
+bonsai_configs/*.hdf5

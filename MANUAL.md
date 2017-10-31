@@ -49,10 +49,6 @@ Here are some external links to the bonsai documentation, which may also be usef
 
 **Caveats.** The L1 server is not finished yet! Please note the following caveats:
 
-  - **No RFI removal yet**.  Instead there is a placeholder
-    processing stage which detrends the data, but does not
-    mask RFI.
-
   - The L0 simulator can only simulate noise; it cannot
     simulate pulses or replay RFI captures.
 
@@ -65,10 +61,25 @@ Here are some external links to the bonsai documentation, which may also be usef
     "production-scale" examples, not the subscale examples which can
     run on a laptop.
 
-  - There is another technical issue in the bonsai code which sometimes
-    causes false positive events at low DM near the beginning of the timestream.
-    (This shows up in e.g. [example3](#user-content-example3) below.)
-    We're working on this next!
+  - Another technical issue in the bonsai code: the "slow start".  The bonsai
+    triggers are all-zero arrays at first, and gradually "activate" as time
+    progresses.  This activation process takes ~100 seconds for the lowest DM's,
+    and ~600 seconds for the highest DM's!  We will try to reduce these
+    timescales in future versions.
+
+  - Currently, bonsai config files must be constructed by a two-step process as follows.
+    First, a human-editable text file `bonsai_xxx.txt` is written (for an example, see
+    bonsai_configs/bonsai_example1.txt).  Second, this must be "compiled" into an HDF5
+    file using the utility `bonsai-mkweight`:
+    ```
+    bonsai-mkweight bonsai_xxx.txt bonsai_xxx.hdf5
+    ```
+    Note that the `bonsai-mkweight` utility is part of bonsai, not ch_frb_l1.
+
+    The `bonsai_configs` directory contains .txt files, but not their .hdf5 counterparts.
+    (This is because the HDF5 files are large, and adding them to git would make the
+    repository awkwardly large over time.)  So you'll need to create the .hdf5 files
+    using `bonsai-mkweight` as above.
 
   - The L1 server is **fragile**; if anything goes wrong
     (such as a thread running slow and filling a ring buffer)
@@ -98,6 +109,10 @@ For a dependency graph, see [doc/dependencies.png](./doc/dependencies.png).
     "bitwise" compression algorithm used throughout CHIME.
   - [kmsmith137/simd_helpers](https://github.com/kmsmith137/simd_helpers):
     header-only library for writing x86 assembly language kernels.
+  - [kmsmith137/pyclops](https://github.com/kmsmith137/pyclops):
+    some hacks for writing hybrid C++/python code.
+  - [kmsmith137/rf_kernels](https://github.com/kmsmith137/rf_kernels):
+    fast C++/assembly kernels for RFI removal and related tasks.
   - [kmsmith137/sp_hdf5](https://github.com/kmsmith137/sp_hdf5):
     header-only library for reading/writing hdf5 from C++.
   - [kmsmith137/simpulse](https://github.com/kmsmith137/simpulse):
@@ -153,12 +168,22 @@ update from git, and rebuild everything from scratch.
 The L0 simulator and L1 server run on the same machine (e.g. a laptop), and exchange packets 
 over the loopback interface (127.0.0.1).
 
+  - **This step only needs to be done once.** Initialize the bonsai HDF5 file, 
+    using the utility `bonsai-mkweight`, which should have been installed in 
+    your $PATH when bonsai was built.  For more discussion of this step, 
+    see [the bonsai config file](#user-content-bonsai-config) below.
+    ```
+    cd bonsai_configs/
+    bonsai-mkweight bonsai_example1.txt bonsai_example1.hdf5
+    cd ..
+    ```
+
   - Start the L1 server:
     ```
     ./ch-frb-l1  \
        l1_configs/l1_example1.yaml  \
        rfi_configs/rfi_placeholder.json  \
-       bonsai_configs/bonsai_example1.txt  \
+       bonsai_configs/bonsai_example1.hdf5  \
        l1b_config_placeholder
     ```
     There are four configuration files, which will be described in the
@@ -172,11 +197,13 @@ over the loopback interface (127.0.0.1).
     ./ch-frb-simulate-l0 l0_configs/l0_example1.yaml 30
     ```
     This will simulate 30 seconds of data.  If you switch back to the L1 server's window,
-    you'll see some incremental output, as chunks of data are processed.  After it finishes, you'll see
-    a line "toy-l1b.py: wrote toy_l1b_beam0.png".  This is a plot of the coarse-grained
-    triggers, which will not contain any interesting features, because the simulation
-    is pure noise.
+    you'll see some incremental output, as chunks of data are processed.  
 
+    After it finishes, you'll see a line "toy-l1b.py: wrote toy_l1b_beam0.png".  This is a 
+    plot of the coarse-grained triggers, with time on the x-axis and DM on the y-axis.  The
+    plot will not contain any FRB's, because the simulation is pure noise.  Note that the blue 
+    "stairstep" region in the left part of the plot is symptomatic of the "slow start" problem
+    mentioned under "Caveats" near the beginning of this file.
 
 <a name="example2"></a>
 **Example 2:** similar to example 1, but slightly more complicated as follows.
@@ -192,12 +219,21 @@ config files for more details (and MANUAL.md in the bonsai repo).
 This is more representative of the real search, where we plan to use
 6 or 7 trees (I think!)
 
+The steps below are similar to example 1, so discussion is minimal.
+
+  - **This step only needs to be done once.** Initialize the bonsai HDF5 file.
+    ```
+    cd bonsai_configs/
+    bonsai-mkweight bonsai_example2.txt bonsai_example2.hdf5
+    cd ..
+    ```
+
   - Start the L1 server:
     ```
     ./ch-frb-l1  \
        l1_configs/l1_example2.yaml  \
        rfi_configs/rfi_placeholder.json  \
-       bonsai_configs/bonsai_example2.txt  \
+       bonsai_configs/bonsai_example2.hdf5  \
        l1b_config_placeholder
     ```
     There are four configuration files, which will be described shortly!
@@ -207,25 +243,43 @@ This is more representative of the real search, where we plan to use
     ./ch-frb-simulate-l0 l0_configs/l0_example2.yaml 30
     ```
 
-After the example finishes, you should see four plots toy_l1b_beam$N.png,
-where N=0,1,2,3.  Each plot corresponds to one beam, and contains three
-rows of output, corresponding to the three dedispersion trees in this example.
+    After the example finishes, you should see four plots `toy_l1b_beam$N.png`,
+    where N=0,1,2,3.  Each plot corresponds to one beam, and contains three
+    rows of output, corresponding to the three dedispersion trees in this example.
 
 <a name="configuration-file-overview"></a>
 ### CONFIGURATION FILE OVERVIEW
 
+#### ch-frb-simulate-l0 (the L0 simulator)
+
+The command-line syntax for ch-frb-simulate-l0 is:
+```
+Usage: ch-frb-simulate-l0 <l0_params.yaml> <num_seconds>
+```
+The l0_params.yaml file contains high-level info such as
+the number of beams being simulated, number of frequency
+channels, etc.
+
+I recommend looking at the toy examples first (l0_configs/l0_toy_1beam.yaml and
+l0_configs/l0_toy_4beams.yaml) to get a general sense of what they contain.  For
+detailed information on the L1 config file, see the section
+[Config file reference: L0 simulator](#user-content-l0-config) below.
+
+#### ch-frb-l1 (the L1 server)
+
 The command-line syntax for ch-frb-l1 is:
 ```
-Usage: ch-frb-l1 [-fvpm] <l1_config.yaml> <rfi_config.json> <bonsai_config.txt> <l1b_config_file>
+Usage: ch-frb-l1 [-fvpm] <l1_config.yaml> <rfi_config.json> <bonsai_config.hdf5> <l1b_config_file>
   -f forces the L1 server to run, even if the config files look fishy
   -v increases verbosity of the toplevel ch-frb-l1 logic
   -p enables a very verbose debug trace of the pipe I/O between L1a and L1b
   -m enables a very verbose debug trace of the memory_slab_pool allocation
   -w enables a very verbose debug trace of the logic for writing chunks
+  -c deliberately crash dedispersion thread (for debugging, obviously)
 ```
 The L1 server takes four parameter files as follows:
 
-  - The L1 config file (l1_config.yaml)
+  - **The L1 config file (l1_config.yaml)**
 
     This is a YAML file which defines "high-level" parameters, such as the number of beams
     being dedispersed, and parameters of the network front-end code, such as ring buffer sizes.
@@ -235,7 +289,7 @@ The L1 server takes four parameter files as follows:
     detailed information on the L1 config file, see the section
     [Config file reference: L1 server](#user-content-l1-config) below.
 
-  - The RFI config file (rfi_config.json)
+  - **The RFI config file (rfi_config.json)**
 
     This is a JSON file which defines the RFI removal algorithm.  Currently,
     it is a placeholder, since we need to make some low-level changes
@@ -243,7 +297,10 @@ The L1 server takes four parameter files as follows:
     meantime, there is the file rfi_configs/rfi_placeholder.json which
     does some high-pass filtering (but no RFI masking).
 
-  - The bonsai config file (bonsai_config.txt).
+<a name="bonsai-config"></a>
+  - **The bonsai config file (bonsai_config.hdf5)**
+
+    First note that bonsai config files are 
 
     This file defines parameters related to dedispersion, such as number of
     trees, their level of downsampling/upsampling, number of trial spectral
@@ -260,10 +317,10 @@ The L1 server takes four parameter files as follows:
     the CPU cost of dedispersion, given a bonsai config file.  (These utilities
     are part of bonsai, not part of ch-frb-l1.)
 
-  - The L1b config file.
+  - **The L1b config file.**
 
-    This file is not used by the L1 server itself (the L1 server does not even check
-    whether a file with the given filename exists).  However, it is passed from the
+    This file is not read by the L1 server itself (the L1 server does not even check
+    whether a file with the given filename exists).  However, the filename is passed from the
     L1 server command line to the L1b command line in the following way.  When the
     L1 server is invoked with the command line:
     ```
@@ -284,20 +341,6 @@ The L1 server takes four parameter files as follows:
     be useful for debugging, since it gives a simple way to plot the output
     of the L1 server.  It is worth emphasizing that "L1b" can be any
     python script which postprocesses the coarse-grained triggers!
-    
-
-The command-line syntax for ch-frb-simulate-l0 is:
-```
-Usage: ch-frb-simulate-l0 <l0_params.yaml> <num_seconds>
-```
-The l0_params.yaml file contains high-level info such as
-the number of beams being simulated, number of frequency
-channels, etc.
-
-I recommend looking at the toy examples first (l0_configs/l0_toy_1beam.yaml and
-l0_configs/l0_toy_4beams.yaml) to get a general sense of what they contain.  For
-detailed information on the L1 config file, see the section
-[Config file reference: L0 simulator](#user-content-l0-config) below.
 
 <a name="l1-streams"></a>
 ### L1 STREAMS
@@ -435,7 +478,7 @@ alternate network configurations, and more machines, for example a file server.
     As noted at the beginning of this manual, this is a technical issue in the bonsai code 
     which we're working on next!
 
-**Notes on the two-node backed:**
+**Notes on the two-node backend:**
 
   - Right now the following ports are open on the firewalls of the compute nodes: 5555/tcp, 6677/udp, 6677/tcp.
     If you need to open more, the syntax is:
@@ -822,4 +865,5 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
 This will be documented systematically soon!
 
 In the meantime, please see the memo [17-08-14-file-writing.pdf](./doc/17-08-14-file-writing.pdf)
-from a telecon, which mostly documents the the file-writing code.
+from a telecon, which documents the the file-writing code.  It's not complete, but it's better than nothing!
+
