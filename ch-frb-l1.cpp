@@ -737,7 +737,8 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 	auto rfi_chain = rf_pipelines::pipeline_object::from_json(config.rfi_transform_chain_json);
 
 	bonsai::dedisperser::initializer ini_params;
-	ini_params.fill_rfi_mask = true;  // very important for real-time analysis!
+	ini_params.fill_rfi_mask = true;                   // very important for real-time analysis!
+	ini_params.analytic_variance_on_the_fly = false;   // prevent accidental initialization from non-hdf5 config file (should have been checked already, but another check can't hurt)
 	ini_params.verbosity = 0;
 
 	auto dedisperser = make_shared<bonsai::dedisperser> (bonsai_config, ini_params);
