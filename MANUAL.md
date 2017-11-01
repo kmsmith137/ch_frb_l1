@@ -73,7 +73,7 @@ Here are some external links to the bonsai documentation, which may also be usef
 
   - Currently, bonsai config files must be constructed by a two-step process as follows.
     First, a human-editable text file `bonsai_xxx.txt` is written (for an example, see
-    bonsai_configs/bonsai_example1.txt).  Second, this is be "compiled" into an HDF5
+    bonsai_configs/bonsai_example1.txt).  Second, this must be processed into an HDF5
     file using the utility `bonsai-mkweight`:
     ```
     bonsai-mkweight bonsai_xxx.txt bonsai_xxx.hdf5
@@ -169,6 +169,17 @@ update from git, and rebuild everything from scratch.
 
    - [Rebuilding the pipeline](./doc/rebuilding_pipeline.md)
 
+**Warning:** one problem with our current build system is that it doesn't track dependencies
+between repositories.  So for example, if you update bonsai and do `make install`, you 
+should rebuild everything which depends on bonsai (for example rf_pipelines) from scratch.
+Otherwise you can get unpredictable results, such as segfaults.
+
+**Important:** In the previous paragraph, "rebuild from scratch" means `make clean; make all install`.
+Rebuilding with `make all install` wouldn't be enough, since dependencies aren't being tracked between repositories!
+
+For this reason, it's easier to end up with a broken pipeline than you might think.  If you get into trouble,
+the "Rebuilding the pipeline" link above is a cut-and-paste "reset switch" which will rebuild the entire pipeline 
+consistently from scratch.
 
 <a name="laptop"></a>
 ### QUICK-START EXAMPLES WHICH CAN RUN ON A LAPTOP
@@ -276,8 +287,8 @@ channels, etc.
 
 I recommend looking at the toy examples first (l0_configs/l0_toy_1beam.yaml and
 l0_configs/l0_toy_4beams.yaml) to get a general sense of what they contain.  For
-detailed information on the L1 config file, see the section
-[Config file reference: L0 simulator](#user-content-l0-config) below.
+detailed information on the L1 config file, see
+["Config file reference: L0 simulator"](#user-content-l0-config) below.
 
 #### ch-frb-l1 (the L1 server)
 
@@ -300,36 +311,70 @@ The L1 server takes four parameter files as follows:
 
     I recommend looking at the toy examples first (l1_configs/l1_toy_1beam.yaml and
     l1_configs/l1_toy_4beams.yaml) to get a general sense of what they contain.  For
-    detailed information on the L1 config file, see the section
-    [Config file reference: L1 server](#user-content-l1-config) below.
+    detailed information on the L1 config file, see
+    ["Config file reference: L1 server"](#user-content-l1-config) below.
 
   - **The RFI config file (rfi_config.json)**
 
-    This is a JSON file which defines the RFI removal algorithm.  Currently,
-    it is a placeholder, since we need to make some low-level changes
-    before we can do "real" RFI removal in the real-time pipeline.  In the
-    meantime, there is the file rfi_configs/rfi_placeholder.json which
-    does some high-pass filtering (but no RFI masking).
+    This is a JSON file which defines the RFI removal algorithm.  It is
+    read and interpreted by the rf_pipelines library.  Full documentation
+    of the file format, and instructions for creating new versions of this
+    file, will be forthcoming in a future releaes.
+
+    Currently, there are two possibilities available in the `rfi_configs` directory:
+
+      - `rfi_configs/rfi_placeholder.json`: a placeholder which detrends
+        the data, but does not actually mask RFI.
+
+      - `rfi_configs/rfi_production_v1.json`: a complex 16K-channel RFI removal
+        chain developed by Masoud, which is working well on captured data from
+        the 26m telescope and the CHIME pathfinder.  It is currently running
+        slower than originally hoped (0.55 cores/beam), but we have a lot of
+        ideas for improving it and speeding it up.
 
 <a name="bonsai-config"></a>
   - **The bonsai config file (bonsai_config.hdf5)**
-
-    First note that bonsai config files are 
 
     This file defines parameters related to dedispersion, such as number of
     trees, their level of downsampling/upsampling, number of trial spectral
     indices, etc.
 
-    The bonsai library is the best-documented part of the L1 pipeline!
-    For more information on bonsai, including documentation of the configuration
-    file and pointers to example programs, a good place to start is MANUAL.md
-    in the bonsai repository (https://github.com/CHIMEFRB/bonsai/blob/master/MANUAL.md).
+    Currently, bonsai config files must be constructed by a two-step process as follows.
+    First, a human-editable text file `bonsai_xxx.txt` is written (for an example, see
+    bonsai_configs/bonsai_example1.txt).  Second, this must be processed into a "config HDF5"
+    file using the utility `bonsai-mkweight`:
+    ```
+    bonsai-mkweight bonsai_xxx.txt bonsai_xxx.hdf5
+    ```
+    where that the `bonsai-mkweight` utility is part of bonsai, not ch_frb_l1.
+
+    The config HDF5 file contains all of the information in an ordinary config file, plus some large binary arrays.
+    The config HDF5 file is not human-readable, but can be inspected with `bonsai-show-config`.
+    The binary array data in the config HDF5 file is needed by the L1 server, to do its real-time RFI-mask-filling
+    and trigger variance estimation.
+
+    Note that we don't put config HDF5 files in git, since they are large files, so you may need
+    to create them by hand using the above procedure.  Exception: on the CHIME nodes, 
+    the "production" config HDF5 files should already be in `/data/bonsai_configs`.
+
+    If the L1 server fails with an error such as
+    ```
+    bonsai_xxx.txt: transfer matrices not found.  Maybe you accidentally specified a .txt file instead of .hdf5?
+    ```
+    then it's failing to find the binary array data it expects in the config HDF5 file.
+    Most likely, this is because an ordinary bonsai config file was specified on the command line,
+    instead of a config HDF5 file.
 
     The utility `bonsai-show-config` is useful for viewing the contents of
     a bonsai parameter file, including derived parameters such as the max DM
     of each tree.  The utility `bonsai-time-dedisperser` is useful for estimating
     the CPU cost of dedispersion, given a bonsai config file.  (These utilities
     are part of bonsai, not part of ch-frb-l1.)
+
+    The bonsai library is the best-documented part of the L1 pipeline.
+    For more information on bonsai, including documentation of the configuration
+    file and pointers to example programs, see
+    [CHIMEFRB/bonsai/MANUAL.md](https://github.com/CHIMEFRB/bonsai/blob/master/MANUAL.md).
 
   - **The L1b config file.**
 
@@ -528,13 +573,13 @@ more machines, for example a file server.
 
     Note that we re-use most of the configuration files from example 3.
     The only difference is that `rfi_placeholder.json` has been
-    replaced by `rfi_production_v2.json`.
+    replaced by `rfi_production_v1.json`.
 
   - On **frb-compute-1**, start the L1 server:
     ```
     ./ch-frb-l1  \
        l1_configs/l1_example3.yaml  \
-       rfi_configs/rfi_production_v2.json  \
+       rfi_configs/rfi_production_v1.json  \
        /data/bonsai_configs/bonsai_production_noups_nbeta1_v2.hdf5  \
        l1b_config_placeholder
     ```
@@ -548,8 +593,12 @@ more machines, for example a file server.
 <a name="l1-config"></a>
 ### CONFIG FILE REFERENCE: L1 SERVER
 
-The L1 configuration file is a YAML file.
-There are some examples in the `ch_frb_l1/l1_configs` directory.
+As previously described in ["Configuration File Overview"](#user-content-configuration-file-overview),
+the L1 server takes four configuration files (schematically l1_server.yaml, rfi.json, bonsai.hdf5, and l1b).
+In this section, we document the first of these files (the L1 server config file) in detail.
+The other three files are documented in other repositories (rf_pipelines, bonsai, chime_rfi_L1b).
+
+There are some examples of the L1 server config file in the `ch_frb_l1/l1_configs` directory.
 
 <a name="l1-config-high-level"></a>
 ##### L1 config: high-level parameters
@@ -837,6 +886,8 @@ There are some examples in the `ch_frb_l1/l1_configs` directory.
 
 <a name="l0-config"></a>
 ### CONFIG FILE REFERENCE: L0 SIMULATOR
+
+In this section, we document the YAML configuration file which is used by the L0 simulator.
 
   - `nbeams` (integer).
 

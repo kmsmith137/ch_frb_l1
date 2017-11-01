@@ -242,7 +242,7 @@ l1_params::l1_params(int argc, char **argv)
 	    have_transfer_matrices = false;
 
     if (!have_transfer_matrices)
-	throw runtime_error(bonsai_config_filename + ": transfer matrices not found.  For more info, see \"The bonsai config file\" under \"CONFIGURATION FILE OVERVIEW\" in ch_frb_l1/MANUAL.md.");
+	throw runtime_error(bonsai_config_filename + ": transfer matrices not found.  Maybe you accidentally specified a .txt file instead of .hdf5?  See ch_frb_l1/MANUAL.md for more info");
 
     // Remaining code in this function reads l1_config file.
 

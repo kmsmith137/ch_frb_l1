@@ -33,4 +33,18 @@ For a dependency graph, see [doc/dependencies.png](./doc/dependencies.png).
   - [kmsmith137/ch_frb_l1](https://github.com/kmsmith137/ch_frb_l1):
     toplevel repo, whose README you're reading right now.
 
+**Warning:** one problem with our current build system is that it doesn't track dependencies
+between repositories.  So for example, if you update bonsai and do `make install`, you 
+should rebuild everything which depends on bonsai (for example rf_pipelines) from scratch.
+Otherwise you can get unpredictable results, such as segfaults.
+
+**Important:** In the previous paragraph, "rebuild from scratch" means `make clean; make all install`.
+Rebuilding with `make all install` wouldn't be enough, since dependencies aren't tracked between repositories!
+
+For this reason, it's easier to end up with a broken pipeline than you might think.  If you get into trouble,
+the following instructions are a cut-and-paste "reset switch" which will rebuild the entire pipeline consistently
+from scratch:
+
+   - [Rebuilding the pipeline](./doc/rebuilding_pipeline.md)
+
 For a manual-in-progress, see [MANUAL.md](./MANUAL.md).
