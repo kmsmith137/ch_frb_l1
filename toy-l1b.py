@@ -82,7 +82,9 @@ for ichunk in itertools.count():
         assert a.shape == (dedisp.ndm_coarse[i], dedisp.nsm[i], dedisp.nbeta[i], dedisp.nt_coarse_per_chunk[i])
 
     # A quick-and-dirty way to prevent the final plot from getting too large.
-    if len(all_triggers) < 128:
+    time_samples_processed = (ichunk+1) * dedisp.nt_chunk
+
+    if time_samples_processed <= 2**21:
         all_triggers.append(t)
 
 
