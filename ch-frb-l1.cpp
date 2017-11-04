@@ -19,6 +19,7 @@
 //   cores 20-29:  secondary hyperthread on CPU1
 //   cores 30-39:  secondary hyperthread on CPU2
 
+
 #include <thread>
 #include <fstream>
 
@@ -49,10 +50,15 @@ static void usage()
 
 
 // -------------------------------------------------------------------------------------------------
+//
+// l1_config: reads and parses config files, does a lot of sanity checking,
+// but does not allocate any "heavyweight" data structures.
 
 
-struct l1_params {
-    l1_params(int argc, char **argv);
+struct l1_config
+{
+    l1_config() { }
+    l1_config(int argc, char **argv);
 
     // Command-line arguments
     string l1_config_filename;
@@ -69,11 +75,11 @@ struct l1_params {
     //   2: pretty noisy
 
     bool fflag = false;
-    int l1_verbosity = 1;
     bool l1b_pipe_io_debug = false;
     bool memory_pool_debug = false;
     bool write_chunk_debug = false;
     bool deliberately_crash = false;
+    int l1_verbosity = 1;
 
     // nstreams is automatically determined by the number of (ipaddr, port) pairs.
     // There will be one (network_thread, assembler_thread, rpc_server) triple for each stream.
@@ -82,10 +88,6 @@ struct l1_params {
     int nstreams = 0;
     int nt_per_packet = 0;
     int fpga_counts_per_sample = 384;
-
-    // The L1 server can run in two modes: either a "production-scale" mode with 16 beams and 20 cores,
-    // or a "subscale" mode with (nbeams <= 4) and no core-pinning.
-    bool is_subscale = true;
     
     // If slow_kernels=false (the default), the L1 server will use fast assembly language kernels
     // for its packet processing.  If slow_kernels=true, then it will use reference kernels which
@@ -130,12 +132,11 @@ struct l1_params {
     vector<int> telescoping_ringbuf_nchunks;
 
     // Parameters of the memory_slab_pool(s)
-    int memory_slab_nbytes = 0;     // size (in bytes) of memory slab used to store assembled_chunk
-    int memory_slabs_per_pool = 0;  // total memory slabs to allocate per cpu
-    int npools = 0;
+    int nbytes_per_memory_slab = 0;     // size (in bytes) of memory slab used to store assembled_chunk
+    int total_memory_slabs = 0;         // total for node
 
     // List of output devices (e.g. '/ssd', '/nfs')
-    vector<string> output_devices;
+    vector<string> output_device_names;
 
     // L1b linkage.  Note: assumed L1b command line is:
     //   <l1b_executable_filename> <l1b_config_filename> <beam_id>
@@ -159,10 +160,12 @@ struct l1_params {
     // it's very easy to use a lot of disk space this way!
     
     string stream_filename_pattern;
+
+    void _have_warnings() const;
 };
 
 
-l1_params::l1_params(int argc, char **argv)
+l1_config::l1_config(int argc, char **argv)
 {
     const int nfreq_c = ch_frb_io::constants::nfreq_coarse_tot;
 
@@ -212,6 +215,7 @@ l1_params::l1_params(int argc, char **argv)
 	throw runtime_error("ch-frb-l1: couldn't parse json file " + rfi_config_filename);
 
     // Throwaway call, to get an early check that rfi_config_file is valid.
+    // FIXME bind() here?
     auto rfi_chain = rf_pipelines::pipeline_object::from_json(rfi_transform_chain_json);
 
 #if 0
@@ -244,7 +248,7 @@ l1_params::l1_params(int argc, char **argv)
     if (!have_transfer_matrices)
 	throw runtime_error(bonsai_config_filename + ": transfer matrices not found.  Maybe you accidentally specified a .txt file instead of .hdf5?  See ch_frb_l1/MANUAL.md for more info");
 
-    // Remaining code in this function reads l1_config file.
+    // Remaining code in this function reads l1_config yaml file.
 
     int yaml_verbosity = (this->l1_verbosity >= 2) ? 1 : 0;
     yaml_paramfile p(l1_config_filename, yaml_verbosity);
@@ -262,7 +266,7 @@ l1_params::l1_params(int argc, char **argv)
     this->assembled_ringbuf_nsamples = p.read_scalar<int> ("assembled_ringbuf_nsamples", 8192);
     this->telescoping_ringbuf_nsamples = p.read_vector<int> ("telescoping_ringbuf_nsamples", {});
     this->write_staging_area_gb = p.read_scalar<double> ("write_staging_area_gb", 0.0);
-    this->output_devices = p.read_vector<string> ("output_devices");
+    this->output_device_names = p.read_vector<string> ("output_devices");
     this->l1b_executable_filename = p.read_scalar<string> ("l1b_executable_filename");
     this->l1b_search_path = p.read_scalar<bool> ("l1b_search_path", false);
     this->l1b_buffer_nsamples = p.read_scalar<int> ("l1b_buffer_nsamples", 0);
@@ -340,25 +344,6 @@ l1_params::l1_params(int argc, char **argv)
     if (beam_ids.size() != (unsigned)nbeams)
 	throw runtime_error(l1_config_filename + ": 'beam_ids' must have length 'nbeams'");
 
-    // Decide whether instance is "subscale" or "production-scale".
-
-    // Factor 2 is from hyperthreading.
-    int num_cores = std::thread::hardware_concurrency() / 2;
-
-    if (nbeams <= 4)
-	this->is_subscale = true;
-    else if ((nbeams == 16) && (num_cores == 20))
-	this->is_subscale = false;
-    else {
-	cerr << "ch-frb-l1: The L1 server can currently run in two modes: either a \"production-scale\" mode\n"
-	     << "  with 16 beams and 20 cores, or a \"subscale\" mode with 4 beams and no core-pinning.\n"
-	     << "  This appears to be an instance with " << nbeams << " beams, and " << num_cores << " cores.\n";
-	exit(1);
-    }
-
-    if (!is_subscale && (nstreams % 2 == 1))
-	throw runtime_error(l1_config_filename + ": production-scale L1 server instances must have an odd number of streams");
-
     // "Derived" unassembled ringbuf params.
 
     int fp = nt_per_packet * fpga_counts_per_sample;   // FPGA counts per packet
@@ -402,16 +387,15 @@ l1_params::l1_params(int argc, char **argv)
 	}
     }
 
-    // Memory slab parameters (npools, memory_slab_nbytes, memory_slabs_per_pool)
+    // Memory slab parameters (nbytes_per_memory_slab, total_memory_slabs)
     //
     // The total memory usage consists of
     //   - live_chunks_per_beam (active + assembled_ringbuf + telescoping_ringbuf)
     //   - temporary_chunks_per_stream (temporaries in assembled_chunk::_put_assembled_chunk())
-    //   - staging_chunks_per_pool (derived from config param 'write_staging_area_gb')
+    //   - total_staging_chunks (derived from config param 'write_staging_area_gb')
 
     int nupfreq = xdiv(nfreq, nfreq_c);
-    this->memory_slab_nbytes = ch_frb_io::assembled_chunk::get_memory_slab_size(nupfreq, nt_per_packet);
-    this->npools = is_subscale ? 1 : 2;
+    this->nbytes_per_memory_slab = ch_frb_io::assembled_chunk::get_memory_slab_size(nupfreq, nt_per_packet);
 
     int live_chunks_per_beam = 2;   // "active" chunks
     live_chunks_per_beam += assembled_ringbuf_nchunks;  // assembled_ringbuf
@@ -429,22 +413,17 @@ l1_params::l1_params(int argc, char **argv)
     live_chunks_per_beam += fudge_factor;
 
     int temporary_chunks_per_stream = max(1, (int)telescoping_ringbuf_nchunks.size());
-    int staging_chunks_per_pool = pow(2,30.) * write_staging_area_gb / (npools * memory_slab_nbytes);
+    int total_staging_chunks = pow(2,30.) * write_staging_area_gb / nbytes_per_memory_slab;
 
-    assert(nbeams % npools == 0);
-    assert(nstreams % npools == 0);
-
-    this->memory_slabs_per_pool = ((nbeams/npools) * live_chunks_per_beam 
-				   + (nstreams/npools) * temporary_chunks_per_stream 
-				   + staging_chunks_per_pool);
+    this->total_memory_slabs = nbeams * live_chunks_per_beam + nstreams * temporary_chunks_per_stream + total_staging_chunks;
 
     if (l1_verbosity >= 1) {
-	double gb = npools * memory_slabs_per_pool * double(memory_slab_nbytes) / pow(2.,30.);
+	double gb = total_memory_slabs * double(nbytes_per_memory_slab) / pow(2.,30.);
 
 	cout << "Total assembled_chunk memory on node: " << gb << " GB"
 	     << " (chunk counts: " << nbeams << "*" << live_chunks_per_beam
 	     << " + " << nstreams << "*" << temporary_chunks_per_stream
-	     << " + " << npools << "*" << staging_chunks_per_pool << ")" << endl;
+	     << " + " << total_staging_chunks << ")" << endl;
     }
 
     // l1b_pipe_capacity
@@ -482,310 +461,125 @@ l1_params::l1_params(int argc, char **argv)
 	have_warnings = true;
     }
 
-    if (is_subscale && (bonsai_config.nfreq > 4096)) {
-	cout << l1_config_filename << ": subscale instance with > 4096 frequency channels, presumably unintentional?" << endl;
-	have_warnings = true;
-    }
-
     if ((bonsai_config.nfreq > 4096) && slow_kernels) {
 	cout << l1_config_filename << ": nfreq > 4096 and slow_kernels=true, presumably unintentional?" << endl;
 	have_warnings = true;
     }
 
-    if (have_warnings) {
-	if (this->fflag)
-	    cout << "ch-frb-l1: the above warnings will be ignored, since the -f flag was specified." << endl;
-	else {
-	    cout << "ch-frb-l1: the above warning(s) are treated as fatal.  To force the L1 server to run anyway, use ch-frb-l1 -f." << endl;
-	    exit(1);
-	}
+    if (have_warnings)
+	_have_warnings();
+}
+
+
+void l1_config::_have_warnings() const
+{
+    if (this->fflag) {
+	cout << "ch-frb-l1: the above warning(s) will be ignored, since the -f flag was specified." << endl;
+	return;
     }
+    
+    cout << "ch-frb-l1: the above warning(s) are treated as fatal.  To force the L1 server to run anyway, use ch-frb-l1 -f." << endl;
+    exit(1);
 }
 
 
 // -------------------------------------------------------------------------------------------------
 //
-// make_l1b_subprocess().
+// Dedispersion thread context and main().
 //
 // Note: the 'ibeam' argument is an index satisfying 0 <= ibeam < config.nbeams, 
 // where config.nbeams is the number of beams on the node.   Not a beam_id!
+//
+// Note: the 'l1b_subprocess' argument can be an empty pointer (in the case
+// where the L1 server is run without L1B).
 
 
-static shared_ptr<bonsai::trigger_pipe> make_l1b_subprocess(const l1_params &config, int ibeam)
-{
-    assert(ibeam >= 0 && ibeam < config.nbeams);
-
-    if (config.l1b_executable_filename.size() == 0) {
-	if (config.l1_verbosity >= 1)
-	    cout << "ch-frb-l1: config parameter 'l1b_executable_filename' is an empty string, L1b processes will not be spawned\n";
-	return shared_ptr<bonsai::trigger_pipe> ();
-    }
-
-    int beam_id = config.beam_ids[ibeam];
+struct dedispersion_thread_context {
+    l1_config config;
+    shared_ptr<ch_frb_io::intensity_network_stream> sp;
+    shared_ptr<bonsai::trigger_pipe> l1b_subprocess;   // warning: can be empty pointer!
     vector<int> allowed_cores;
+    int ibeam;
 
-    // FIXME: cut-and-paste between dedispersion_thread_main() and here.
-    // (The L1b-spawning logic was originally part of dedispersion_thread_main(), then got hacked into its own function.)
-
-    if (!config.is_subscale) {
-	// Core-pinning logic for production-scale L1 server.
-	int c = (ibeam / 8) * 10 + (ibeam % 8);
-	allowed_cores = { c, c+20 };
-    }
-
-    // L1b command line is: <l1_executable> <l1b_config> <beam_id>
-    vector<string> l1b_command_line = {
-	config.l1b_executable_filename,
-	config.l1b_config_filename,
-	std::to_string(beam_id)
-    };
-
-    bonsai::trigger_pipe::initializer l1b_initializer;
-    l1b_initializer.timeout = config.l1b_pipe_timeout;
-    l1b_initializer.blocking = config.l1b_pipe_blocking;
-    l1b_initializer.search_path = config.l1b_search_path;
-    l1b_initializer.verbosity = config.l1b_pipe_io_debug ? 3: config.l1_verbosity;
-    l1b_initializer.pipe_capacity = config.l1b_pipe_capacity;
-    
-    // Important: pin L1b child process to same core as L1a parent thread.
-    // Note that in the subscale case, 'allowed_cores' is an empty vector, and the child process is not core-pinned.
-    l1b_initializer.child_cores = allowed_cores;
-    
-    // The trigger_pipe constructor will spawn the L1b child process.
-    return make_shared<bonsai::trigger_pipe> (l1b_command_line, l1b_initializer);
-}
+    void _thread_main() const;
+};
 
 
-// -------------------------------------------------------------------------------------------------
-//
-// make_output_device()
-
-
-static shared_ptr<ch_frb_io::output_device> make_output_device(const l1_params &config, int idev)
-{
-    ch_frb_io::output_device::initializer ini_params;
-    ini_params.device_name = config.output_devices[idev];
-    ini_params.verbosity = config.write_chunk_debug ? 3 : config.l1_verbosity;
-
-    if (!config.is_subscale) {
-	// On the real CHIME nodes, all disk controllers and NIC's are on CPU1!
-	// (See p. 1-10 of the motherboard manual.)  Therefore, we pin our I/O
-	// threads to core 9 on CPU1.  (This core currently isn't used for anything
-	// except I/O.)
-
-	ini_params.io_thread_allowed_cores = {9, 29};
-    }
-
-    return ch_frb_io::output_device::make(ini_params);
-}
-
-
-// -------------------------------------------------------------------------------------------------
-//
-// make_memory_pool()
-
-
-static shared_ptr<ch_frb_io::memory_slab_pool> make_memory_pool(const l1_params &config, int ipool)
-{
-    vector<int> allocation_cores;
-    int verbosity = config.memory_pool_debug ? 2 : 1;
-
-    if (!config.is_subscale)
-	allocation_cores = vrange(10*ipool, 10*(ipool+1));
-
-    return make_shared<ch_frb_io::memory_slab_pool> (config.memory_slab_nbytes, config.memory_slabs_per_pool, allocation_cores, verbosity);
-}
-
-
-// -------------------------------------------------------------------------------------------------
-//
-// make_input_stream(): returns a stream object which will read packets from the correlator.
-
-
-static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l1_params &config, int istream, 
-									 const shared_ptr<ch_frb_io::memory_slab_pool> &memory_pool,
-									 const vector<shared_ptr<ch_frb_io::output_device>> &output_devices)
-{
-    assert(istream >= 0 && istream < config.nstreams);
-    assert(config.beam_ids.size() == (unsigned)config.nbeams);
-
-    int nbeams = config.nbeams;
-    int nstreams = config.nstreams;
-    int nbeams_per_stream = xdiv(nbeams, nstreams);
-
-    auto beam_id0 = config.beam_ids.begin() + istream * nbeams_per_stream;
-    auto beam_id1 = config.beam_ids.begin() + (istream+1) * nbeams_per_stream;
-
-    ch_frb_io::intensity_network_stream::initializer ini_params;
-
-    ini_params.ipaddr = config.ipaddr[istream];
-    ini_params.udp_port = config.port[istream];
-    ini_params.beam_ids = vector<int> (beam_id0, beam_id1);
-    ini_params.nupfreq = xdiv(config.nfreq, ch_frb_io::constants::nfreq_coarse_tot);
-    ini_params.nt_per_packet = config.nt_per_packet;
-    ini_params.fpga_counts_per_sample = config.fpga_counts_per_sample;
-    ini_params.stream_id = istream + 1;   // +1 here since first NFS mount is /frb-archive-1, not /frb-archive-0
-    ini_params.force_fast_kernels = !config.slow_kernels;
-    ini_params.force_reference_kernels = config.slow_kernels;
-    ini_params.deliberately_crash = config.deliberately_crash;
-    ini_params.unassembled_ringbuf_capacity = config.unassembled_ringbuf_capacity;
-    ini_params.max_unassembled_packets_per_list = config.unassembled_npackets_per_list;
-    ini_params.max_unassembled_nbytes_per_list = config.unassembled_nbytes_per_list;
-    ini_params.assembled_ringbuf_capacity = config.assembled_ringbuf_nchunks;
-    ini_params.telescoping_ringbuf_capacity = config.telescoping_ringbuf_nchunks;
-    ini_params.memory_pool = memory_pool;
-    ini_params.output_devices = output_devices;
-    
-    // Setting this flag means that an exception will be thrown if either:
-    //
-    //    1. the unassembled-packet ring buffer between the network and
-    //       assembler threads is full (i.e. assembler thread is running slow)
-    //
-    //    2. the assembled_chunk ring buffer between the network and
-    //       processing threads is full (i.e. processing thread is running slow)
-    //
-    // If we wanted, we could define separate flags for these two conditions.
-    //
-    // Note that in situation (2), the pipeline will crash anyway since
-    // rf_pipelines doesn't contain code to handle gaps in the data.  This
-    // is something that we'll fix soon, but it's nontrivial.
-    
-    ini_params.throw_exception_on_buffer_drop = true;
-
-    if (!config.is_subscale) {
-	// Core-pinning logic for the production-scale L1 server.
-
-	if (nstreams % 2 == 1)
-	    throw runtime_error("ch-frb-l1: nstreams must be even, in order to divide dedispersion threads evenly between the two CPUs");
-
-	// Note that processing threads 0-7 are pinned to cores 0-7 (on CPU1)
-	// and cores 10-17 (on CPU2).  I decided to pin assembler threads to
-	// cores 8 and 18.  This leaves cores 9 and 19 free for RPC and other IO.
-	
-	if (istream < (nstreams/2))
-	    ini_params.assembler_thread_cores = {8,28};
-	else
-	    ini_params.assembler_thread_cores = {18,38};
-
-	// I decided to pin all network threads to CPU1, since according to
-	// the motherboard manual, all NIC's live on the same PCI-E bus as CPU1.
-	//
-	// I think it makes sense to avoid pinning network threads to specific
-	// cores on the CPU, since they use minimal cycles, but scheduling latency
-	// is important for minimizing packet drops.  I haven't really tested this
-	// assumption though!
-
-	ini_params.network_thread_cores = vconcat(vrange(0,10), vrange(20,30));
-    }
-
-    auto ret = ch_frb_io::intensity_network_stream::make(ini_params);
-
-    // If config.stream_filename_pattern is an empty string, then stream_to_files() doesn't do anything.
-    ret->stream_to_files(config.stream_filename_pattern, 0);
-
-    return ret;
-}
-
-
-// -------------------------------------------------------------------------------------------------
-//
-// make_l1rpc_server()
-
-
-static shared_ptr<L1RpcServer> make_l1rpc_server(const l1_params &config, int istream, shared_ptr<ch_frb_io::intensity_network_stream> stream) 
-{
-    assert(istream >= 0 && istream < config.nstreams);
-
-    shared_ptr<L1RpcServer> rpc = make_shared<L1RpcServer>(stream, config.rpc_address[istream]);
-    return rpc;
-}
-
-
-// -------------------------------------------------------------------------------------------------
-//
-// dedispersion_thread_main().
-//
-// Note: the 'ibeam' argument is an index satisfying 0 <= ibeam < config.nbeams, 
-// where config.nbeams is the number of beams on the node.   Not a beam_id!
-
-
-static void dedispersion_thread_main(const l1_params &config, const shared_ptr<ch_frb_io::intensity_network_stream> &sp, const shared_ptr<bonsai::trigger_pipe> &l1b_trigger_pipe, int ibeam)
+void dedispersion_thread_context::_thread_main() const
 {
     assert(ibeam >= 0 && ibeam < config.nbeams);
 
+    // Pin thread before allocating anything.
+    ch_frb_io::pin_thread_to_cores(allowed_cores);
+
+    // Note: deep copy here, to get thread-local copy of transfer matrices!
+    bonsai::config_params bonsai_config = config.bonsai_config.deep_copy();
+    
+    // Note: the distinction between 'ibeam' and 'beam_id' is a possible source of bugs!
+    int beam_id = config.beam_ids[ibeam];
+    auto stream = rf_pipelines::make_chime_network_stream(sp, beam_id);
+    auto rfi_chain = rf_pipelines::pipeline_object::from_json(config.rfi_transform_chain_json);
+
+    bonsai::dedisperser::initializer ini_params;
+    ini_params.fill_rfi_mask = true;                   // very important for real-time analysis!
+    ini_params.analytic_variance_on_the_fly = false;   // prevent accidental initialization from non-hdf5 config file (should have been checked already, but another check can't hurt)
+    ini_params.verbosity = 0;
+
+    auto dedisperser = make_shared<bonsai::dedisperser> (bonsai_config, ini_params);  // not config.bonsai_config
+
+    // Trigger processors.
+
+    shared_ptr<bonsai::global_max_tracker> max_tracker;
+
+    if (config.track_global_trigger_max) {
+	max_tracker = make_shared<bonsai::global_max_tracker> ();
+	dedisperser->add_processor(max_tracker);
+    }
+
+    if (l1b_subprocess)
+	dedisperser->add_processor(l1b_subprocess);
+
+    auto bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
+	
+    auto pipeline = make_shared<rf_pipelines::pipeline> ();
+    pipeline->add(stream);
+    pipeline->add(rfi_chain);
+    pipeline->add(bonsai_transform);
+
+    rf_pipelines::run_params rparams;
+    rparams.outdir = "";  // disables
+    rparams.verbosity = 0;
+
+    // FIXME more sensible synchronization scheme!
+    pipeline->run(rparams);
+    
+    if (max_tracker) {
+	stringstream ss;
+	ss << "ch-frb-l1: beam_id=" << beam_id 
+	   << ": most significant FRB has SNR=" << max_tracker->global_max_trigger
+	   << ", and (dm,arrival_time)=(" << max_tracker->global_max_trigger_dm
+	   << "," << max_tracker->global_max_trigger_arrival_time
+	   << ")\n";
+	
+	cout << ss.str().c_str() << flush;
+    }
+
+    // FIXME is it necessary for the dedispersion thread to wait for L1B?
+    // If not, it would be clearer to move this into l1_server::join_all_threads().
+
+    if (l1b_subprocess) {
+	int l1b_status = l1b_subprocess->wait_for_child();
+	if (config.l1_verbosity >= 1)
+	    cout << "l1b process exited with status " << l1b_status << endl;
+    }
+} 
+
+
+static void dedispersion_thread_main(const dedispersion_thread_context &context)
+{
     try {
-	// Note: deep copy here, to get thread-local copy of transfer matrices!
-	bonsai::config_params bonsai_config = config.bonsai_config.deep_copy();
-	vector<int> allowed_cores;
-
-	// FIXME: cut-and-paste between make_l1b_subprocess() and here.
-	// (The L1b-spawning logic was originally part of dedispersion_thread_main(), then got hacked into its own function.)
-
-	if (!config.is_subscale) {
-	    // Core-pinning logic for production-scale L1 server.
-	    int c = (ibeam / 8) * 10 + (ibeam % 8);
-	    allowed_cores = { c, c+20 };
-	}
-
-	// Pin thread before allocating anything.
-	// Note that in the subscale case, 'allowed_cores' is an empty vector, and pin_thread_to_cores() no-ops.
-	ch_frb_io::pin_thread_to_cores(allowed_cores);
-	
-	// Note: the distinction between 'ibeam' and 'beam_id' is a possible source of bugs!
-	int beam_id = config.beam_ids[ibeam];
-        auto stream = rf_pipelines::make_chime_network_stream(sp, beam_id);
-	auto rfi_chain = rf_pipelines::pipeline_object::from_json(config.rfi_transform_chain_json);
-
-	bonsai::dedisperser::initializer ini_params;
-	ini_params.fill_rfi_mask = true;                   // very important for real-time analysis!
-	ini_params.analytic_variance_on_the_fly = false;   // prevent accidental initialization from non-hdf5 config file (should have been checked already, but another check can't hurt)
-	ini_params.verbosity = 0;
-
-	auto dedisperser = make_shared<bonsai::dedisperser> (bonsai_config, ini_params);
-
-	// Trigger processors.
-
-	shared_ptr<bonsai::global_max_tracker> max_tracker;
-
-	if (config.track_global_trigger_max) {
-	    max_tracker = make_shared<bonsai::global_max_tracker> ();
-	    dedisperser->add_processor(max_tracker);
-	}
-
-	if (l1b_trigger_pipe)
-	    dedisperser->add_processor(l1b_trigger_pipe);
-
-	auto bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
-	
-	auto pipeline = make_shared<rf_pipelines::pipeline> ();
-	pipeline->add(stream);
-	pipeline->add(rfi_chain);
-	pipeline->add(bonsai_transform);
-
-	rf_pipelines::run_params rparams;
-	rparams.outdir = "";  // disables
-	rparams.verbosity = 0;
-
-	// FIXME more sensible synchronization scheme!
-	pipeline->run(rparams);
-
-	if (max_tracker) {
-	    stringstream ss;
-	    ss << "ch-frb-l1: beam_id=" << beam_id 
-	       << ": most significant FRB has SNR=" << max_tracker->global_max_trigger
-	       << ", and (dm,arrival_time)=(" << max_tracker->global_max_trigger_dm
-	       << "," << max_tracker->global_max_trigger_arrival_time
-	       << ")\n";
-	    
-	    cout << ss.str().c_str() << flush;
-	}
-
-	if (l1b_trigger_pipe) {
-	    int l1b_status = l1b_trigger_pipe->wait_for_child();
-	    if (config.l1_verbosity >= 1)
-		cout << "l1b process exited with status " << l1b_status << endl;
-	}
-    } 
+	context._thread_main();
+    }
     catch (exception &e) {
 	cerr << e.what() << "\n";
 	throw;
@@ -795,25 +589,360 @@ static void dedispersion_thread_main(const l1_params &config, const shared_ptr<c
 
 // -------------------------------------------------------------------------------------------------
 //
-// print_statistics()
-//
-// FIXME move equivalent functionality to ch_frb_io?
+// This master data structure defines an L1 server instance.
 
 
-static void print_statistics(const l1_params &config, const vector<shared_ptr<ch_frb_io::intensity_network_stream>> &input_streams, int verbosity)
+struct l1_server {        
+    using corelist_t = vector<int>;
+    
+    const l1_config config;
+    
+    int ncpus = 0;
+    vector<corelist_t> cores_on_cpu;   // length-ncpus, defines mapping of cores to cpus
+    
+    // Core-pinning scheme
+    corelist_t output_thread_cores;             // assumed same corelist for all I/O threads
+    corelist_t network_thread_cores;            // assumed same for all network threads
+    vector<corelist_t> dedispersion_cores;      // length config.nbeams, used for (RFI, dedisp, L1B).
+    vector<corelist_t> assembler_thread_cores;  // length nstreams
+
+    // "Heavyweight" data structures.
+    vector<shared_ptr<bonsai::trigger_pipe>> l1b_subprocesses;   // can be vector of empty pointers, if L1B is not being run.
+    vector<shared_ptr<ch_frb_io::output_device>> output_devices;
+    vector<shared_ptr<ch_frb_io::memory_slab_pool>> memory_slab_pools;
+    vector<shared_ptr<ch_frb_io::intensity_network_stream>> input_streams;
+    vector<shared_ptr<L1RpcServer>> rpc_servers;
+    vector<std::thread> rpc_threads;
+    vector<std::thread> dedispersion_threads;
+
+    // The constructor reads the configuration files, does a lot of sanity checks,
+    // but does not initialize any "heavyweight" data structures.
+    l1_server(int argc, char **argv);
+
+    // These methods incrementally construct the "heavyweight" data structures.
+    void spawn_l1b_subprocesses();
+    void make_output_devices();
+    void make_memory_slab_pools();
+    void make_input_streams();
+    void make_rpc_servers();
+    void spawn_dedispersion_threads();
+
+    // These methods wait for the server to exit, and print some summary info.
+    void join_all_threads();
+    void print_statistics();
+
+    // Helper methods called by constructor.
+    void _init_subscale();
+    void _init_20cores_16beams();
+};
+
+
+l1_server::l1_server(int argc, char **argv) :
+    config(argc, argv)
 {
-    assert((int)input_streams.size() == config.nstreams);
+    // Factor of 2 is from hyperthreading.
+    int num_cores = std::thread::hardware_concurrency() / 2;
 
-    if (verbosity <= 0)
-	return;
+    this->dedispersion_cores.resize(config.nbeams);
+    this->assembler_thread_cores.resize(config.nstreams);
+
+    if (config.nbeams <= 4)
+	_init_subscale();
+    else if ((config.nbeams == 16) && (num_cores == 20))
+	_init_20cores_16beams();
+    else {
+	cerr << "ch-frb-l1: The L1 server can currently run in two modes: either a \"production-scale\" mode\n"
+	     << "  with 16 beams and 20 cores, or a \"subscale\" mode with 4 beams and no core-pinning.\n"
+	     << "  This appears to be an instance with " << config.nbeams << " beams, and " << num_cores << " cores.\n";
+	exit(1);
+    }
+
+    // Check that these members have been initialized by _init_xxx().
+    assert(ncpus > 0);
+    assert(cores_on_cpu.size() == size_t(ncpus));
+}
+
+
+void l1_server::_init_subscale()
+{
+    if (config.nfreq > 4096) {
+	cout << config.l1_config_filename << ": subscale instance with > 4096 frequency channels, presumably unintentional?" << endl;
+	config._have_warnings();
+    }
+    
+    this->ncpus = 1;
+    this->cores_on_cpu.resize(1);
+}
+
+
+void l1_server::_init_20cores_16beams()
+{
+    if (config.nstreams != 4)
+	throw runtime_error("ch-frb-l1: in the \"production\" 16-beam case, we currently require 4 streams (this could be generalized pretty easily)");
+
+    this->ncpus = 2;
+    this->cores_on_cpu.resize(2);
+
+    // See comment at top of file.
+    this->cores_on_cpu[0] = vconcat(vrange(0,10), vrange(20,30));
+    this->cores_on_cpu[1] = vconcat(vrange(10,20), vrange(30,40));
+    
+    // On the real CHIME nodes, all disk controllers and NIC's are on CPU1!
+    // (See p. 1-10 of the motherboard manual.)  Therefore, we pin output threads
+    // threads to core 9 on CPU1.  (This core currently isn't used for anything else.)
+    
+    this->output_thread_cores = {9, 29};
+
+    // Note that processing threads 0-7 are pinned to cores 0-7 (on CPU1)
+    // and cores 10-17 (on CPU2).  I decided to pin assembler threads to
+    // cores 8 and 18.  This leaves cores 9 and 19 free for RPC and other IO.
+
+    this->assembler_thread_cores[0] = {8,28};
+    this->assembler_thread_cores[1] = {8,28};
+    this->assembler_thread_cores[2] = {18,38};
+    this->assembler_thread_cores[3] = {18,38};
+
+    // I decided to pin all network threads to CPU1, since according to
+    // the motherboard manual, all NIC's live on the same PCI-E bus as CPU1.
+    //
+    // I think it makes sense to avoid pinning network threads to specific
+    // cores on the CPU, since they use minimal cycles, but scheduling latency
+    // is important for minimizing packet drops.  I haven't really tested this
+    // assumption though!
+
+    this->network_thread_cores = cores_on_cpu[0];
+
+    // We pin dedispersion threads to cores 0-7, on both CPU's.
+    // (16 dedispersion threads total)
+
+    for (int i = 0; i < 2; i++)
+	for (int j = 0; j < 8; j++)
+	    this->dedispersion_cores[8*i+j] = { 10*i+j, 10*i+j+20 };
+}
+
+
+void l1_server::spawn_l1b_subprocesses()
+{
+    if (l1b_subprocesses.size() != 0)
+	throw("ch-frb-l1 internal error: double call to spawn_l1b_subprocesses()");
+    
+    this->l1b_subprocesses.resize(config.nbeams);
+
+    if (config.l1b_executable_filename.size() == 0) {
+	if (config.l1_verbosity >= 1)
+	    cout << "ch-frb-l1: config parameter 'l1b_executable_filename' is an empty string, L1b processes will not be spawned\n";
+	return;  // note that 'l1b_subprocesses' gets initialized to a vector of empty pointers
+    }
+
+    for (int ibeam = 0; ibeam < config.nbeams; ibeam++) {
+	// L1b command line is: <l1_executable> <l1b_config> <beam_id>
+	vector<string> l1b_command_line = {
+	    config.l1b_executable_filename,
+	    config.l1b_config_filename,
+	    std::to_string(config.beam_ids[ibeam])
+	};
+	
+	bonsai::trigger_pipe::initializer l1b_initializer;
+	l1b_initializer.timeout = config.l1b_pipe_timeout;
+	l1b_initializer.blocking = config.l1b_pipe_blocking;
+	l1b_initializer.search_path = config.l1b_search_path;
+	l1b_initializer.verbosity = config.l1b_pipe_io_debug ? 3: config.l1_verbosity;
+	l1b_initializer.pipe_capacity = config.l1b_pipe_capacity;
+	l1b_initializer.child_cores = dedispersion_cores[ibeam];   // pin L1B child process to same cores as L1A parent thread.
+    
+	// The trigger_pipe constructor will spawn the L1b child process.
+	this->l1b_subprocesses[ibeam] = make_shared<bonsai::trigger_pipe> (l1b_command_line, l1b_initializer);
+    }
+}
+
+
+void l1_server::make_output_devices()
+{
+    if (output_devices.size() != 0)
+	throw("ch-frb-l1 internal error: double call to make_output_devices()");
+
+    int ndev = config.output_device_names.size();
+    this->output_devices.resize(ndev);
+
+    for (int idev = 0; idev < ndev; idev++) {
+	ch_frb_io::output_device::initializer ini_params;
+	ini_params.device_name = config.output_device_names[idev];
+	ini_params.verbosity = config.write_chunk_debug ? 3 : config.l1_verbosity;
+	ini_params.io_thread_allowed_cores = this->output_thread_cores;
+	
+	this->output_devices[idev] = ch_frb_io::output_device::make(ini_params);
+    }
+}
+
+
+void l1_server::make_memory_slab_pools()
+{
+    if (memory_slab_pools.size() != 0)
+	throw("ch-frb-l1 internal error: double call to make_output_devices()");
+    
+    int verbosity = config.memory_pool_debug ? 2 : 1;
+    int memory_slabs_per_cpu = config.total_memory_slabs / ncpus;
+    
+    this->memory_slab_pools.resize(ncpus);
+    
+    for (int icpu = 0; icpu < ncpus; icpu++)
+	memory_slab_pools[icpu] = make_shared<ch_frb_io::memory_slab_pool> (config.nbytes_per_memory_slab, memory_slabs_per_cpu, cores_on_cpu[icpu], verbosity);
+}
+
+
+void l1_server::make_input_streams()
+{
+    if (input_streams.size() != 0)
+	throw("ch-frb-l1 internal error: double call to make_input_streams()");
+    if (memory_slab_pools.size() != size_t(ncpus))
+	throw("ch-frb-l1 internal error: make_input_streams() was called, without first calling make_memory_slab_pools()");
+    if (output_devices.size() != config.output_device_names.size())
+	throw("ch-frb-l1 internal error: make_input_streams() was called, without first calling make_output_devices()");
+    
+    int nstreams_per_cpu = xdiv(config.nstreams, ncpus);
+    int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
+
+    this->input_streams.resize(config.nstreams);
 
     for (int istream = 0; istream < config.nstreams; istream++) {
+	auto beam_id0 = config.beam_ids.begin() + istream * nbeams_per_stream;
+	auto beam_id1 = config.beam_ids.begin() + (istream+1) * nbeams_per_stream;
+	auto memory_slab_pool = this->memory_slab_pools[istream / nstreams_per_cpu];
+	
+	ch_frb_io::intensity_network_stream::initializer ini_params;
+
+	ini_params.ipaddr = config.ipaddr[istream];
+	ini_params.udp_port = config.port[istream];
+	ini_params.beam_ids = vector<int> (beam_id0, beam_id1);
+	ini_params.nupfreq = xdiv(config.nfreq, ch_frb_io::constants::nfreq_coarse_tot);
+	ini_params.nt_per_packet = config.nt_per_packet;
+	ini_params.fpga_counts_per_sample = config.fpga_counts_per_sample;
+	ini_params.stream_id = istream + 1;   // +1 here since first NFS mount is /frb-archive-1, not /frb-archive-0
+	ini_params.force_fast_kernels = !config.slow_kernels;
+	ini_params.force_reference_kernels = config.slow_kernels;
+	ini_params.deliberately_crash = config.deliberately_crash;
+	ini_params.assembler_thread_cores = this->assembler_thread_cores[istream];
+	ini_params.network_thread_cores = this->network_thread_cores;
+	ini_params.unassembled_ringbuf_capacity = config.unassembled_ringbuf_capacity;
+	ini_params.max_unassembled_packets_per_list = config.unassembled_npackets_per_list;
+	ini_params.max_unassembled_nbytes_per_list = config.unassembled_nbytes_per_list;
+	ini_params.assembled_ringbuf_capacity = config.assembled_ringbuf_nchunks;
+	ini_params.telescoping_ringbuf_capacity = config.telescoping_ringbuf_nchunks;
+	ini_params.memory_pool = memory_slab_pool;
+	ini_params.output_devices = this->output_devices;
+	
+	// Setting this flag means that an exception will be thrown if either:
+	//
+	//    1. the unassembled-packet ring buffer between the network and
+	//       assembler threads is full (i.e. assembler thread is running slow)
+	//
+	//    2. the assembled_chunk ring buffer between the network and
+	//       processing threads is full (i.e. processing thread is running slow)
+	//
+	// If we wanted, we could define separate flags for these two conditions.
+	//
+	// Note that in situation (2), the pipeline will crash anyway since
+	// rf_pipelines doesn't contain code to handle gaps in the data.  This
+	// is something that we'll fix soon, but it's nontrivial.
+	
+	ini_params.throw_exception_on_buffer_drop = true;
+
+	input_streams[istream] = ch_frb_io::intensity_network_stream::make(ini_params);
+	
+	// If config.stream_filename_pattern is an empty string, then stream_to_files() doesn't do anything.
+	input_streams[istream]->stream_to_files(config.stream_filename_pattern, 0);   // (pattern, priority)
+    }
+}
+
+
+void l1_server::make_rpc_servers()
+{
+    if (rpc_servers.size() || rpc_threads.size())
+	throw("ch-frb-l1 internal error: double call to make_rpc_servers()");
+    if (input_streams.size() != size_t(config.nstreams))
+	throw("ch-frb-l1 internal error: make_rpc_servers() was called, without first calling make_input_streams()");
+
+    this->rpc_servers.resize(config.nstreams);
+    this->rpc_threads.resize(config.nstreams);
+    
+    for (int istream = 0; istream < config.nstreams; istream++) {
+	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], config.rpc_address[istream]);
+	rpc_threads[istream] = rpc_servers[istream]->start();
+    }
+}
+
+       
+void l1_server::spawn_dedispersion_threads()
+{
+    if (dedispersion_threads.size())
+	throw("ch-frb-l1 internal error: double call to spawn_dedispersion_threads()");
+    if (input_streams.size() != size_t(config.nstreams))
+	throw("ch-frb-l1 internal error: spawn_dedispersion_threads() was called, without first calling make_input_streams()");
+    if (l1b_subprocesses.size() != size_t(config.nbeams))
+	throw("ch-frb-l1 internal error: spawn_dedispersion_threads() was called, without first calling spawn_l1b_subprocesses()");
+
+    this->dedispersion_threads.resize(config.nbeams);
+    
+    if (config.l1_verbosity >= 1)
+	cout << "ch-frb-l1: spawning " << config.nbeams << " dedispersion thread(s)" << endl;
+
+    for (int ibeam = 0; ibeam < config.nbeams; ibeam++) {
+	int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
+	int istream = ibeam / nbeams_per_stream;
+    
+	dedispersion_thread_context context;
+	context.config = this->config;
+	context.sp = this->input_streams[istream];
+	context.l1b_subprocess = this->l1b_subprocesses[ibeam];
+	context.allowed_cores = this->dedispersion_cores[ibeam];
+	context.ibeam = ibeam;
+	
+	if (config.l1_verbosity >= 2) {
+	    cout << "ch-frb-l1: spawning dedispersion thread " << ibeam << ", beam_id=" << config.beam_ids[ibeam] 
+		 << ", stream=" << context.sp->ini_params.ipaddr << ":" << context.sp->ini_params.udp_port
+		 << ", allowed_cores=" << ch_frb_io::vstr(context.allowed_cores) << endl;
+	}
+
+	dedispersion_threads[ibeam] = std::thread(dedispersion_thread_main, context);
+    }
+}
+
+
+void l1_server::join_all_threads()
+{
+    for (size_t ibeam = 0; ibeam < dedispersion_threads.size(); ibeam++)
+	dedispersion_threads[ibeam].join();
+    
+    cout << "All dedispersion threads joined, waiting for pending write requests..." << endl;
+
+    for (size_t idev = 0; idev < output_devices.size(); idev++) {
+	output_devices[idev]->end_stream(true);   // wait=true
+	output_devices[idev]->join_thread();
+    }
+
+    cout << "All write requests written, shutting down RPC servers..." << endl;
+
+    for (size_t istream = 0; istream < rpc_servers.size(); istream++)
+	rpc_servers[istream]->do_shutdown();
+    for (size_t istream = 0; istream < rpc_threads.size(); istream++)
+	rpc_threads[istream].join();
+}
+
+
+
+// FIXME move equivalent functionality to ch_frb_io?
+void l1_server::print_statistics()
+{
+    if (config.l1_verbosity <= 0)
+	return;
+
+    for (size_t istream = 0; istream < input_streams.size(); istream++) {
 	cout << "stream " << istream << ": ipaddr=" << config.ipaddr[istream] << ", udp_port=" << config.port[istream] << endl;
  
 	// vector<map<string,int>>
 	auto statistics = input_streams[istream]->get_statistics();
 
-	if (verbosity <= 1) {
+	if (config.l1_verbosity <= 1) {
 	    int count_packets_good = statistics[0]["count_packets_good"];
 	    double assembler_thread_waiting_usec = statistics[0]["assembler_thread_waiting_usec"];
 	    double assembler_thread_working_usec = statistics[0]["assembler_thread_working_usec"];
@@ -848,81 +977,19 @@ static void print_statistics(const l1_params &config, const vector<shared_ptr<ch
 
 int main(int argc, char **argv)
 {
-    l1_params config(argc, argv);
+    l1_server server(argc, argv);
 
-    int ndevices = config.output_devices.size();
-    int npools = config.npools;
-    int nstreams = config.nstreams;
-    int nbeams = config.nbeams;
+    server.spawn_l1b_subprocesses();
+    server.make_output_devices();
+    server.make_memory_slab_pools();
+    server.make_input_streams();
+    server.make_rpc_servers();
+    server.spawn_dedispersion_threads();
 
-    assert(nstreams % npools == 0);
-    assert(nbeams % nstreams == 0);
+    cout << "ch-frb-l1: server is now running, but you will want to wait ~60 seconds before sending packets, or it may crash!  This will be fixed soon..." << endl;
 
-    vector<shared_ptr<bonsai::trigger_pipe>> l1b_subprocesses(nbeams);
-    vector<shared_ptr<ch_frb_io::output_device>> output_devices(ndevices);
-    vector<shared_ptr<ch_frb_io::memory_slab_pool>> memory_pools(npools);
-    vector<shared_ptr<ch_frb_io::intensity_network_stream>> input_streams(nstreams);
-    vector<shared_ptr<L1RpcServer> > rpc_servers(nstreams);
-    vector<std::thread> rpc_threads(nstreams);
-    vector<std::thread> dedispersion_threads(nbeams);
-
-    // It seems to be best to spawn L1b subprocesses as the very first step,
-    // before allocating anything!
-    for (int ibeam = 0; ibeam < nbeams; ibeam++)
-	l1b_subprocesses[ibeam] = make_l1b_subprocess(config, ibeam);
-
-    for (int idev = 0; idev < ndevices; idev++)
-	output_devices[idev] = make_output_device(config, idev);
-
-    for (int ipool = 0; ipool < npools; ipool++)
-	memory_pools[ipool] = make_memory_pool(config, ipool);
-
-    for (int istream = 0; istream < nstreams; istream++) {
-	int ipool = istream / (nstreams / npools);
-	input_streams[istream] = make_input_stream(config, istream, memory_pools[ipool], output_devices);
-    }
-
-    for (int istream = 0; istream < nstreams; istream++) {
-	rpc_servers[istream] = make_l1rpc_server(config, istream, input_streams[istream]);
-        rpc_threads[istream] = rpc_servers[istream]->start();
-    }
-
-    if (config.l1_verbosity >= 1)
-	cout << "ch-frb-l1: spawning " << nbeams << " dedispersion thread(s)" << endl;
-
-    for (int ibeam = 0; ibeam < nbeams; ibeam++) {
-	int nbeams_per_stream = xdiv(nbeams, nstreams);
-	int istream = ibeam / nbeams_per_stream;
-
-	if (config.l1_verbosity >= 2) {
-	    cout << "ch-frb-l1: spawning dedispersion thread " << ibeam << ", beam_id=" << config.beam_ids[ibeam] 
-		 << ", stream=" << config.ipaddr[istream] << ":" << config.port[istream] << endl;
-	}
-
-	dedispersion_threads[ibeam] = std::thread(dedispersion_thread_main, config, input_streams[istream], l1b_subprocesses[ibeam], ibeam);
-    }
-
-    if (!config.is_subscale)
-	cout << "ch-frb-l1: server is now running, but you will want to wait ~60 seconds before sending packets, or it may crash!  This will be fixed soon..." << endl;
-
-    for (int ibeam = 0; ibeam < nbeams; ibeam++)
-	dedispersion_threads[ibeam].join();
-
-    cout << "All dedispersion threads joined, waiting for pending write requests..." << endl;
-
-    for (int idev = 0; idev < ndevices; idev++) {
-	output_devices[idev]->end_stream(true);   // wait=true
-	output_devices[idev]->join_thread();
-    }
-
-    cout << "All write requests written, all i/o threads joined, shutting down RPC servers..." << endl;
-
-    for (int istream = 0; istream < nstreams; istream++) {
-	rpc_servers[istream]->do_shutdown();
-	rpc_threads[istream].join();
-    }
-    
-    print_statistics(config, input_streams, config.l1_verbosity);
+    server.join_all_threads();
+    server.print_statistics();
 
     return 0;
 }
