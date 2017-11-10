@@ -62,20 +62,70 @@ def parse_config():
 
     nodes = y['rpc_address']
 
+    # allow a single string (not a list)
+    if isinstance(nodes,basestring):
+        nodes = [nodes]
+
     if not isinstance(nodes,list) or not all(isinstance(x,basestring) for x in nodes):
         print("%s: expected 'rpc_address' field to be a list of strings" % config_filename)
         sys.exit(1)
 
-    # FIXME(?): sanity-check the format of the node strings here?
-    # (Should be something like 'tcp://10.0.0.101:5555'
+    # FIXME(?): check the format of the node strings here?
+    # (Should be something like 'tcp://10.0.0.101:5555')
 
     return nodes
-
 
 app.nodes = parse_config()
 
 @app.route('/')
 def index():
+    print('nodes:', app.nodes)
+    return render_template('index-newer.html',
+                           nodes = app.nodes,
+                           enodes = enumerate(app.nodes),
+                           node_status_url='/node-status',
+                           packet_matrix_url='/packet-matrix')
+
+
+@app.route('/packet-matrix')
+def packet_matrix():
+    # Send RPC requests to all nodes, gather results into an HTML table
+    client = get_rpc_client()
+    # Make RPC requests for list_chunks and get_statistics asynchronously
+    timeout = 5.
+
+    allstats = client.get_statistics(timeout=timeout)
+    print('Stats:', allstats)
+    packets = [s[1] if s is not None else None for s in allstats]
+    print('Packet stats:', packets)
+
+    senders = set()
+    for p in packets:
+        if p is None:
+            continue
+        senders.update(p.keys())
+    senders = list(senders)
+    senders.sort()
+
+    html = '<html><body>'
+    html += '<table><tr><td></td>'
+    for i,l0 in enumerate(senders):
+        html += '<td><a href="l0/%s"> </a></td>' % l0
+    html += '</tr>\n'
+    for i,p in enumerate(packets):
+        html += '<tr><td><a href="host/%s">%i</a></td>' % (app.nodes[i].replace('tcp://',''), i+1)
+        for l0 in senders:
+            n = p.get(l0, 0)
+            html += '<td>%i</td>' % n
+        html += '</tr>\n'
+    html += '</table>'
+    html += '</body></html>'
+    return html
+
+
+
+@app.route('/xxx')
+def index_xxx():
 
     import requests
 
@@ -142,38 +192,6 @@ def node(name=None):
     return redirect('http://localhost:3000/dashboard/db/node-exporter-single-server?orgId=2&from=now-1h&to=now&var-server=%s' % name)
 
 
-@app.route('/packet-matrix')
-def packet_matrix():
-    # Send RPC requests to all nodes, gather results into an HTML table
-    client = get_rpc_client()
-    # Make RPC requests for list_chunks and get_statistics asynchronously
-    timeout = 5.
-
-    allstats = client.get_statistics(timeout=timeout)
-    print('Stats:', allstats)
-    packets = [s[1] for s in allstats]
-    print('Packet stats:', packets)
-
-    senders = set()
-    for p in packets:
-        senders.update(p.keys())
-    senders = list(senders)
-    senders.sort()
-
-    html = '<html><body>'
-    html += '<table><tr><td></td>'
-    for i,l0 in enumerate(senders):
-        html += '<td><a href="l0/%s"> </a></td>' % l0
-    html += '</tr>\n'
-    for i,p in enumerate(packets):
-        html += '<tr><td><a href="host/%s">%i</a></td>' % (app.nodes[i].replace('tcp://',''), i+1)
-        for l0 in senders:
-            n = p.get(l0, 0)
-            html += '<td>%i</td>' % n
-        html += '</tr>\n'
-    html += '</table>'
-    html += '</body></html>'
-    return html
 
 @app.route('/packet-matrix.png')
 def packet_matrix_png():

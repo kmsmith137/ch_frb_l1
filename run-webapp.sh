@@ -18,4 +18,9 @@ export WEBAPP_CONFIG=$1
 
 # Note: FLASK_DEBUG disabled here, since it would allow execution of 
 # arbitrary code over the internet!  (--host 0.0.0.0)
+#flask run --host 0.0.0.0 --port 5002
+
+# We're but behind firewalls, so live dangerously
+export FLASK_DEBUG=1
+
 flask run --host 0.0.0.0 --port 5002

@@ -1,0 +1,70 @@
+<!doctype html>
+<html>
+<head>
+<title>CHIME FRB L1 status</title>
+
+<script type="text/javascript" src="{{ url_for('static', filename='jquery.js') }}"></script>
+<script type="text/javascript" src="{{ url_for('static', filename='d3.min.js') }}"></script>
+
+</head>
+
+<body id="thebody">
+
+<style>
+.good {
+background-color: lightsteelblue;
+}
+.bad {
+background-color: pink;
+}
+.rotate {
+writing-mode: vertical-lr;
+}
+</style>
+<script type="text/javascript">
+</script>
+
+<h3>CHIME FRB Diagnostics</h3>
+
+<ul>
+<li><a href="{{ packet_matrix_url }}">Packet rate matrix</a></li>
+</ul>
+
+<h3>CHIME FRB Data Center status</h3>
+
+<table>
+  <tr>
+    <th>Nodes</th>
+    {% for i,node in enodes %}
+    <td><a href="node/{{node}}">{{ i+1 }}</a></td>
+    {% endfor %}
+  </tr>
+
+{#
+  <tr>
+    <th>Up</th>
+    {% for node in nodes %}
+    <td
+       {% if nodeup[node] == "0" %}
+       class="bad"
+       {% else %}
+       class="good"
+       {% endif %}
+       >
+      {{ nodeup[node] }}
+      </td>
+    {% endfor %}
+  </tr>
+#}
+
+</table>
+
+{#
+<iframe src="http://localhost:3000/dashboard-solo/db/node-exporter-single-server?orgId=2&panelId=11&var-server=" width="450" height="200" frameborder="0"></iframe>
+#}
+
+<br><hr><br>
+
+
+</body>
+</html>
