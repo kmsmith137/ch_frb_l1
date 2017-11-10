@@ -10,6 +10,7 @@ import sys
 import json
 import yaml
 import msgpack
+import numpy as np
 
 #from flask import Flask, request, session, url_for, redirect, render_template, abort, g, flash, _app_ctx_stack
 
@@ -84,20 +85,62 @@ def index():
                            nodes = app.nodes,
                            enodes = enumerate(app.nodes),
                            node_status_url='/node-status',
-                           packet_matrix_url='/packet-matrix')
+                           packet_matrix_url='/packet-matrix',
+                           packet_matrix_image_url='/packet-matrix.png',
+                           packet_matrix_d3_url='/packet-matrix-d3',
+        )
 
+def sort_l0_nodes(senders):
+    # Assume that senders are IP:port addresses; drop port
+    sender_ips = [s.split(':')[0] for s in senders]
+    # Sort numerically
+    numip = [sum([int(n) * 1<<(i*8) for i,n in enumerate(reversed(s.split('.')))])
+             for s in sender_ips]
 
-@app.route('/packet-matrix')
-def packet_matrix():
+    dnsnames = []
+    for s in sender_ips:
+        # nums = [10,1,7,18]
+        nums = [int(ss) for ss in s.split('.')]
+        if not(nums[0] == 10 and nums[1] == 1):
+            dnsnames.append(s)
+            continue
+        digit = nums[2]
+        north = (digit >= 0 and digit <= 14)
+        south = (digit >= 100 and digit <= 114)
+        if not(north or south):
+            dnsnames.append(s)
+            continue
+        if north:
+            rack = digit
+            ns = 'n'
+        else:
+            ns = 's'
+            rack = digit - 100
+        pos = nums[3]
+        if not(pos >= 10 and pos <= 19):
+            dnsnames.append(s)
+            continue
+        name = 'c%s%xg%i' % (ns, rack, pos)
+        dnsnames.append(name)
+
+    numip = [sum([int(n) * 1<<(i*8) for i,n in enumerate(reversed(s.split('.')))])
+             for s in sender_ips]
+
+    I = np.argsort(numip)
+    senders = [senders[i] for i in I]
+    sender_names = [dnsnames[i] for i in I]
+    return senders,sender_names
+
+def get_packet_matrix():
     # Send RPC requests to all nodes, gather results into an HTML table
     client = get_rpc_client()
     # Make RPC requests for list_chunks and get_statistics asynchronously
     timeout = 5.
 
     allstats = client.get_statistics(timeout=timeout)
-    print('Stats:', allstats)
-    packets = [s[1] if s is not None else None for s in allstats]
-    print('Packet stats:', packets)
+    #print('Stats:', allstats)
+    packets = [s[1] if s is not None else {} for s in allstats]
+    #print('Packet stats:', packets)
 
     senders = set()
     for p in packets:
@@ -105,12 +148,47 @@ def packet_matrix():
             continue
         senders.update(p.keys())
     senders = list(senders)
-    senders.sort()
 
+    # Parse and sort
+    senders,sender_names = sort_l0_nodes(senders)
+    return senders, sender_names, packets
+    
+@app.route('/packet-matrix-d3')
+def packet_matrix_d3():
+    return render_template('packets-d3.html',
+                           nodes = app.nodes,
+                           enodes = enumerate(app.nodes),
+                           packet_matrix_json_url='/packet-matrix.json',)
+
+@app.route('/packet-matrix.json')
+def packet_matrix_json():
+    senders, sender_names, packets = get_packet_matrix()
+
+    # npackets = []
+    # for p in packets:
+    #     row = []
+    #     for s in senders:
+    #         row.append(p.get(s, 0))
+    #     npackets.append(row)
+
+    # Flat packet list
+    npackets = []
+    for p in packets:
+        for s in senders:
+            npackets.append(p.get(s, 0))
+    
+    rtn = dict(l0=sender_names, l1=[n.replace('tcp://','') for n in app.nodes],
+               packets=npackets)
+    return jsonify(rtn)
+    
+@app.route('/packet-matrix')
+def packet_matrix():
+    senders, sender_names, packets = get_packet_matrix()
+    
     html = '<html><body>'
     html += '<table><tr><td></td>'
-    for i,l0 in enumerate(senders):
-        html += '<td><a href="l0/%s"> </a></td>' % l0
+    for i,l0 in enumerate(sender_names):
+        html += '<td><a href="l0/%s">%s</a></td>' % (l0,l0)
     html += '</tr>\n'
     for i,p in enumerate(packets):
         html += '<tr><td><a href="host/%s">%i</a></td>' % (app.nodes[i].replace('tcp://',''), i+1)
@@ -197,21 +275,9 @@ def node(name=None):
 def packet_matrix_png():
     import pylab as plt
     import numpy as np
+
+    senders, sender_names, packets = get_packet_matrix()
     
-    # Send RPC requests to all nodes, gather results into a plot
-    client = get_rpc_client()
-    # Make RPC requests for list_chunks and get_statistics asynchronously
-    timeout = 5.
-
-    allstats = client.get_statistics(timeout=timeout)
-    packets = [s[1] for s in allstats]
-
-    senders = set()
-    for p in packets:
-        senders.update(p.keys())
-    senders = list(senders)
-    senders.sort()
-
     if len(senders) == 0:
         senders = ['null']
 
@@ -221,21 +287,22 @@ def packet_matrix_png():
     npackets = np.zeros((nrecv, nsend), int)
     for irecv,p in enumerate(packets):
         for isend,l0 in enumerate(senders):
-            n = p.get(l0, 0)
-            npackets[irecv,isend] = n
+            npackets[irecv,isend] = p.get(l0, 0)
 
     from io import BytesIO
     out = BytesIO()
-    plt.clf()
-    plt.imshow(npackets, interpolation='nearest', origin='lower', vmin=0)
-    plt.colorbar()
-    plt.xticks(np.arange(nsend))
-    plt.xlabel('L0 senders')
-    plt.yticks(np.arange(nrecv))
-    plt.ylabel('L1 receivers')
-    plt.savefig(out, format='png')
-    plt.title('Packets received matrix')
-    #plt.imsave(out, npackets, format='png')
+    # plt.clf()
+    # plt.imshow(npackets, interpolation='nearest', origin='lower', vmin=0)
+    # plt.colorbar()
+    # plt.xticks(np.arange(nsend))
+    # plt.xlabel('L0 senders')
+    # plt.yticks(np.arange(nrecv))
+    # plt.ylabel('L1 receivers')
+    # plt.savefig(out, format='png')
+    # plt.title('Packets received matrix')
+
+    plt.imsave(out, npackets, format='png')
+
     bb = out.getvalue()
 
     return (bb, {'Content-type': 'image/png'})

@@ -112,8 +112,21 @@ int main(int argc, char** argv) {
 
     std::vector<struct sockaddr_in> senders(nsenders);
     for (int i=0; i<nsenders; i++) {
-        string sender = "10.0." + to_string(i / 16) + "." + to_string(i % 16) + ":8888";
-        inet_aton(sender.c_str(), &senders[i].sin_addr);
+        int pos = (i % 10);
+        int val = i / 10;
+        int rack = val % 14;
+        val = val / 14;
+        int ns = val;
+
+        string sender = "10.1." + to_string(ns * 100 + rack) + "." +
+            to_string(pos + 10);
+        //+ to_string(i / 16) + "." + to_string(i % 16);
+        cout << "IP: " << sender << endl;
+        if (!inet_aton(sender.c_str(), &(senders[i].sin_addr))) {
+            cout << "Failed to parse sender address: " << sender << endl;
+            exit(-1);
+        }
+        senders[i].sin_port = htons(8888);
     }
 
     // If a NIC receives 4 beams x 16k frequencies x 1k samples/sec * 8 bit = 512 Gbitps
