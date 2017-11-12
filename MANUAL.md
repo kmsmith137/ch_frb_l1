@@ -70,6 +70,7 @@ Here are some external links to the bonsai documentation, which may also be usef
     Note: because of the "slow start" problem, the two-node backend examples
     [3](#user-content-example3) and [4](#user-content-example4) in this manual
     have been increased from 5-minute runs to 20-minute runs.
+    **NOTE that example 4 is currently broken and will be fixed soon.**
 
   - Currently, bonsai config files must be constructed by a two-step process as follows.
     First, a human-editable text file `bonsai_xxx.txt` is written (for an example, see
@@ -567,6 +568,11 @@ more machines, for example a file server.
 
 <a name="example4"></a>
 **Example 4:**
+
+  - **NOTE that example 4 is currently broken and will be fixed soon.**
+    As discussed over email, it runs too slow in the 16-beam L1 server!
+    I am in the process of implementing an 8-beam server which will be able to run example 4.
+    For now, the text of the example is left unchanged for reference.
 
   - This is the same as example 3, except we run real 16K RFI removal
     on the L1 server, rather than placeholder RFI removal.
