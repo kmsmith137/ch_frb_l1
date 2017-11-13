@@ -72,6 +72,16 @@
         'ringbuf_ntotal': 7},
       ]
 
+ * get_packet_rate_matrix(double start, double period)
+
+     *start* and *period* are unix time values.  0 requests the most
+     recent available.
+
+     Returns a PacketRateMatrix struct, which includes
+     [ [list of L1 received IP:port address strings],
+       [list of L0 sender IP:port address strings],
+       [ [list of packet rate from L0->L1] for each L1 ] ]
+     ie, the matrix has L1 on the rows.
 
  * list_chunks(void)
 
@@ -194,3 +204,12 @@ public:
     MSGPACK_DEFINE(beam, fpga0, fpgaN, filename, success, error_message);
 };
 
+class PacketRateMatrix {
+public:
+    double start;
+    double end;
+    std::vector<std::string> senders;
+    std::vector<std::string> receivers;
+    std::vector<std::vector<int> > packets;
+    MSGPACK_DEFINE(start, end, senders, receivers, packets);
+};
