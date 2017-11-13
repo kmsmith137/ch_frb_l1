@@ -46,8 +46,21 @@ for (var i=0; i<nl1; i++){
 var nodew = 3;
 var nodeh = 8;
 var top_margin = 20;
+var left_margin = 20;
 
-var svg = d3.select('body').append('svg').attr('width', nl0*nodew).attr('height', nl1*nodeh);
+var svg = d3.select('body').append('svg')
+    .attr('width', left_margin + nl0 * nodew)
+    .attr('height', top_margin + nl1 * nodeh);
+
+var names_l0 = [];
+for (var i=0; i<nl0; i++) {
+    names_l0.push({ name: 'node' + i});
+}
+
+var names_l1 = [];
+for (var i=0; i<nl1; i++) {
+    names_l1.push({ name: 'node' + i});
+}
 
 function colormap_rainbow(f) {
     // from matplotlib._cm.py
@@ -57,48 +70,79 @@ function colormap_rainbow(f) {
     return 'rgb(' + r + ',' + g + ',' + b + ')';
 }
 
-/*
-var names_l0 = [];
-for (var i=0; i<nl0; i++) {
-    names_l0.push('node' + i);
+var highlight0 = svg.append('rect')
+    .attr('class', 'highlight0')
+    .attr('width', nodew)
+    .attr('height', nl1 * nodeh)
+    .attr('x', left_margin)
+    .attr('y', top_margin)
+    .style('stroke', 'rgb(0,0,0)');
+
+function mouse_enter_l0(i) {
+    //console.log('Mouseenter ' + node + i);
+    highlight0.attr('x', left_margin + i * nodew);
 }
-*/
-var names_l0 = [];
-for (var i=0; i<nl0; i++) {
-    names_l0.push({ name: 'node' + i});
+
+var highlight1 = svg.append('rect')
+    .attr('class', 'highlight1')
+    .attr('width', nl0 * nodew)
+    .attr('height', nodeh)
+    .attr('x', left_margin)
+    .attr('y', top_margin)
+    .style('stroke', 'rgb(0,0,0)');
+
+function mouse_enter_l1(i) {
+    //console.log('Mouseenter ' + node + i);
+    highlight1.attr('y', top_margin + i * nodeh);
 }
 
 var title0 = svg.selectAll(".title0")
     .data(names_l0)
     .enter().append('a')
     .attr("xlink:href", function(d) { return '/l0-status/' + d.name; })
-    //.append("text")
-    //.text(function(d) { return d; })
     .attr("class", "link0")
     .append('rect')
-    .attr("x", function(d, i) { return i * nodew; })
+    .attr("x", function(d, i) { return left_margin + i * nodew; })
     .attr("y", 0)
     .attr("height", top_margin)
     .attr("width", nodew)
-    .style('fill', function(node, i){return colormap_rainbow(i / nl0);});
+    .style('fill', function(node, i){return colormap_rainbow(i / nl0);})
+    .on('mouseenter', function(node, i) { mouse_enter_l0(i); });
 
-var rgb_nodes = svg.append('g').attr('class','nodes all');
+//.on('mouseexit', function(node, i) { mouse_exit_l0(node,i); });
+
+var title1 = svg.selectAll(".title1")
+    .data(names_l1)
+    .enter().append('a')
+    .attr("xlink:href", function(d) { return '/l1-status/' + d.name; })
+    .attr("class", "link1")
+    .append('rect')
+    .attr("x", 0)
+    .attr("y", function(d, i) { return top_margin + i * nodeh; })
+    .attr("height", nodeh)
+    .attr("width", left_margin)
+    .style('fill', function(node, i){return colormap_rainbow(i / nl0);})
+    .on('mouseenter', function(node, i) { mouse_enter_l1(i); });
 
 function rgb(val, mn, mx) {
-    //return 'rgb('+ array.map(function(r){return Math.round(r);}).join(',') +')';
     g = Math.round(255. * (val - mn) / (mx - mn));
     return 'rgb('+g+','+g+','+g+')';
 }
+
+var rgb_nodes = svg.append('g').attr('class','nodes all');
 
 rgb_nodes
     .selectAll('rect')
     .data(nodes)
     .enter().append('rect')
-    .attr('x', function(node){return node.x * nodew;})
+    .attr('x', function(node){return left_margin + node.x * nodew;})
     .attr('y', function(node){return top_margin + node.y * nodeh;})
     .attr('width',  nodew)
     .attr('height', nodeh)
     .style('fill', function(node){return rgb(node.value, 0, 255);})
+    .on('mouseenter', function(node, i) {
+        mouse_enter_l0(i % nl0);
+        mouse_enter_l1(i / nl0); });
 
 
 function array_max(A) {
@@ -132,23 +176,21 @@ function json_callback(X) {
     $('#rate_high').html(pmax.toFixed(3));
 
     // L0 names
-    //names_l0 = X['l0'];
-    names_l1 = X['ll'];
-
     names = X['l0'];
-    console.log('L0 names:', names);
+    //console.log('L0 names:', names);
     for (var i=0, n=names.length; i<n; i++) {
-        //var oldname = names_l0[i]['name'];
-        //console.log('L0 name:', oldname + ' to ' + names[i]);
         names_l0[i]['name'] = names[i];
     }
-
-    //.transition()
-    //.data(names_l0)
-    //title0.selectAll('.link0')
     svg.selectAll('.link0')
-        .attr('xlink:href', function(d) {
-            console.log("updating name " + d.name); return '/l0-status/' + d.name; });
+        .attr('xlink:href', function(d) { return '/l0-status/' + d.name; });
+
+    // L1 names
+    names = X['l1'];
+    for (var i=0, n=names.length; i<n; i++) {
+        names_l1[i]['name'] = names[i];
+    }
+    svg.selectAll('.link1')
+        .attr('xlink:href', function(d) { return '/l1-status/' + d.name; });
     
     setTimeout('json_update()', 2000);
 }
