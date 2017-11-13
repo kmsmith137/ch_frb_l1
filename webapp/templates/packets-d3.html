@@ -74,7 +74,7 @@ function array_min(A) {
     return A.reduce(function(a, b) { return Math.min(a, b); });
 }
 
-var last_packets = undefined;
+//var last_packets = undefined;
 
 function json_callback(X) {
     console.log('JSON callback: ' + X);
@@ -88,9 +88,9 @@ function json_callback(X) {
       }
       console.log('Flatpackets:', flatpackets);
     */
-    
 
-    if (last_packets != undefined) {
+     /*                              
+     if (last_packets != undefined) {
         var pmax = packets[0] - last_packets[0];
         var pmin = packets[0] - last_packets[0];
         for (i=0; i<packets.length; i++) {
@@ -106,9 +106,19 @@ function json_callback(X) {
         }
     }
     last_packets = packets;
+    */
+    var pmax = array_max(packets);
+    var pmin = array_min(packets);
+    for (i=0; i<packets.length; i++) {
+        nodes[i].value = packets[i];
+    }
     
-    rgb_nodes.selectAll('rect').transition().style('fill', function(node){return rgb(node.value, pmin, pmax);});
+    rgb_nodes.selectAll('rect').transition().style('fill', function(node){return rgb(node.value, 0, pmax);});
 
+    // jquery update rate low/high text
+    $('#rate_low').html(pmin.toFixed(3));
+    $('#rate_high').html(pmax.toFixed(3));
+    
     setTimeout('json_update()', 2000);
 }
 
@@ -120,8 +130,11 @@ function json_update() {
 }
 
 json_update();
-
 </script>
+
+<p>
+Rate range: <span id="rate_low">low</span> to <span id="rate_high">high</span>
+</p>
 
 </body>
 </html>

@@ -110,9 +110,15 @@ class WriteChunkReply(object):
     def __repr__(self):
         return str(self)
 
-class PacketRateMatrix(object):
-    pass
+class PacketRate(object):
+    def __init__(self, msgpack):
+        self.start = msgpack[0]
+        self.period = msgpack[1]
+        self.packets = msgpack[2]
 
+    def __str__(self):
+        return 'PacketRate: start %g, period %g, packets: ' % (self.start, self.period) + str(self.packets)
+        
 class RpcClient(object):
     def __init__(self, servers, context=None, identity=None):
         '''
@@ -166,7 +172,7 @@ class RpcClient(object):
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
 
-    def get_packet_rate_matrix(self, start=None, period=None, servers=None, wait=True, timeout=-1):
+    def get_packet_rate(self, start=None, period=None, servers=None, wait=True, timeout=-1):
         if servers is None:
             servers = self.servers.keys()
         tokens = []
@@ -178,7 +184,7 @@ class RpcClient(object):
 
         for k in servers:
             self.token += 1
-            req = msgpack.packb(['get_packet_rate_matrix', self.token])
+            req = msgpack.packb(['get_packet_rate', self.token])
             args = msgpack.packb([float(start), float(period)])
             tokens.append(self.token)
             self.sockets[k].send(req + args)
@@ -186,7 +192,7 @@ class RpcClient(object):
             return tokens
         parts = self.wait_for_tokens(tokens, timeout=timeout)
         # We expect one message part for each token.
-        return [msgpack.unpackb(p[0]) if p is not None else None
+        return [PacketRate(msgpack.unpackb(p[0])) if p is not None else None
                 for p in parts]
     
     def list_chunks(self, servers=None, wait=True, timeout=-1):
@@ -587,7 +593,7 @@ if __name__ == '__main__':
         doexit = True
 
     if opt.rate:
-        rates = client.get_packet_rate_matrix()
+        rates = client.get_packet_rate()
         print('Received packet rates:')
         for r in rates:
             print('Got rate:', r)

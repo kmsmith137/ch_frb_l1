@@ -409,36 +409,36 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         }
         return 0;
 
-    } else if (funcname == "get_packet_rate_matrix") {
+    } else if (funcname == "get_packet_rate") {
         // grab *start* and *period* arguments
         msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
         if (oh.get().via.array.size != 2) {
-            chlog("get_packet_rate_matrix RPC: failed to parse input arguments");
+            chlog("get_packet_rate RPC: failed to parse input arguments");
             return -1;
         }
         double start = oh.get().via.array.ptr[0].as<double>();
         double period = oh.get().via.array.ptr[1].as<double>();
-        chlog("get_packet_rate_matrix: start " << start << ", period " << period);
+        //chlog("get_packet_rate: start " << start << ", period " << period);
 
         shared_ptr<packet_counts> rate = _stream->get_packet_rates(start, period);
-        chlog("Retrieved packet rate matrix for " << rate->start_time() << ", period " << rate->period);
-
-        unordered_map<string, uint64_t> counts = rate->to_string();
-        
-        PacketRateMatrix m;
-        m.start = rate->start_time();
-        m.end = m.start + rate->period;
-        m.receivers.push_back("me");
-        std::vector<int> p;
-        for (auto it = counts.begin(); it != counts.end(); it++) {
-            m.senders.push_back(it->first);
-            p.push_back(it->second);
+        PacketRate pr;
+        if (rate) {
+            pr.start = rate->start_time();
+            pr.period = rate->period;
+            pr.packets = rate->to_string();
+            int total = 0;
+            for (auto it=pr.packets.begin(); it!=pr.packets.end(); it++)
+                total += it->second;
+            chlog(_port << ": Retrieved packet rate for " << rate->start_time() << ", period " << rate->period << ", average counts " << (float)total/float(pr.packets.size()));
+        } else {
+            chlog("No packet rate available");
+            pr.start = 0;
+            pr.period = 0;
         }
-        m.packets.push_back(p);
         
         // Pack return value into msgpack buffer
         msgpack::sbuffer buffer;
-        msgpack::pack(buffer, m);
+        msgpack::pack(buffer, pr);
         //  Send reply back to client.
         zmq::message_t* reply = sbuffer_to_message(buffer);
         return _send_frontend_message(*client, *token_to_message(token), *reply);

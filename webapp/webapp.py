@@ -134,24 +134,26 @@ def sort_l0_nodes(senders):
 def get_packet_matrix():
     # Send RPC requests to all nodes, gather results into an HTML table
     client = get_rpc_client()
-    # Make RPC requests for list_chunks and get_statistics asynchronously
+    # Make RPC requests async
     timeout = 5.
 
-    allstats = client.get_statistics(timeout=timeout)
-    #print('Stats:', allstats)
-    packets = [s[1] if s is not None else {} for s in allstats]
-    #print('Packet stats:', packets)
+    rates = client.get_packet_rate(timeout=timeout)
 
     senders = set()
-    for p in packets:
+    packetrates = []
+    for p in rates:
         if p is None:
+            packetrates.append({})
             continue
-        senders.update(p.keys())
+        senders.update(p.packets.keys())
+        # Packet counts -> rates
+        packetrates.append(dict([(k, v/p.period) for k,v in p.packets.items()]))
+        
     senders = list(senders)
 
     # Parse and sort
     senders,sender_names = sort_l0_nodes(senders)
-    return senders, sender_names, packets
+    return senders, sender_names, packetrates
     
 @app.route('/packet-matrix-d3')
 def packet_matrix_d3():
