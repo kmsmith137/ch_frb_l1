@@ -10,6 +10,8 @@
 
 <body id="thebody">
 
+<div id="ratematrix"></div>
+
 <style>
 .good {
 background-color: lightsteelblue;
@@ -23,6 +25,8 @@ writing-mode: vertical-lr;
 </style>
 
 <script type="text/javascript">
+
+var do_update = true;
 
 var nl0 = 256;
 var nl1 = 32;
@@ -48,7 +52,7 @@ var nodeh = 8;
 var top_margin = 20;
 var left_margin = 20;
 
-var svg = d3.select('body').append('svg')
+var svg = d3.select("#ratematrix").append('svg')
     .attr('width', left_margin + nl0 * nodew)
     .attr('height', top_margin + nl1 * nodeh);
 
@@ -99,7 +103,7 @@ function mouse_enter_l1(i) {
 var title0 = svg.selectAll(".title0")
     .data(names_l0)
     .enter().append('a')
-    .attr("xlink:href", function(d) { return '/l0-status/' + d.name; })
+    .attr("xlink:href", function(d) { return ''; }) // /l0-status/' + d.name; })
     .attr("class", "link0")
     .append('rect')
     .attr("x", function(d, i) { return left_margin + i * nodew; })
@@ -114,7 +118,7 @@ var title0 = svg.selectAll(".title0")
 var title1 = svg.selectAll(".title1")
     .data(names_l1)
     .enter().append('a')
-    .attr("xlink:href", function(d) { return '/l1-status/' + d.name; })
+    .attr("xlink:href", function(d) { return '';}) // /l1-status/' + d.name; })
     .attr("class", "link1")
     .append('rect')
     .attr("x", 0)
@@ -144,7 +148,6 @@ rgb_nodes
         mouse_enter_l0(i % nl0);
         mouse_enter_l1(i / nl0); });
 
-
 function array_max(A) {
     return A.reduce(function(a, b) { return Math.max(a, b); }, 0);
 }
@@ -155,6 +158,10 @@ function array_min(A) {
 function json_callback(X) {
     console.log('JSON callback: ' + X);
 
+    if (!do_update) {
+        return;
+    }
+    
     if (X == null) {
         setTimeout('json_update()', 2000);
         return;
@@ -182,7 +189,7 @@ function json_callback(X) {
         names_l0[i]['name'] = names[i];
     }
     svg.selectAll('.link0')
-        .attr('xlink:href', function(d) { return '/l0-status/' + d.name; });
+        .attr('xlink:href', function(d) { return '/packets-l0/' + d.name; });
 
     // L1 names
     names = X['l1'];
@@ -190,7 +197,7 @@ function json_callback(X) {
         names_l1[i]['name'] = names[i];
     }
     svg.selectAll('.link1')
-        .attr('xlink:href', function(d) { return '/l1-status/' + d.name; });
+        .attr('xlink:href', function(d) { return '/packets-l1/' + d.name; });
     
     setTimeout('json_update()', 2000);
 }
@@ -203,10 +210,22 @@ function json_update() {
 }
 
 json_update();
+
+function startUpdating() {
+    do_update = true;
+    json_update();
+}
+function stopUpdating() {
+    do_update = false;
+}
 </script>
 
 <p>
 Rate range: <span id="rate_low">low</span> to <span id="rate_high">high</span>
+</p>
+<p>
+<input type="button" onClick="stopUpdating()"  value="Stop updating" />
+<input type="button" onClick="startUpdating()" value="Start updating"/>
 </p>
 
 </body>
