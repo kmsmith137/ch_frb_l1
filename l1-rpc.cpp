@@ -419,8 +419,23 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         double start = oh.get().via.array.ptr[0].as<double>();
         double period = oh.get().via.array.ptr[1].as<double>();
         chlog("get_packet_rate_matrix: start " << start << ", period " << period);
-        PacketRateMatrix m;
 
+        shared_ptr<packet_counts> rate = _stream->get_packet_rates(start, period);
+        chlog("Retrieved packet rate matrix for " << rate->start_time() << ", period " << rate->period);
+
+        unordered_map<string, uint64_t> counts = rate->to_string();
+        
+        PacketRateMatrix m;
+        m.start = rate->start_time();
+        m.end = m.start + rate->period;
+        m.receivers.push_back("me");
+        std::vector<int> p;
+        for (auto it = counts.begin(); it != counts.end(); it++) {
+            m.senders.push_back(it->first);
+            p.push_back(it->second);
+        }
+        m.packets.push_back(p);
+        
         // Pack return value into msgpack buffer
         msgpack::sbuffer buffer;
         msgpack::pack(buffer, m);
