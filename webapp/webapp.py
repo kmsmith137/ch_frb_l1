@@ -162,6 +162,36 @@ def packet_matrix_d3():
                            enodes = enumerate(app.nodes),
                            packet_matrix_json_url='/packet-matrix.json',)
 
+@app.route('/packets-l0/<name>')
+def packets_l0(name=None):
+    pass
+
+@app.route('/packets-l1/<name>')
+def packets_l1(name=None):
+    return render_template('packets-l1-d3.html',
+                           node=name)
+
+@app.route('/packet-rate-l1-json/<name>')
+def packet_rate_l1_json(name=None):
+    assert(name is not None)
+    client = get_rpc_client()
+    timeout = 5.
+
+    rservers = dict([(v,k) for k,v in client.servers.items()])
+    servers = [rservers['tcp://' + str(name)]]
+    
+    graph = client.get_packet_rate_history(start=-600,
+                                           servers=servers,
+                                           timeout=timeout)
+    #print('Got graph:', graph)
+    graph = graph[0]
+
+    if graph is None:
+        return jsonify({})
+
+    times,rate = graph
+    return jsonify(dict(times=times, rates=rate))
+
 @app.route('/packet-matrix.json')
 def packet_matrix_json():
     senders, sender_names, packets = get_packet_matrix()

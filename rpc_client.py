@@ -194,6 +194,35 @@ class RpcClient(object):
         # We expect one message part for each token.
         return [PacketRate(msgpack.unpackb(p[0])) if p is not None else None
                 for p in parts]
+
+    def get_packet_rate_history(self, l0=None, start=None, end=None, period=None,
+                                servers=None, wait=True, timeout=-1):
+        if servers is None:
+            servers = self.servers.keys()
+        tokens = []
+
+        if start is None:
+            start = 0.
+        if end is None:
+            end = 0.
+        if period is None:
+            period = 0.
+        if l0 is None:
+            l0 = ['sum']
+
+        for k in servers:
+            self.token += 1
+            req = msgpack.packb(['get_packet_rate_history', self.token])
+            args = msgpack.packb([float(start), float(end), float(period),
+                                  l0])
+            tokens.append(self.token)
+            self.sockets[k].send(req + args)
+        if not wait:
+            return tokens
+        parts = self.wait_for_tokens(tokens, timeout=timeout)
+        # We expect one message part for each token.
+        return [msgpack.unpackb(p[0]) if p is not None else None
+                for p in parts]
     
     def list_chunks(self, servers=None, wait=True, timeout=-1):
         '''
@@ -552,6 +581,8 @@ if __name__ == '__main__':
                         help='Just send list_chunks command and exit.')
     parser.add_argument('--rate', action='store_true', default=False,
                         help='Send packet rate matrix request')
+    parser.add_argument('--rate-history', action='store_true', default=False,
+                        help='Send packet rate history request')
     parser.add_argument('--identity', default='client',
                         help='Identity to report to the server')
     parser.add_argument('ports', nargs='*',
@@ -599,6 +630,12 @@ if __name__ == '__main__':
             print('Got rate:', r)
         doexit = True
 
+    if opt.rate_history:
+        rates = client.get_packet_rate_history(start=-60)
+        print('Received packet rate history:')
+        print(rates)
+        doexit = True
+        
     if len(opt.write):
         for beams, f0, f1, fnpat in opt.write:
             beams = beams.split(',')

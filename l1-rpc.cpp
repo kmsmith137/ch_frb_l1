@@ -442,7 +442,45 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         //  Send reply back to client.
         zmq::message_t* reply = sbuffer_to_message(buffer);
         return _send_frontend_message(*client, *token_to_message(token), *reply);
+
+    } else if (funcname == "get_packet_rate_history") {
+
+        // grab arguments: *start*, *end*, *period*, *l0*
+        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
+        if (oh.get().via.array.size != 4) {
+            chlog("get_packet_rate_history RPC: failed to parse input arguments");
+            return -1;
+        }
+        double start = oh.get().via.array.ptr[0].as<double>();
+        double end   = oh.get().via.array.ptr[1].as<double>();
+        double period = oh.get().via.array.ptr[2].as<double>();
+        vector<string> l0 = oh.get().via.array.ptr[3].as<vector<string> >();
+
+        vector<shared_ptr<packet_counts> > rates = _stream->get_packet_rate_history(start, end, period);
+
+        // For now, only compute the sum over L0 nodes.
+        vector<double> times;
+        vector<double> rr;
+        //vector< pair<double, int64_t> > graph;
+
+        for (auto it=rates.begin(); it!=rates.end(); it++) {
+            int64_t sum = 0;
+            for (auto it2=(*it)->counts.begin(); it2!=(*it)->counts.end(); it2++)
+                sum += it2->second;
+            //graph.push_back(make_pair<double, int64_t>((*it)->start_time(), (double)sum / (*it)->period));
+            times.push_back((*it)->start_time());
+            rr.push_back((double)sum / (*it)->period);
+        }
+
+        pair<vector<double>, vector<double> > rtn = make_pair(times, rr);
         
+        // Pack return value into msgpack buffer
+        msgpack::sbuffer buffer;
+        msgpack::pack(buffer, rtn);
+        //  Send reply back to client.
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(*client, *token_to_message(token), *reply);
+
     } else if (funcname == "get_statistics") {
         //cout << "RPC get_statistics() called" << endl;
         // No input arguments, so don't unpack anything more.

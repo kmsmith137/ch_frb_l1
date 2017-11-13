@@ -1,0 +1,141 @@
+<!doctype html>
+<html>
+<head>
+<title>CHIME FRB L1 status</title>
+
+<script type="text/javascript" src="{{ url_for('static', filename='jquery.js') }}"></script>
+<script type="text/javascript" src="{{ url_for('static', filename='d3.min.js') }}"></script>
+
+</head>
+
+<body id="thebody">
+
+<div id="ratematrix"></div>
+
+<style>
+</style>
+
+<script type="text/javascript">
+
+var do_update = true;
+
+// var nodew = 3;
+// var nodeh = 8;
+// var top_margin = 20;
+// var left_margin = 20;
+
+var W = 600;
+var H = 400;
+
+var svg = d3.select("#ratematrix").append('svg')
+    .attr('width', W)
+    .attr('height', H);
+
+//var nodes = [];
+//var plotpoints = 
+
+/*
+var rgb_nodes = svg.append('g').attr('class','nodes all');
+
+rgb_nodes
+    .selectAll('rect')
+    .data(nodes)
+    .enter().append('rect')
+    .attr('x', function(node){return left_margin + node.x * nodew;})
+    .attr('y', function(node){return top_margin + node.y * nodeh;})
+    .attr('width',  nodew)
+    .attr('height', nodeh)
+    .style('fill', function(node){return rgb(node.value, 0, 255);})
+    .on('mouseenter', function(node, i) {
+        mouse_enter_l0(i % nl0);
+        mouse_enter_l1(i / nl0); });
+*/
+
+function array_max(A) {
+    if (A.length == 0) { return 0; }
+    return A.reduce(function(a, b) { return Math.max(a, b); }, A[0]);
+}
+function array_min(A) {
+    if (A.length == 0) { return 0; }
+    return A.reduce(function(a, b) { return Math.min(a, b); }, A[0]);
+}
+
+function json_callback(X) {
+    console.log('JSON callback: ' + X);
+    if (!do_update) {
+        return;
+    }
+    if (X == null) {
+        setTimeout('json_update()', 2000);
+        return;
+    }
+
+    times = X['times'];
+    rates = X['rates'];
+
+    var rmax = array_max(rates);
+    var rmin = array_min(rates);
+    var tmax = array_max(times);
+    var tmin = array_min(times);
+
+    console.log('Time: ' + tmin + ' to ' + tmax);
+    console.log('Rate: ' + rmin + ' to ' + rmax);
+
+    var nodes = [];
+    for (var i=0; i<times.length; i++) {
+        nodes.push({ t: times[i], r: rates[i] });
+    }
+    
+    svg.append('g').selectAll('rect')
+        .data(nodes)
+        .enter().append('rect')
+        .attr('x', function(node){ return W * (node.t - tmin) / (tmax-tmin); })
+        .attr('y', function(node){ return H * (node.r - rmin) / (rmax-rmin); })
+        .attr('width', 10)
+        .attr('height', 10)
+        .style('fill', 'rgb(128,128,128)');
+
+    /*
+      for (i=0; i<packets.length; i++) {
+      nodes[i].value = rates[i];
+      }
+      
+      rgb_nodes.selectAll('rect').transition()
+      .style('fill', function(node){return rgb(node.value, 0, pmax);});
+
+      // jquery update rate low/high text
+      $('#rate_low').html(pmin.toFixed(3));
+      $('#rate_high').html(pmax.toFixed(3));
+    */
+    
+    setTimeout('json_update()', 2000);
+}
+
+function json_update() {
+    d3.request('/packet-rate-l1-json/{{ node }}')
+        .mimeType("application/json")
+        .response(function(xhr) { return JSON.parse(xhr.responseText); })
+        .get(json_callback);
+}
+
+json_update();
+
+function startUpdating() {
+    do_update = true;
+    json_update();
+}
+function stopUpdating() {
+    do_update = false;
+}
+</script>
+
+<p>
+Rate range: <span id="rate_low">low</span> to <span id="rate_high">high</span>
+</p>
+<p>
+<input type="button" onClick="stopUpdating()"  value="Stop updating" />
+<input type="button" onClick="startUpdating()" value="Start updating"/>
+</p>
+
+</body>
+</html>
