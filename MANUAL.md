@@ -330,8 +330,13 @@ The L1 server takes four parameter files as follows:
       - `rfi_configs/rfi_production_v1.json`: a complex 16K-channel RFI removal
         chain developed by Masoud, which is working well on captured data from
         the 26m telescope and the CHIME pathfinder.  It is currently running
-        slower than originally hoped (0.55 cores/beam), but we have a lot of
+        slower than originally hoped (0.55 cores/beam), but we have some
         ideas for improving it and speeding it up.
+
+        Note that this is the same as the file `json_files/rfi_16k/17-10-24-first-try.json`
+        in the [ch_frb_rfi repository](https://github.com/mrafieir/ch_frb_rfi).  The idea
+        is that RFI transform chains can be developed in the ch_frb_rfi "laboratory" and 
+        copied to ch_frb_l1 when we want to use them in the real-time search.
 
 <a name="bonsai-config"></a>
   - **The bonsai config file (bonsai_config.hdf5)**
