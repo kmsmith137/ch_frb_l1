@@ -456,23 +456,49 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         double period = oh.get().via.array.ptr[2].as<double>();
         vector<string> l0 = oh.get().via.array.ptr[3].as<vector<string> >();
 
-        vector<shared_ptr<packet_counts> > rates = _stream->get_packet_rate_history(start, end, period);
+        vector<shared_ptr<packet_counts> > packets = _stream->get_packet_rate_history(start, end, period);
 
         // For now, only compute the sum over L0 nodes.
         vector<double> times;
-        vector<double> rr;
-        //vector< pair<double, int64_t> > graph;
+        vector<vector<double> > rates;
 
-        for (auto it=rates.begin(); it!=rates.end(); it++) {
-            int64_t sum = 0;
-            for (auto it2=(*it)->counts.begin(); it2!=(*it)->counts.end(); it2++)
-                sum += it2->second;
-            //graph.push_back(make_pair<double, int64_t>((*it)->start_time(), (double)sum / (*it)->period));
+        for (int i=0; i<l0.size(); i++)
+            rates.push_back(vector<double>());
+
+        //for (int i=0; i<l0.size(); i++)
+        //    chlog("packet history: getting l0 node " << l0[i]);
+        //chlog("packet history: " << packets.size() << " time slices");
+
+        // for each time slice
+        for (auto it=packets.begin(); it!=packets.end(); it++) {
+            int j;
             times.push_back((*it)->start_time());
-            rr.push_back((double)sum / (*it)->period);
+            auto l0name=l0.begin();
+            for (j=0; l0name != l0.end(); l0name++, j++) {
+                int64_t val = 0;
+                if (*l0name == "sum") {
+                    // for each l0->npackets pair
+                    for (auto it2=(*it)->counts.begin();
+                         it2!=(*it)->counts.end(); it2++)
+                        val += it2->second;
+                } else {
+                    // Yuck -- convert to string:int map!
+                    // Should instead parse name to int and look up directly
+                    auto scounts = (*it)->to_string();
+                    auto pval = scounts.find(*l0name);
+                    if (pval != scounts.end())
+                        val = pval->second;
+                }
+                rates[j].push_back((double)val / (*it)->period);
+            }
         }
 
-        pair<vector<double>, vector<double> > rtn = make_pair(times, rr);
+        //chlog("times: " << times.size());
+        
+        pair<vector<double>,
+             vector<vector<double> > > rtn = make_pair(times, rates);
+
+        chlog("Returning " << rtn.first.size() << " times");
         
         // Pack return value into msgpack buffer
         msgpack::sbuffer buffer;

@@ -36,8 +36,9 @@ function random(){
   return Math.floor(Math.random() * 256);
 }
 
-function node_url_l0(name) {
-    return '/packets-l0/' + name;
+function node_url_l0(name, ip) {
+    // FIXME
+    return '/packets-l0/' + name + '/' + ip;
 }
 function node_url_l1(name) {
     return '/packets-l1/' + name;
@@ -93,13 +94,13 @@ function mouse_enter_l0(i) {
     //console.log('Mouseenter ' + node + i);
     highlight0.attr('x', left_margin + i * nodew);
     $('#select_l0')
-        .attr('href', node_url_l0(names_l0[i].name))
+        .attr('href', node_url_l0(names_l0[i].name, names_l0[i].ip))
         .html(names_l0[i].name);
 }
 
 function mouse_click_l0(node, i) {
     $('#click_l0')
-        .attr('href', node_url_l0(names_l0[i].name))
+        .attr('href', node_url_l0(names_l0[i].name, names_l0[i].ip))
         .html(names_l0[i].name);
 }
 
@@ -214,12 +215,15 @@ function json_callback(X) {
 
     // L0 names
     names = X['l0'];
+    // L0 IP addrs
+    ips = X['l0_ip'];
     //console.log('L0 names:', names);
     for (var i=0, n=names.length; i<n; i++) {
         names_l0[i]['name'] = names[i];
+        names_l0[i]['ip'] = ips[i];
     }
     svg.selectAll('.link0')
-        .attr('xlink:href', function(d) { return node_url_l0(d.name); });
+        .attr('xlink:href', function(d) { return node_url_l0(d.name, d.ip); });
 
     // L1 names
     names = X['l1'];

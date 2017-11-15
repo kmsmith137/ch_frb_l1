@@ -134,8 +134,8 @@ def sort_l0_nodes(senders):
 def get_packet_matrix():
     # Send RPC requests to all nodes, gather results into an HTML table
     client = get_rpc_client()
-    # Make RPC requests async
-    timeout = 5.
+    # Make RPC requests async.  Timeouts are in *milliseconds*.
+    timeout = 5000.
 
     rates = client.get_packet_rate(timeout=timeout)
 
@@ -162,9 +162,12 @@ def packet_matrix_d3():
                            enodes = enumerate(app.nodes),
                            packet_matrix_json_url='/packet-matrix.json',)
 
-@app.route('/packets-l0/<name>')
-def packets_l0(name=None):
-    pass
+@app.route('/packets-l0/<name>/<ip>')
+def packets_l0(name=None, ip=None):
+    return render_template('packets-l0-d3.html',
+                           node0name=name,
+                           node0ip=ip,
+                           nodes1=app.nodes)
 
 @app.route('/packets-l1/<name>')
 def packets_l1(name=None):
@@ -175,7 +178,7 @@ def packets_l1(name=None):
 def packet_rate_l1_json(name=None):
     assert(name is not None)
     client = get_rpc_client()
-    timeout = 5.
+    timeout = 5000.
 
     rservers = dict([(v,k) for k,v in client.servers.items()])
     servers = [rservers['tcp://' + str(name)]]
@@ -189,8 +192,50 @@ def packet_rate_l1_json(name=None):
     if graph is None:
         return jsonify({})
 
-    times,rate = graph
+    times,rates = graph
+    # 'rates' is an array of vectors; we take the first one (the sum)
+    rate = rates[0]
     return jsonify(dict(times=times, rates=rate))
+
+@app.route('/packet-rate-l0-json/<ip>')
+def packet_rate_l0_json(ip=None):
+    assert(ip is not None)
+    client = get_rpc_client()
+    timeout = 5000.
+
+    print('RPC request for rates of L0 node', ip)
+    
+    graphs = client.get_packet_rate_history(start=-20,
+                                            l0nodes=[ip],
+                                            timeout=timeout)
+
+    print('Graphs:', graphs)
+    
+    ##### Hmmmmm, the graphs are going to have all different times...
+    ntotal = len(graphs)
+    graphs = [g for g in graphs if g is not None]
+    nreplies = len(graphs)
+
+    if len(graphs):
+        times,rates = graphs[0]
+        rate = rates[0]
+
+        print('Times:', times)
+        print('Rates:', rates)
+
+        tt = np.array(times)
+        for t,r in graphs[1:]:
+            r = r[0]
+            ## Sum each rate into the nearest time bin...
+            for ti,ri in zip(t,r):
+                i = np.argmin(np.abs(tt - ti))
+                rate[i] += ri
+    else:
+        times = []
+        rate = []
+
+    return jsonify(dict(times=times, rates=rate,
+                        nreplies=nreplies, ntotal=ntotal))
 
 @app.route('/packet-matrix.json')
 def packet_matrix_json():
@@ -209,7 +254,8 @@ def packet_matrix_json():
         for s in senders:
             npackets.append(p.get(s, 0))
     
-    rtn = dict(l0=sender_names, l1=[n.replace('tcp://','') for n in app.nodes],
+    rtn = dict(l0=sender_names, l0_ip=senders,
+               l1=[n.replace('tcp://','') for n in app.nodes],
                packets=npackets)
     return jsonify(rtn)
     
@@ -351,7 +397,7 @@ def node_status():
 
     client = get_rpc_client()
     # Make RPC requests for list_chunks and get_statistics asynchronously
-    timeout = 5.
+    timeout = 5000.
 
     ltokens = client.list_chunks(wait=False)
     stats = client.get_statistics(timeout=timeout)
