@@ -19,68 +19,64 @@
 
 var do_update = true;
 
-// var nodew = 3;
-// var nodeh = 8;
-// var top_margin = 20;
-// var left_margin = 20;
+var bottom_margin = 20;
+var left_margin = 50;
 
-var W = 600;
-var H = 400;
+var totalW = 600;
+var totalH = 400;
+
+var W = totalW - left_margin;
+var H = totalH - bottom_margin;
 
 var svg = d3.select("#ratematrix").append('svg')
-    .attr('width', W)
-    .attr('height', H);
+    .attr('width',  totalW)
+    .attr('height', totalH);
 
+var graph = svg.append('g').attr("transform", "translate(" + left_margin + ",0)");
+
+//var xscale = d3.scaleLinear().rangeRound([0, W]);
+var xscale = d3.scaleTime().rangeRound([0, W]);
 var yscale = d3.scaleLinear().rangeRound([H, 0]);
-var xscale = d3.scaleLinear().rangeRound([0, W]);
-
-// Set the ranges
-//var xscale = d3.scale.linear().range([0, W]);
-//var yscale = d3.scale.linear().range([H, 0]);
-
-// Define the axes
-//var xaxis = svg.axis().scale(xscale)
-//    .orient("bottom").ticks(5);
-//
-//var yaxis = svg.axis().scale(y)
-//    .orient("left").ticks(5);
-// svg.append("g")
-//     .attr("class", "x axis")
-//     .attr("transform", "translate(0," + H + ")")
-//     .call(xaxis);
-// svg.append("g")
-//     .attr("class", "y axis")
-//     .call(yaxis);
 
 var line = d3.line()
     .x(function(d) { return xscale(d.t); })
     .y(function(d) { return yscale(d.r); });
 
-svg.append('g')
-    .attr('transform', 'translate(0,' + H + ')')
-    .call(d3.axisBottom(xscale));
+var xaxis = d3.axisBottom(xscale);
+var yaxis = d3.axisLeft(yscale);
 
-svg.append('g')
-    .call(d3.axisLeft(yscale))
-    .append('text')
+graph.append('text')
+    .attr('class', 'y axis')
     .attr('fill', '#000')
     .attr("transform", "rotate(-90)")
     .attr("y", 6)
     .attr("dy", "0.71em")
-    .attr("text-anchor", "end")
+    //.attr("text-anchor", "begin")
     .text("Rate (packets/second)");
 
-var nodes = [];
+function add_axes() {
+    // xaxis(.) adds the axis to .
+    xaxis(graph.append('g')
+          .attr('transform', 'translate(0,' + H + ')')
+          .attr('class', 'xaxis'));
+    //.call(d3.axisBottom(xscale))
+    yaxis(graph.append('g')
+          .attr('class', 'yaxis'));
+        //.append('g')
+        //.call(d3.axisLeft(yscale))
+}
 
-var path = svg.append("path")
+var data = [];
+
+var path = graph.append("path")
     .attr("class", "line")
-    .datum(nodes)
+    .datum(data)
     .attr("fill", "none")
     .attr("stroke", "steelblue")
     .attr("stroke-linejoin", "round")
     .attr("stroke-linecap", "round")
     .attr("stroke-width", 1.5)
-    .attr("d", line(nodes));
+    .attr("d", line(data));
 
 function array_max(A) {
     if (A.length == 0) { return 0; }
@@ -118,52 +114,44 @@ function json_callback(X) {
     console.log('Time: ' + tmin + ' to ' + tmax);
     console.log('Rate: ' + rmin + ' to ' + rmax);
 
+    var datemin = new Date(1000. * tmin);
+    var datemax = new Date(1000. * tmax);
+    console.log('Dates: ' + datemin + ' to ' + datemax);
+
+    data = [];
     for (var i=0; i<times.length; i++) {
-        nodes.push({ t: times[i], r: rates[i] });
+        //data.push({ t: times[i], r: rates[i] });
+        data.push({ t: new Date(1000. * times[i]), r: rates[i] });
+        //console.log('Date: ' + data[i].t);
     }
 
-    // Select the section we want to apply our changes to
-    //var svg = d3.select("body").transition();
+    graph.transition();
 
-    svg.selectAll('path')
-        .data(nodes);
-    // svg.append('g').selectAll('rect')
-    //     .data(nodes)
-    //     .enter().append('rect')
-    //     .attr('x', function(node){ return W * (node.t - tmin) / (tmax-tmin); })
-    //     .attr('y', function(node){ return H * (node.r - rmin) / (rmax-rmin); })
-    //     .attr('width', 10)
-    //     .attr('height', 10)
-    //     .style('fill', 'rgb(128,128,128)');
+    //console.log('extent:', d3.extent(data, function(d) { return d.t; }));
 
-    xscale.domain(d3.extent(nodes, function(d) { return d.t; }));
-    yscale.domain(d3.extent(nodes, function(d) { return d.r; }));
+    //xscale.domain(d3.extent(data, function(d) { return d.t; }));
+    xscale.domain([datemin, datemax]);
+    //yscale.domain(d3.extent(data, function(d) { return d.r; }));
+    yscale.domain([rmin, rmax]);
+    //svg.select('.x axis').scale(xscale);
+    //xaxis.scale(xscale);
+    //xaxis.ticks(10);
 
-    // Make the changes
-    svg.select(".line")   // change the line
-        //.duration(250)
-        .attr("d", line(nodes));
-    // svg.select(".x.axis") // change the x axis
-    //     //.duration(250)
-    //     .call(xaxis);
-    // svg.select(".y.axis") // change the y axis
-    //     //.duration(250)
-    //     .call(yaxis);
+    // change the line
+    //graph.selectAll('path').data(data);
+    graph.select(".line").attr("d", line(data));
+
+    graph.select('.xaxis').remove();
+    graph.select('.yaxis').remove();
+
+    add_axes();
+    //xaxis(graph.append('g')
+        //.attr('transform', 'translate(0,' + H + ')')
+        //.attr('class', 'x axis'));
     
-
-    
-    /*
-      for (i=0; i<packets.length; i++) {
-      nodes[i].value = rates[i];
-      }
-      
-      rgb_nodes.selectAll('rect').transition()
-      .style('fill', function(node){return rgb(node.value, 0, pmax);});
-
-      // jquery update rate low/high text
-      $('#rate_low').html(pmin.toFixed(3));
-      $('#rate_high').html(pmax.toFixed(3));
-    */
+    // jquery update rate low/high text
+    $('#rate_low').html(rmin.toFixed(3));
+    $('#rate_high').html(rmax.toFixed(3));
     
     setTimeout('json_update()', 2000);
 }

@@ -498,7 +498,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         pair<vector<double>,
              vector<vector<double> > > rtn = make_pair(times, rates);
 
-        chlog("Returning " << rtn.first.size() << " times");
+        //chlog("Returning " << rtn.first.size() << " times");
         
         // Pack return value into msgpack buffer
         msgpack::sbuffer buffer;

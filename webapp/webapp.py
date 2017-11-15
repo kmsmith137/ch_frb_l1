@@ -209,7 +209,7 @@ def packet_rate_l0_json(ip=None):
                                             l0nodes=[ip],
                                             timeout=timeout)
 
-    print('Graphs:', graphs)
+    #print('Graphs:', graphs)
     
     ##### Hmmmmm, the graphs are going to have all different times...
     ntotal = len(graphs)
@@ -220,8 +220,8 @@ def packet_rate_l0_json(ip=None):
         times,rates = graphs[0]
         rate = rates[0]
 
-        print('Times:', times)
-        print('Rates:', rates)
+        #print('Times:', times)
+        #print('Rates:', rates)
 
         tt = np.array(times)
         for t,r in graphs[1:]:
