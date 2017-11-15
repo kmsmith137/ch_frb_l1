@@ -36,6 +36,13 @@ function random(){
   return Math.floor(Math.random() * 256);
 }
 
+function node_url_l0(name) {
+    return '/packets-l0/' + name;
+}
+function node_url_l1(name) {
+    return '/packets-l1/' + name;
+}
+
 // initialize nodes
 for (var i=0; i<nl1; i++){
     for (var j=0; j<nl0; j++){
@@ -85,6 +92,15 @@ var highlight0 = svg.append('rect')
 function mouse_enter_l0(i) {
     //console.log('Mouseenter ' + node + i);
     highlight0.attr('x', left_margin + i * nodew);
+    $('#select_l0')
+        .attr('href', node_url_l0(names_l0[i].name))
+        .html(names_l0[i].name);
+}
+
+function mouse_click_l0(node, i) {
+    $('#click_l0')
+        .attr('href', node_url_l0(names_l0[i].name))
+        .html(names_l0[i].name);
 }
 
 var highlight1 = svg.append('rect')
@@ -98,6 +114,15 @@ var highlight1 = svg.append('rect')
 function mouse_enter_l1(i) {
     //console.log('Mouseenter ' + node + i);
     highlight1.attr('y', top_margin + i * nodeh);
+    $('#select_l1')
+        .attr('href', node_url_l1(names_l1[i].name))
+        .html(names_l1[i].name);
+}
+
+function mouse_click_l1(node, i) {
+    $('#click_l1')
+        .attr('href', node_url_l1(names_l1[i].name))
+        .html(names_l1[i].name);
 }
 
 var title0 = svg.selectAll(".title0")
@@ -111,7 +136,8 @@ var title0 = svg.selectAll(".title0")
     .attr("height", top_margin)
     .attr("width", nodew)
     .style('fill', function(node, i){return colormap_rainbow(i / nl0);})
-    .on('mouseenter', function(node, i) { mouse_enter_l0(i); });
+    .on('mouseenter', function(node, i) { mouse_enter_l0(i); })
+    .on('click', function(node, i) { mouse_click_l0(node, i); });
 
 //.on('mouseexit', function(node, i) { mouse_exit_l0(node,i); });
 
@@ -126,7 +152,8 @@ var title1 = svg.selectAll(".title1")
     .attr("height", nodeh)
     .attr("width", left_margin)
     .style('fill', function(node, i){return colormap_rainbow(i / nl0);})
-    .on('mouseenter', function(node, i) { mouse_enter_l1(i); });
+    .on('mouseenter', function(node, i) { mouse_enter_l1(i); })
+    .on('click', function(node, i) { mouse_click_l1(node, i); });
 
 function rgb(val, mn, mx) {
     g = Math.round(255. * (val - mn) / (mx - mn));
@@ -146,7 +173,10 @@ rgb_nodes
     .style('fill', function(node){return rgb(node.value, 0, 255);})
     .on('mouseenter', function(node, i) {
         mouse_enter_l0(i % nl0);
-        mouse_enter_l1(i / nl0); });
+        mouse_enter_l1(Math.floor(i / nl0)); })
+    .on('click', function(node, i) {
+        mouse_click_l0(node, i % nl0);
+        mouse_click_l1(node, Math.floor(i / nl0)); });
 
 function array_max(A) {
     return A.reduce(function(a, b) { return Math.max(a, b); }, 0);
@@ -189,7 +219,7 @@ function json_callback(X) {
         names_l0[i]['name'] = names[i];
     }
     svg.selectAll('.link0')
-        .attr('xlink:href', function(d) { return '/packets-l0/' + d.name; });
+        .attr('xlink:href', function(d) { return node_url_l0(d.name); });
 
     // L1 names
     names = X['l1'];
@@ -197,7 +227,7 @@ function json_callback(X) {
         names_l1[i]['name'] = names[i];
     }
     svg.selectAll('.link1')
-        .attr('xlink:href', function(d) { return '/packets-l1/' + d.name; });
+        .attr('xlink:href', function(d) { return node_url_l1(d.name); });
     
     setTimeout('json_update()', 2000);
 }
@@ -222,6 +252,11 @@ function stopUpdating() {
 
 <p>
 Rate range: <span id="rate_low">low</span> to <span id="rate_high">high</span>
+</p>
+<p>
+Selected: L0: <a id="select_l0">---</a>, L1: <a id="select_l1">---</a>
+<br />
+Clicked: L0: <a id="click_l0">---</a>, L1: <a id="click_l1">---</a>
 </p>
 <p>
 <input type="button" onClick="stopUpdating()"  value="Stop updating" />
