@@ -82,14 +82,6 @@ function colormap_rainbow(f) {
     return 'rgb(' + r + ',' + g + ',' + b + ')';
 }
 
-var highlight0 = svg.append('rect')
-    .attr('class', 'highlight0')
-    .attr('width', nodew)
-    .attr('height', nl1 * nodeh)
-    .attr('x', left_margin)
-    .attr('y', top_margin)
-    .style('stroke', 'rgb(0,0,0)');
-
 function mouse_enter_l0(i) {
     //console.log('Mouseenter ' + node + i);
     highlight0.attr('x', left_margin + i * nodew);
@@ -103,14 +95,6 @@ function mouse_click_l0(node, i) {
         .attr('href', node_url_l0(names_l0[i].name, names_l0[i].ip))
         .html(names_l0[i].name);
 }
-
-var highlight1 = svg.append('rect')
-    .attr('class', 'highlight1')
-    .attr('width', nl0 * nodew)
-    .attr('height', nodeh)
-    .attr('x', left_margin)
-    .attr('y', top_margin)
-    .style('stroke', 'rgb(0,0,0)');
 
 function mouse_enter_l1(i) {
     //console.log('Mouseenter ' + node + i);
@@ -172,12 +156,31 @@ rgb_nodes
     .attr('width',  nodew)
     .attr('height', nodeh)
     .style('fill', function(node){return rgb(node.value, 0, 255);})
+    .style('stroke', 'none')
     .on('mouseenter', function(node, i) {
         mouse_enter_l0(i % nl0);
         mouse_enter_l1(Math.floor(i / nl0)); })
     .on('click', function(node, i) {
         mouse_click_l0(node, i % nl0);
         mouse_click_l1(node, Math.floor(i / nl0)); });
+
+var highlight0 = svg.append('rect')
+    .attr('class', 'highlight0')
+    .attr('width', nodew)
+    .attr('height', nl1 * nodeh)
+    .attr('x', left_margin)
+    .attr('y', top_margin)
+    .style('stroke', 'black')
+    .style('fill', 'none');
+
+var highlight1 = svg.append('rect')
+    .attr('class', 'highlight1')
+    .attr('width', nl0 * nodew)
+    .attr('height', nodeh)
+    .attr('x', left_margin)
+    .attr('y', top_margin)
+    .style('stroke', 'black')
+    .style('fill', 'none');
 
 function array_max(A) {
     if (A.length == 0) { return 0; }
