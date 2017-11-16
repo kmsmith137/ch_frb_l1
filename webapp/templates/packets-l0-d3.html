@@ -103,7 +103,6 @@ function array_min(A) {
 
 var ratemax = 0;
 var last_datemax = null;
-//var date_range = null;
 
 function json_callback(X) {
     //console.log('JSON callback: ' + X);
@@ -133,16 +132,11 @@ function json_callback(X) {
     rmin = 0.;
     ratemax = rmax;
     
-    //var datemin = new Date(1000. * tmin);
     var datemax = new Date(1000. * tmax + update_period);
+    var datemin = new Date(1000. * (tmax - history_period));
     //console.log('Time: ' + tmin + ' to ' + tmax);
     //console.log('Rate: ' + rmin + ' to ' + rmax);
     //console.log('Dates: ' + datemin + ' to ' + datemax);
-    var datemin = new Date(1000. * (tmax - history_period));
-    
-    //if (date_range != null) {
-    //    datemin = datemax - date_range;
-    //}
     
     data = [];
     for (var i=0; i<times.length; i++) {
@@ -177,9 +171,6 @@ function json_callback(X) {
         // .attr('d', line(data).attr('transform',null).transition().attr('transform', ...dx...)
         // but it seems like that means the line is shifted in its
         // final state, ie, doesn't actually correspond to the axes!
-    //} else {
-    //    // First time:
-    //    date_range = datemax - datemin;
     }
     last_datemax = datemax;
     
