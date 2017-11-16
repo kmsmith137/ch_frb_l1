@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
     std::vector<std::shared_ptr<L1RpcServer> > rpcs;
     std::vector<std::thread> rpc_threads(nstreams);
 
-    FILE* fout = fopen("test-packet-rates.yaml", "w");
+    FILE* fout = fopen("test-packet-rates-l1.yaml", "w");
     fprintf(fout, "rpc_address: [ ");
 
     for (int i=0; i<nstreams; i++) {
@@ -110,6 +110,9 @@ int main(int argc, char** argv) {
     rng.seed(42);
     std::uniform_real_distribution<> rando(0.0, 1.0);
 
+    FILE* fout0 = fopen("test-packet-rates-l0.yaml", "w");
+    fprintf(fout0, "ipaddr: [ ");
+    
     std::vector<struct sockaddr_in> senders(nsenders);
     for (int i=0; i<nsenders; i++) {
         int pos = (i % 10);
@@ -127,6 +130,8 @@ int main(int argc, char** argv) {
             exit(-1);
         }
         senders[i].sin_port = htons(8888);
+
+        fout0.write("%s\"%s\"", (i>0 ? ", " : sender.c_str())
     }
 
     // If a NIC receives 4 beams x 16k frequencies x 1k samples/sec * 8 bit = 512 Gbitps
