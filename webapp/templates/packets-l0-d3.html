@@ -198,10 +198,6 @@ function json_callback(X) {
     //         .attr("d", line(dd));
     // }
     
-    // jquery update rate low/high text
-    $('#rate_low').html(rmin.toFixed(3));
-    $('#rate_high').html(rmax.toFixed(3));
-    
     setTimeout('json_update()', update_period);
 }
 
@@ -223,9 +219,6 @@ function stopUpdating() {
 }
 </script>
 
-<p>
-Rate range: <span id="rate_low">low</span> to <span id="rate_high">high</span>
-</p>
 <p>
 Number of L1 nodes responding: <span id="replies">---</span>
 </p>
