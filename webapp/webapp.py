@@ -73,7 +73,6 @@ app.nodes = parse_config()
 
 @app.route('/')
 def index():
-    print('nodes:', app.nodes)
     return render_template('index-newer.html',
                            nodes = app.nodes,
                            enodes = enumerate(app.nodes),
@@ -86,6 +85,8 @@ def index():
 def sort_l0_nodes(senders):
     # Assume that senders are IP:port addresses; drop port
     sender_ips = [s.split(':')[0] for s in senders]
+    sender_ports = [s.split(':')[1] for s in senders]
+    
     # Sort numerically
     numip = [sum([int(n) * 1<<(i*8) for i,n in enumerate(reversed(s.split('.')))])
              for s in sender_ips]
@@ -122,6 +123,11 @@ def sort_l0_nodes(senders):
     I = np.argsort(numip)
     senders = [senders[i] for i in I]
     sender_names = [dnsnames[i] for i in I]
+    # If the sender names (just hostnames) are not unique, add the
+    # port numbers back in.
+    if len(set(sender_names)) != len(I):
+        sender_names = [dnsnames[i]+':'+sender_ports[i] for i in I]
+
     return senders,sender_names
 
 def get_packet_matrix():
@@ -132,8 +138,6 @@ def get_packet_matrix():
 
     rates = client.get_packet_rate(timeout=timeout)
 
-    print('Packet rates:', rates)
-    
     senders = set()
     packetrates = []
     for p in rates:
@@ -227,8 +231,6 @@ def packet_rate_l0_json(ip=None):
                                             l0nodes=[ip],
                                             timeout=timeout)
 
-    print('Graphs:', graphs)
-    
     # The rate samples we get from the L1 nodes have different sample times;
     # we interpolate them.
     ntotal = len(graphs)
@@ -274,7 +276,6 @@ def packet_rate_l0_json(ip=None):
 @app.route('/packet-matrix.json')
 def packet_matrix_json():
     senders, sender_names, packets = get_packet_matrix()
-    print('Packet matrix: senders', senders)
     
     # npackets = []
     # for p in packets:
