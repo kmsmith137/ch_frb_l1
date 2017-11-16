@@ -10,7 +10,9 @@
 
 <body id="thebody">
 
-<div id="ratematrix"></div>
+<h3>Packet rate graph for L0 node {{ node0ip }}</h3>
+
+<div id="graph"></div>
 
 <style>
 </style>
@@ -33,7 +35,7 @@ var update_period = 2000;
 var W = totalW - left_margin;
 var H = totalH - bottom_margin;
 
-var svg = d3.select("#ratematrix").append('svg')
+var svg = d3.select("#graph").append('svg')
     .attr('width',  totalW)
     .attr('height', totalH);
 
@@ -50,25 +52,23 @@ var line = d3.line()
 var xaxis = d3.axisBottom(xscale);
 var yaxis = d3.axisLeft(yscale);
 
-graph.append('text')
-    .attr('class', 'y axis')
-    .attr('fill', '#000')
+// add axes
+graph.append('g')
+    .attr('transform', 'translate(0,' + H + ')')
+    .attr('class', 'xaxis')
+    .call(xaxis);
+graph.append('g')
+    .attr('class', 'yaxis')
+    .call(yaxis);
+
+// text label for the y axis
+graph.append("text")
     .attr("transform", "rotate(-90)")
-    .attr("y", 6)
-    .attr("dy", "0.71em")
-    //.attr("text-anchor", "begin")
-    .text("Rate (packets/second)");
-
-function add_axes(graph) {
-    // xaxis(.) adds the axis to .
-    xaxis(graph.append('g')
-          .attr('transform', 'translate(0,' + H + ')')
-          .attr('class', 'xaxis'));
-    yaxis(graph.append('g')
-          .attr('class', 'yaxis'));
-}
-
-add_axes(graph);
+    .attr("y", 0 - left_margin)
+    .attr("x",0 - (H / 2))
+    .attr("dy", "1em")
+    .style("text-anchor", "middle")
+    .text("Packet rate (packets/sec)");
 
 function update_axes(t){
     graph.select(".xaxis")
