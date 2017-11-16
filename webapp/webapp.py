@@ -197,6 +197,21 @@ def packet_rate_l1_json(name=None):
     rate = rates[0]
     return jsonify(dict(times=times, rates=rate))
 
+def mymin(scalar, arr):
+    if len(arr) == 0:
+        return scalar
+    am = min(arr)
+    if scalar is None:
+        return am
+    return min(scalar, am)
+def mymax(scalar, arr):
+    if len(arr) == 0:
+        return scalar
+    am = max(arr)
+    if scalar is None:
+        return am
+    return max(scalar, am)
+
 @app.route('/packet-rate-l0-json/<ip>')
 def packet_rate_l0_json(ip=None):
     from scipy.interpolate import interp1d
@@ -211,6 +226,9 @@ def packet_rate_l0_json(ip=None):
     graphs = client.get_packet_rate_history(start=-history,
                                             l0nodes=[ip],
                                             timeout=timeout)
+
+    print('Graphs:', graphs)
+    
     # The rate samples we get from the L1 nodes have different sample times;
     # we interpolate them.
     ntotal = len(graphs)
@@ -218,19 +236,32 @@ def packet_rate_l0_json(ip=None):
     nreplies = len(graphs)
 
     if len(graphs):
-        times,rates = graphs[0]
-        rate = rates[0]
+        tmin = None
+        tmax = None
+        for t,r in graphs:
+            tmin = mymin(tmin, t)
+            tmax = mymax(tmax, t)
+
+        #times,rates = graphs[0]
+        #rate = rates[0]
         # The times where we want to evaluate the rates
-        tgrid = np.array(times)
-        rate = np.array(rate)
-        for t,r in graphs[1:]:
+        #tgrid = np.array(times)
+        #rate = np.array(rate)
+
+        times = np.arange(np.floor(tmin), np.ceil(tmax)+1)
+        rate = np.zeros(len(times))
+
+        for t,r in graphs:
             r = r[0]
+            if len(t) == 0:
+                continue
             # t,r are vectors
             func = interp1d(t, r, kind='linear',
                             bounds_error=False, fill_value=(r[0], r[-1]),
                             assume_sorted=True)
-            rate += func(tgrid)
+            rate += func(times)
         rate = list(rate)
+        times = list(times)
     else:
         times = []
         rate = []
