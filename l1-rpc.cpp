@@ -419,7 +419,6 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         double start = oh.get().via.array.ptr[0].as<double>();
         double period = oh.get().via.array.ptr[1].as<double>();
         //chlog("get_packet_rate: start " << start << ", period " << period);
-
         shared_ptr<packet_counts> rate = _stream->get_packet_rates(start, period);
         PacketRate pr;
         if (rate) {

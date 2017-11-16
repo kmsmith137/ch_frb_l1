@@ -20,7 +20,9 @@ export WEBAPP_CONFIG=$1
 # arbitrary code over the internet!  (--host 0.0.0.0)
 #flask run --host 0.0.0.0 --port 5002
 
-# We're but behind firewalls, so live dangerously
+# We're behind firewalls, so live dangerously
 export FLASK_DEBUG=1
+
+export PYTHONPATH=${PYTHONPATH}:.
 
 flask run --host 0.0.0.0 --port 5002

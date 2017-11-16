@@ -40,7 +40,7 @@ int main(int argc, char** argv) {
         case 'h':
         case '?':
         default:
-            cout << string(argv[0]) << ": [-n <N streams/NICs/RPC endpoints, default 4>] [-p <RPC port number start>] [-u <L1 udp-port start>] [-s <N> to fake receiving packets from N senders (default 256)] [-h for help]" << endl;
+            cout << string(argv[0]) << ": [-n <N streams/NICs/RPC endpoints, default 32>] [-p <RPC port number start>] [-u <L1 udp-port start>] [-s <N> to fake receiving packets from N senders (default 256)] [-h for help]" << endl;
             cout << "eg,  -a tcp://127.0.0.1:5555" << endl;
             cout << "     -p 5555" << endl;
             cout << "     -b 78" << endl;

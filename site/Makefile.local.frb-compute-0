@@ -8,7 +8,12 @@ BINDIR=$(HOME)/bin
 # Don't forget -std=c++11 -pthread -fPIC
 # Don't forget -march=native, since __AVX2__ is tested
 #
-CPP=g++ -std=c++11 -pthread -fPIC -Wall -O3 -march=native -ffast-math -funroll-loops -I. -I/usr/include/jsoncpp -I$(HOME)/include
+DEBUG ?= no
+ifeq ($(DEBUG),no)
+     CPP=g++ -std=c++11 -pthread -fPIC -march=native -Wall -O3 -ffast-math -funroll-loops -I. -I/usr/include/jsoncpp -I$(HOME)/include
+else
+     CPP=g++ -std=c++11 -pthread -fPIC -march=native -Wall -O0 -g -ffast-math -funroll-loops -I. -I/usr/include/jsoncpp -I$(HOME)/include
+endif
 
 # Any C++ flags which should only be specified when linking 
 # Don't forget to put -L. and -L$(LIBDIR) on the command line (in this order)
