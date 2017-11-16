@@ -146,7 +146,7 @@ function json_callback(X) {
     xscale.domain([datemin, datemax]);
     yscale.domain([rmin, rmax]);
 
-    var duration = 0.9 * update_period;
+    var duration = update_period;
     
     if (last_datemax == null) {
         // We received our first data.  No slow animation.

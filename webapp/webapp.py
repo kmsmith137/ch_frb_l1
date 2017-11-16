@@ -180,10 +180,12 @@ def packet_rate_l1_json(name=None):
     client = get_rpc_client()
     timeout = 5000.
 
+    history = int(request.args.get('history', 60))
+
     rservers = dict([(v,k) for k,v in client.servers.items()])
     servers = [rservers['tcp://' + str(name)]]
     
-    graph = client.get_packet_rate_history(start=-600,
+    graph = client.get_packet_rate_history(start=-history,
                                            servers=servers,
                                            timeout=timeout)
     #print('Got graph:', graph)
