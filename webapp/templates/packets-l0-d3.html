@@ -25,6 +25,8 @@ var left_margin = 50;
 var totalW = 600;
 var totalH = 400;
 
+var update_period = 2000;
+
 var W = totalW - left_margin;
 var H = totalH - bottom_margin;
 
@@ -97,10 +99,8 @@ function array_min(A) {
 }
 
 var ratemax = 0;
-
-var lastdata = data;
-
 var last_datemax = null;
+var date_range = null;
 
 function json_callback(X) {
     console.log('JSON callback: ' + X);
@@ -108,7 +108,7 @@ function json_callback(X) {
         return;
     }
     if (X == null) {
-        setTimeout('json_update()', 2000);
+        setTimeout('json_update()', update_period);
         return;
     }
 
@@ -130,60 +130,55 @@ function json_callback(X) {
     rmin = 0.;
     ratemax = rmax;
     
+    var datemin = new Date(1000. * tmin);
+    var datemax = new Date(1000. * tmax + update_period);
     //console.log('Time: ' + tmin + ' to ' + tmax);
     //console.log('Rate: ' + rmin + ' to ' + rmax);
-
-    var datemin = new Date(1000. * tmin);
-    var datemax = new Date(1000. * tmax);
     //console.log('Dates: ' + datemin + ' to ' + datemax);
 
+    if (date_range != null) {
+        datemin = datemax - date_range;
+    }
+    
     data = [];
     for (var i=0; i<times.length; i++) {
         data.push({ t: new Date(1000. * times[i]), r: rates[i] });
     }
 
-    //lastdata = data;
-    
     xscale.domain([datemin, datemax]);
     yscale.domain([rmin, rmax]);
 
-    // //var t = graph.transition();
-    // // Remove and re-add the axes
-    // graph.select('.xaxis').remove();
-    // graph.select('.yaxis').remove();
-    // add_axes(graph);
-
+    var duration = 0.9 * update_period;
+    
+    if (last_datemax == null) {
+        // We received our first data.  No slow animation.
+        duration = 0.0;
+    }
+    
     var t = d3.transition()
-        .duration(1900)
+        .duration(duration)
         .ease(d3.easeLinear);
 
     update_axes(t);
 
-    // if (last_datemax != null) {
-    //     graph.select(".line")
-    //         .attr("d", line(data));
-    // }
-    // last_datemax = datemax;
-    
     if (last_datemax != null) {
         // Slide the line left
-        //ddate = datemax - last_datemax;
-        //console.log('date change: ' + ddate);
         dx = xscale(last_datemax) - xscale(datemax);
         console.log('dx: ' + dx);
-        //t.select('.line').attr('transform', 'translate(' + dx + ',0)');
-        //graph.select('.line')
-        path
-            .attr('d', line(data))
-        //.attr('transform', null)
+        path.attr('d', line(data))
             .attr('transform', 'translate(' + -dx + ')')
             .transition(t)
             .attr('transform', 'translate(0)');
-        //.attr('transform', 'translate(' + dx + ')')
-            //.attr('transform', null);
+
+        // People normally do the transition like
+        // .attr('d', line(data).attr('transform',null).transition().attr('transform', ...dx...)
+        // but it seems like that means the line is shifted in its
+        // final state, ie, doesn't actually correspond to the axes!
+    } else {
+        // First time:
+        date_range = datemax - datemin;
     }
     last_datemax = datemax;
-
     
     // add all lines
     // graph.select('.allline').remove();
@@ -213,7 +208,7 @@ function json_callback(X) {
     $('#rate_low').html(rmin.toFixed(3));
     $('#rate_high').html(rmax.toFixed(3));
     
-    setTimeout('json_update()', 2000);
+    setTimeout('json_update()', update_period);
 }
 
 function json_update() {
