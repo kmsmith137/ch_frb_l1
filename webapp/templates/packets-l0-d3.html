@@ -35,7 +35,6 @@ var svg = d3.select("#ratematrix").append('svg')
 var graph = svg.append('g')
     .attr("transform", "translate(" + left_margin + ",0)");
 
-//var xscale = d3.scaleLinear().rangeRound([0, W]);
 var xscale = d3.scaleTime().rangeRound([0, W]);
 var yscale = d3.scaleLinear().rangeRound([H, 0]);
 
@@ -60,11 +59,20 @@ function add_axes(graph) {
     xaxis(graph.append('g')
           .attr('transform', 'translate(0,' + H + ')')
           .attr('class', 'xaxis'));
-    //.call(d3.axisBottom(xscale))
     yaxis(graph.append('g')
           .attr('class', 'yaxis'));
-        //.append('g')
-        //.call(d3.axisLeft(yscale))
+}
+
+add_axes(graph);
+
+function update_axes(t){
+    graph.select(".xaxis")
+        .transition(t)
+        //.ease('linear')
+        .call(xaxis);
+    graph.select(".yaxis")
+        .transition(t)
+        .call(yaxis);
 }
 
 var data = [];
@@ -89,6 +97,10 @@ function array_min(A) {
 }
 
 var ratemax = 0;
+
+var lastdata = data;
+
+var last_datemax = null;
 
 function json_callback(X) {
     console.log('JSON callback: ' + X);
@@ -127,23 +139,52 @@ function json_callback(X) {
 
     data = [];
     for (var i=0; i<times.length; i++) {
-        //data.push({ t: times[i], r: rates[i] });
         data.push({ t: new Date(1000. * times[i]), r: rates[i] });
     }
 
+    //lastdata = data;
+    
     xscale.domain([datemin, datemax]);
     yscale.domain([rmin, rmax]);
 
-    // change the line
-    //graph.selectAll('path').data(data);
-    graph.select(".line").attr("d", line(data));
+    // //var t = graph.transition();
+    // // Remove and re-add the axes
+    // graph.select('.xaxis').remove();
+    // graph.select('.yaxis').remove();
+    // add_axes(graph);
 
-    //var t = graph.transition();
-    // Remove and re-add the axes
-    graph.select('.xaxis').remove();
-    graph.select('.yaxis').remove();
-    add_axes(graph);
+    var t = d3.transition()
+        .duration(1900)
+        .ease(d3.easeLinear);
 
+    update_axes(t);
+
+    // if (last_datemax != null) {
+    //     graph.select(".line")
+    //         .attr("d", line(data));
+    // }
+    // last_datemax = datemax;
+    
+    if (last_datemax != null) {
+        // Slide the line left
+        //ddate = datemax - last_datemax;
+        //console.log('date change: ' + ddate);
+        dx = xscale(last_datemax) - xscale(datemax);
+        console.log('dx: ' + dx);
+        //t.select('.line').attr('transform', 'translate(' + dx + ',0)');
+        //graph.select('.line')
+        path
+            .attr('d', line(data))
+        //.attr('transform', null)
+            .attr('transform', 'translate(' + -dx + ')')
+            .transition(t)
+            .attr('transform', 'translate(0)');
+        //.attr('transform', 'translate(' + dx + ')')
+            //.attr('transform', null);
+    }
+    last_datemax = datemax;
+
+    
     // add all lines
     // graph.select('.allline').remove();
     // alltimes = X['alltimes'];

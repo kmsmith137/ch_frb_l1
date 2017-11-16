@@ -209,7 +209,7 @@ def packet_rate_l0_json(ip=None):
                                             l0nodes=[ip],
                                             timeout=timeout)
     # The rate samples we get from the L1 nodes have different sample times;
-    # we rebin them.
+    # we interpolate them.
     ntotal = len(graphs)
     graphs = [g for g in graphs if g is not None]
     nreplies = len(graphs)
