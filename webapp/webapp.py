@@ -24,42 +24,26 @@ def get_rpc_client():
 
 def parse_config():
     """
-    The webapp assumes that the WEBAPP_CONFIG_L0 and WEBAPP_CONFIG_L1
-    environment variables are set to the names of yaml config files.
+    The webapp assumes that the WEBAPP_CONFIG environment variables
+    are set to the names of a yaml config file.
 
-    Currently, the L1 file only needs to contain the key
+    Currently, the config file only needs to contain the key
     'rpc_address', which should be a list of RPC server locations in
     the format 'tcp://10.0.0.101:5555'.  Note that an l1_config file
     will probably work, since it contains the 'rpc_address' key among
     others.
 
-    The L0 file only needs to contain the key 'ipaddr', which should
-    be a list of L0 correlator node IP addresses like "10.1.5.100".
-    Note that an l0_config file will probably work.
-
     This function parses the yaml file and returns the list of nodes, after some
     sanity checks.
     """
 
-    if not os.environ.has_key('WEBAPP_CONFIG_L0'):
-        print("webapp: WEBAPP_CONFIG_L0 environment variable not set")
+    if not os.environ.has_key('WEBAPP_CONFIG'):
+        print("webapp: WEBAPP_CONFIG environment variable not set")
         print("  Maybe you want to run the webapp through the wrapper script")
         print("  'run-webapp.sh' in the toplevel ch_frb_l1 directory, which")
         print("  automatically sets this variable?")
         sys.exit(1)
-    if not os.environ.has_key('WEBAPP_CONFIG_L1'):
-        print("webapp: WEBAPP_CONFIG_L1 environment variable not set")
-        print("  Maybe you want to run the webapp through the wrapper script")
-        print("  'run-webapp.sh' in the toplevel ch_frb_l1 directory, which")
-        print("  automatically sets this variable?")
-        sys.exit(1)
-
-    config_filename_0 = os.environ['WEBAPP_CONFIG_L0']
-    config_filename_1 = os.environ['WEBAPP_CONFIG_L1']
-
-    if not os.path.exists(config_filename_0):
-        print("webapp: config file '%s' not found" % config_filename_0)
-        sys.exit(1)
+    config_filename_1 = os.environ['WEBAPP_CONFIG']
     if not os.path.exists(config_filename_1):
         print("webapp: config file '%s' not found" % config_filename_1)
         sys.exit(1)
@@ -75,40 +59,17 @@ def parse_config():
         sys.exit(1)
 
     nodes = y['rpc_address']
-
     # allow a single string (not a list)
     if isinstance(nodes,basestring):
         nodes = [nodes]
-
     if not isinstance(nodes,list) or not all(isinstance(x,basestring) for x in nodes):
         print("%s: expected 'rpc_address' field to be a list of strings" % config_filename)
         sys.exit(1)
-
-    try:
-        y = yaml.load(open(config_filename_0))
-    except:
-        print("webapp: couldn't parse yaml config file '%s'" % config_filename_0)
-        sys.exit(1)
-
-    if not isinstance(y,dict) or not y.has_key('ipaddr'):
-        print("webapp: no 'ipaddr' field found in yaml file '%s'" % config_filename)
-        sys.exit(1)
-
-    nodes_l0 = y['ipaddr']
-    # allow a single string (not a list)
-    if isinstance(nodes_l0,basestring):
-        nodes_l0 = [nodes_l0]
-    if not isinstance(nodes_l0,list) or not all(isinstance(x,basestring) for x in nodes_l0):
-        print("%s: expected 'ipaddr' field to be a list of strings" % config_filename_0)
-        sys.exit(1)
-
-        
     # FIXME(?): check the format of the node strings here?
     # (Should be something like 'tcp://10.0.0.101:5555')
+    return nodes
 
-    return nodes, nodes_l0
-
-app.nodes, app.nodes_l0 = parse_config()
+app.nodes = parse_config()
 
 @app.route('/')
 def index():
@@ -171,6 +132,8 @@ def get_packet_matrix():
 
     rates = client.get_packet_rate(timeout=timeout)
 
+    print('Packet rates:', rates)
+    
     senders = set()
     packetrates = []
     for p in rates:
@@ -189,11 +152,12 @@ def get_packet_matrix():
     
 @app.route('/packet-matrix-d3')
 def packet_matrix_d3():
+    nl0 = request.args.get('nl0', 256)
     return render_template('packets-d3.html',
                            nodes = app.nodes,
                            enodes = enumerate(app.nodes),
                            nl1 = len(app.nodes),
-                           nl0 = len(app.nodes_l0),
+                           nl0 = nl0,
                            packet_matrix_json_url='/packet-matrix.json',)
 
 @app.route('/packets-l0/<name>/<ip>')
@@ -279,7 +243,8 @@ def packet_rate_l0_json(ip=None):
 @app.route('/packet-matrix.json')
 def packet_matrix_json():
     senders, sender_names, packets = get_packet_matrix()
-
+    print('Packet matrix: senders', senders)
+    
     # npackets = []
     # for p in packets:
     #     row = []

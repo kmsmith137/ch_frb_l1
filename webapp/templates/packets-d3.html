@@ -28,7 +28,7 @@ writing-mode: vertical-lr;
 
 var do_update = true;
 
-var nl0 = {{ nl0 }};
+var nl0 = {{ nl0 }}; //256;
 var nl1 = {{ nl1 }}; //32;
 var nodes = [];
 
@@ -180,10 +180,12 @@ rgb_nodes
         mouse_click_l1(node, Math.floor(i / nl0)); });
 
 function array_max(A) {
-    return A.reduce(function(a, b) { return Math.max(a, b); }, 0);
+    if (A.length == 0) { return 0; }
+    return A.reduce(function(a, b) { return Math.max(a, b); }, A[0]);
 }
 function array_min(A) {
-    return A.reduce(function(a, b) { return Math.min(a, b); }, 0);
+    if (A.length == 0) { return 0; }
+    return A.reduce(function(a, b) { return Math.min(a, b); }, A[0]);
 }
 
 function json_callback(X) {
