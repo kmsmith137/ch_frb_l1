@@ -220,22 +220,97 @@ def packet_rate_l0_json(ip=None):
         times,rates = graphs[0]
         rate = rates[0]
 
+        # The times where we want to evaluate the rates
+        tgrid = np.array(times)
+        rate = np.array(rate)
+        
+        # for printing purposes only
+        t0 = times[0]
+        
+        # # assume last bin width ~= rest of bin widths
+        # if len(tt) > 1:
+        #     ttperiod = (tt[-1] - tt[0]) / (len(tt)-1)
+
+        #print('delta-times:', np.diff(times))
         #print('Times:', times)
         #print('Rates:', rates)
 
-        tt = np.array(times)
         for t,r in graphs[1:]:
             r = r[0]
+            # t,r are vectors
+
+            from scipy.interpolate import interp1d
+            
+            func = interp1d(t, r, kind='linear',
+                            bounds_error=False, fill_value=(r[0], r[-1]),
+                            assume_sorted=True)
+            rate += func(tgrid)
+
+            # # oh look, it's drizzle resampling
+            # 
+            # dt = np.zeros_like(t)
+            # dt[:-1] = np.diff(t)
+            # # assume last bin width ~= rest of bin widths
+            # if len(t) > 1:
+            #     dt[-1] = np.median(dt[:-1])
+            # for ti,dti,ri in zip(t,dt,r):
+            #     # find the bins in 'tt' that bracket 'ti'
+            #     # i: index in 'tt' of bin containing beginning of 'ti'
+            #     # the 'ti >= tt' are bools, and argmax returns the index of the *first* True value.
+            #     i = np.argmin(ti >= tt)
+            #     print('ti', ti-t0, 'tt', tt-t0)
+            #     print('ti >= tt:', (ti>=tt))
+            #     print('i',i)
+            #     # first bin
+            #     if (ti < tt[i]):
+            #         tsplit = tt[0]
+            #         f = (tsplit - ti) / dti
+            #         if (f >= 0 and f <= 1):
+            #             rate[0] += (1.-f) * ri
+            #         continue
+            #     assert(ti >= tt[i])
+            #     if i < len(tt)-1:
+            #         tsplit = tt[i+1]
+            #         # not the last element; split ri into two bins
+            #         f = (tsplit - ti) / dti
+            #         print('ti', ti-t0, 'dti', dti, 'tt[i]', tt[i]-t0, 'tt[i+1]', tt[i+1]-t0, 'f', f)
+            #         assert(ti <= tt[i+1])
+            #         assert(f >= 0)
+            #         assert(f <= 1)
+            #         rate[i] += f * ri
+            #         rate[i+1] += (1.-f) * ri
+            #     else:
+            #         if len(tt) > 1:
+            #             tsplit = tt[i] + ttperiod
+            #             f = (tsplit - ti) / dti
+            #             assert(f >= 0)
+            #             assert(f < 1)
+            #             rate[i] += f * ri
+            #         else:
+            #             rate[i] += ri
+
             ## Sum each rate into the nearest time bin...
-            for ti,ri in zip(t,r):
-                i = np.argmin(np.abs(tt - ti))
-                rate[i] += ri
+            # for ti,ri in zip(t,r):
+            #     i = np.argmin(np.abs(tt - ti))
+            #     #rate[i] += ri
+            # 
+            #     # Smoothing kernel
+            #     ilo = max(0, i-1)
+            #     ihi = min(len(rate)-1, i+1)
+            # 
+            #     k = np.exp(-0.5 * (ti - tt[ilo:ihi+1]) / (0.5**2))
+            #     k /= np.sum(k)
+            #     rate[ilo:ihi+1] += ri * k
+
+        rate = list(rate)
     else:
         times = []
         rate = []
 
     return jsonify(dict(times=times, rates=rate,
-                        nreplies=nreplies, ntotal=ntotal))
+            #alltimes=[t for t,r in graphs],
+            #allrates=[r[0] for t,r in graphs],
+            nreplies=nreplies, ntotal=ntotal))
 
 @app.route('/packet-matrix.json')
 def packet_matrix_json():

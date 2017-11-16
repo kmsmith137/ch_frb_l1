@@ -32,7 +32,8 @@ var svg = d3.select("#ratematrix").append('svg')
     .attr('width',  totalW)
     .attr('height', totalH);
 
-var graph = svg.append('g').attr("transform", "translate(" + left_margin + ",0)");
+var graph = svg.append('g')
+    .attr("transform", "translate(" + left_margin + ",0)");
 
 //var xscale = d3.scaleLinear().rangeRound([0, W]);
 var xscale = d3.scaleTime().rangeRound([0, W]);
@@ -54,7 +55,7 @@ graph.append('text')
     //.attr("text-anchor", "begin")
     .text("Rate (packets/second)");
 
-function add_axes() {
+function add_axes(graph) {
     // xaxis(.) adds the axis to .
     xaxis(graph.append('g')
           .attr('transform', 'translate(0,' + H + ')')
@@ -87,6 +88,8 @@ function array_min(A) {
     return A.reduce(function(a, b) { return Math.min(a, b); }, A[0]);
 }
 
+var ratemax = 0;
+
 function json_callback(X) {
     console.log('JSON callback: ' + X);
     if (!do_update) {
@@ -111,43 +114,59 @@ function json_callback(X) {
     var tmax = array_max(times);
     var tmin = array_min(times);
 
-    console.log('Time: ' + tmin + ' to ' + tmax);
-    console.log('Rate: ' + rmin + ' to ' + rmax);
+    rmax = Math.max(rmax, ratemax);
+    rmin = 0.;
+    ratemax = rmax;
+    
+    //console.log('Time: ' + tmin + ' to ' + tmax);
+    //console.log('Rate: ' + rmin + ' to ' + rmax);
 
     var datemin = new Date(1000. * tmin);
     var datemax = new Date(1000. * tmax);
-    console.log('Dates: ' + datemin + ' to ' + datemax);
+    //console.log('Dates: ' + datemin + ' to ' + datemax);
 
     data = [];
     for (var i=0; i<times.length; i++) {
         //data.push({ t: times[i], r: rates[i] });
         data.push({ t: new Date(1000. * times[i]), r: rates[i] });
-        //console.log('Date: ' + data[i].t);
     }
 
-    graph.transition();
-
-    //console.log('extent:', d3.extent(data, function(d) { return d.t; }));
-
-    //xscale.domain(d3.extent(data, function(d) { return d.t; }));
     xscale.domain([datemin, datemax]);
-    //yscale.domain(d3.extent(data, function(d) { return d.r; }));
     yscale.domain([rmin, rmax]);
-    //svg.select('.x axis').scale(xscale);
-    //xaxis.scale(xscale);
-    //xaxis.ticks(10);
 
     // change the line
     //graph.selectAll('path').data(data);
     graph.select(".line").attr("d", line(data));
 
+    //var t = graph.transition();
+    // Remove and re-add the axes
     graph.select('.xaxis').remove();
     graph.select('.yaxis').remove();
+    add_axes(graph);
 
-    add_axes();
-    //xaxis(graph.append('g')
-        //.attr('transform', 'translate(0,' + H + ')')
-        //.attr('class', 'x axis'));
+    // add all lines
+    // graph.select('.allline').remove();
+    // alltimes = X['alltimes'];
+    // allrates = X['allrates'];
+    // console.log('alltimes:', alltimes, ' allrates:', allrates);
+    // for (var i=0; i<alltimes.length; i++) {
+    //     var dd = []
+    //     tt = alltimes[i];
+    //     rr = allrates[i];
+    //     console.log('tt', tt, ' rr', rr);
+    //     for (var j=0; j<tt.length; j++) {
+    //         dd.push({t:new Date(1000.*tt[j]), r:rr[j]});
+    //     }
+    //     graph.append("path")
+    //         .attr("class", "allline")
+    //         .datum(dd)
+    //         .attr("fill", "none")
+    //         .attr("stroke", "black")
+    //         .attr("stroke-linejoin", "round")
+    //         .attr("stroke-linecap", "round")
+    //         .attr("stroke-width", 1.5)
+    //         .attr("d", line(dd));
+    // }
     
     // jquery update rate low/high text
     $('#rate_low').html(rmin.toFixed(3));
