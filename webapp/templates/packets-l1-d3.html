@@ -117,6 +117,11 @@ function json_callback(X) {
     times = X['times'];
     rates = X['rates'];
 
+    if (times == undefined || rates == undefined) {
+        setTimeout('json_update()', update_period);
+        return;
+    }
+
     var rmax = array_max(rates);
     var rmin = array_min(rates);
     var tmax = array_max(times);
