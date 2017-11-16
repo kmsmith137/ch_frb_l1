@@ -200,12 +200,15 @@ def packet_rate_l1_json(name=None):
 @app.route('/packet-rate-l0-json/<ip>')
 def packet_rate_l0_json(ip=None):
     from scipy.interpolate import interp1d
-
+    
     assert(ip is not None)
     client = get_rpc_client()
     timeout = 5000.
+
+    history = int(request.args.get('history', 20))
+
     #print('RPC request for rates of L0 node', ip)
-    graphs = client.get_packet_rate_history(start=-20,
+    graphs = client.get_packet_rate_history(start=-history,
                                             l0nodes=[ip],
                                             timeout=timeout)
     # The rate samples we get from the L1 nodes have different sample times;

@@ -25,6 +25,9 @@ var left_margin = 50;
 var totalW = 600;
 var totalH = 400;
 
+// How many seconds of history do we want?
+var history_period = 60;
+
 var update_period = 2000;
 
 var W = totalW - left_margin;
@@ -100,10 +103,10 @@ function array_min(A) {
 
 var ratemax = 0;
 var last_datemax = null;
-var date_range = null;
+//var date_range = null;
 
 function json_callback(X) {
-    console.log('JSON callback: ' + X);
+    //console.log('JSON callback: ' + X);
     if (!do_update) {
         return;
     }
@@ -117,7 +120,7 @@ function json_callback(X) {
     nreplies = X['nreplies'];
     ntotal = X['ntotal'];
 
-    console.log('' + nreplies + ' of ' + ntotal);
+    //console.log('' + nreplies + ' of ' + ntotal);
     
     $('#replies').html('' + nreplies + ' of ' + ntotal);
     
@@ -130,15 +133,16 @@ function json_callback(X) {
     rmin = 0.;
     ratemax = rmax;
     
-    var datemin = new Date(1000. * tmin);
+    //var datemin = new Date(1000. * tmin);
     var datemax = new Date(1000. * tmax + update_period);
     //console.log('Time: ' + tmin + ' to ' + tmax);
     //console.log('Rate: ' + rmin + ' to ' + rmax);
     //console.log('Dates: ' + datemin + ' to ' + datemax);
-
-    if (date_range != null) {
-        datemin = datemax - date_range;
-    }
+    var datemin = new Date(1000. * (tmax - history_period));
+    
+    //if (date_range != null) {
+    //    datemin = datemax - date_range;
+    //}
     
     data = [];
     for (var i=0; i<times.length; i++) {
@@ -164,7 +168,6 @@ function json_callback(X) {
     if (last_datemax != null) {
         // Slide the line left
         dx = xscale(last_datemax) - xscale(datemax);
-        console.log('dx: ' + dx);
         path.attr('d', line(data))
             .attr('transform', 'translate(' + -dx + ')')
             .transition(t)
@@ -174,9 +177,9 @@ function json_callback(X) {
         // .attr('d', line(data).attr('transform',null).transition().attr('transform', ...dx...)
         // but it seems like that means the line is shifted in its
         // final state, ie, doesn't actually correspond to the axes!
-    } else {
-        // First time:
-        date_range = datemax - datemin;
+    //} else {
+    //    // First time:
+    //    date_range = datemax - datemin;
     }
     last_datemax = datemax;
     
@@ -212,7 +215,7 @@ function json_callback(X) {
 }
 
 function json_update() {
-    d3.request('/packet-rate-l0-json/{{ node0ip }}')
+    d3.request('/packet-rate-l0-json/{{ node0ip }}?history=' + history_period)
         .mimeType("application/json")
         .response(function(xhr) { return JSON.parse(xhr.responseText); })
         .get(json_callback);
