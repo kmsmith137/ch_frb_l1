@@ -224,6 +224,12 @@ l1_params::l1_params(int argc, char **argv)
     
     this->beam_ids = p.read_vector<int> ("beam_ids", vrange(0,nbeams));
 
+    cout << "Expecting beam ids: ";
+    for (int i=0; i<this->beam_ids.size(); i++) {
+        cout << this->beam_ids[i] << ", ";
+    }
+    cout << endl;
+
     if (beam_ids.size() != (unsigned)nbeams)
 	throw runtime_error(l1_config_filename + ": 'beam_ids' must have length 'nbeams'");
 
@@ -431,6 +437,8 @@ static shared_ptr<ch_frb_io::intensity_network_stream> make_input_stream(const l
     ini_params.memory_pool = memory_pool;
     ini_params.output_devices = output_devices;
     
+    ini_params.throw_exception_on_beam_id_mismatch = false;
+
     // Setting this flag means that an exception will be thrown if either:
     //
     //    1. the unassembled-packet ring buffer between the network and
@@ -547,24 +555,26 @@ static void print_statistics(const l1_params &config, const vector<shared_ptr<ch
 
 static void read_thread_main(const l1_params &config, const shared_ptr<ch_frb_io::intensity_network_stream> &stream, int ibeam)
 {
-    assert(ibeam >= 0 && ibeam < config.nbeams);
-
+    //int assembler_id = ibeam;
     int assembler_id = -1;
     int beam_id = ibeam;
-    
     const vector<int> &beam_ids = stream->ini_params.beam_ids;
+    cout << "Read thread for beam index " << ibeam << " starting" << endl;
     for (unsigned int i = 0; i < beam_ids.size(); i++) {
-	if (beam_ids[i] == beam_id) {
-	    assembler_id = i;
-	    break;
-	}
+        cout << "Stream_ini's beam id: " << i << endl;
+        if (beam_ids[i] == beam_id) {
+            assembler_id = i;
+            break;
+        }
     }
     if (assembler_id < 0) {
-	//throw runtime_error("beam_id=" + stringify(beam_id)
+        //throw runtime_error("beam_id=" + stringify(beam_id)
         //+ " not found in stream beam_id list " + stringify(beam_ids));
-        throw runtime_error("Beam id not found in beam_id list");
+        //throw runtime_error("Beam id " + std::to_string(beam_id) + " not found in beam_id list");
+        cout << "Beam id " + std::to_string(beam_id) + " not found in beam_id list; quitting" << endl;
+        return;
     }
-    
+
     // tells network thread to start reading packets, returns immediately
     stream->start_stream();
 
@@ -572,7 +582,9 @@ static void read_thread_main(const l1_params &config, const shared_ptr<ch_frb_io
         shared_ptr<ch_frb_io::assembled_chunk> chunk;
         //cout << "Reading assembled chunk from beam " << ibeam << endl;
         chunk = stream->get_assembled_chunk(assembler_id);
-        cout << "Read assembled chunk from beam " << ibeam << ", chunk " << chunk->ichunk << endl;
+	if (!chunk)
+            cout << "Got NULL chunk -- exiting" << endl;
+        cout << "Read assembled chunk from beam index " << ibeam << ", chunk " << chunk->ichunk << ", chunk beam " << chunk->beam_id << endl;
 	//chunk->decode(intensity, weights, istride, wstride);
 	//chunk.reset();
     }
