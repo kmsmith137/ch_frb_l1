@@ -146,7 +146,7 @@ def get_packet_matrix():
             continue
         senders.update(p.packets.keys())
         # Packet counts -> rates
-        packetrates.append(dict([(k, v/p.period) for k,v in p.packets.items()]))
+        packetrates.append(dict([(k, v/p.period if p.period > 0 else 0) for k,v in p.packets.items()]))
         
     senders = list(senders)
 
@@ -276,20 +276,20 @@ def packet_rate_l0_json(ip=None):
 @app.route('/packet-matrix.json')
 def packet_matrix_json():
     senders, sender_names, packets = get_packet_matrix()
-    
-    # npackets = []
-    # for p in packets:
-    #     row = []
-    #     for s in senders:
-    #         row.append(p.get(s, 0))
-    #     npackets.append(row)
 
-    # Flat packet list
+    # 'packets' is a list with one element per L1 node; each list
+    # contains a dict from L0 name (in "senders") to the packet count.
+
+    #print('Packet matrix:', packets)
+    
+    # Form into a matrix
     npackets = []
     for p in packets:
+        row = []
         for s in senders:
-            npackets.append(p.get(s, 0))
-    
+            row.append(p.get(s, 0))
+        npackets.append(row)
+
     rtn = dict(l0=sender_names, l0_ip=senders,
                l1=[n.replace('tcp://','') for n in app.nodes],
                packets=npackets)

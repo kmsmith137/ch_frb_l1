@@ -205,12 +205,28 @@ function json_callback(X) {
     
     packets = X['packets'];
 
-    var pmax = array_max(packets);
-    var pmin = array_min(packets);
-    for (i=0; i<packets.length; i++) {
-        nodes[i].value = packets[i];
+    // find min and max packet rates
+    var pmin_ini = 1000000;
+    var pmax = 0;
+    var pmin = pmin_ini;
+
+    // 'packets' is a matrix -- L1 elements long and L0 elements wide.
+    for (var i=0; i<packets.length; i++) {
+	if (i >= nl1) {
+	    break;
+	}
+	var row = packets[i];
+	var n = Math.min(row.length, nl0);
+	for (var j=0; j<n; j++) {
+            nodes[i * nl0 + j].value = row[j];
+	    pmax = Math.max(pmax, row[j]);
+	    pmin = Math.min(pmin, row[j]);
+	}
     }
-    
+    if (pmin == pmin_ini) {
+	pmin = 0;
+    }
+
     rgb_nodes.selectAll('rect').transition()
         .style('fill', function(node){return rgb(node.value, 0, pmax);});
 
@@ -223,7 +239,7 @@ function json_callback(X) {
     // L0 IP addrs
     ips = X['l0_ip'];
     //console.log('L0 names:', names);
-    for (var i=0, n=names.length; i<n; i++) {
+    for (var i=0, n=Math.min(names_l0.length, names.length); i<n; i++) {
         names_l0[i]['name'] = names[i];
         names_l0[i]['ip'] = ips[i];
     }
