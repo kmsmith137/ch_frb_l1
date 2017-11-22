@@ -1,0 +1,25 @@
+# This is "example 1", in the section "Quick-start examples
+# which can be run on a laptop" in MANUAL.md.
+
+# In this toy example, we use 1 beam and 1024 frequency channels.
+#
+# In subscale test programs, the value of 'nt_per_packet' isn't very important, but
+# should be the same on the L0 simulator and the L1 server.  (For discussion, see
+# "Config file reference: L1 server" in MANUAL.md.)
+
+nbeams: 4
+#nfreq: 1024
+nfreq: 16384
+#nt_per_packet: 64
+nt_per_packet: 16
+start_beam_id: 4
+ipaddr: "127.0.0.1"   # to loopback address
+#ipaddr: "10.2.1.101"  # to frb-compute-1
+port: 6677
+start_beam_id: 4
+beam_ids: [4, 5, 6, 7]
+# Total number of threads used by the L0 simulator.
+# Note: nthreads must be a multiple of the number of "streams", which
+# is the number of distinct (ipaddr,port) pairs (in this case nsteams=1).
+
+nthreads: 1

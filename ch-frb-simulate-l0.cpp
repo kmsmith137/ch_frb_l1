@@ -47,14 +47,16 @@ struct l0_params {
     int nthreads_tot = 0;
     int nfreq_fine = 0;
     int nt_per_packet = 0;
-
+    
     // The 'ipaddr' and 'port' vectors have the same length 'nstreams'
     // nstreams evenly divides nthreads.
     // nstreams evenly divides nbeams.
     vector<string> ipaddr;
     vector<int> port;
+    vector<int> input_beam_ids;
+    int start_beam_id = 0;
     int nstreams = 0;
-
+    
     // Optional params with hardcoded defaults
     // Note: fpga_counts_per_sample=384 corresponds to ~1ms sampling
     // Note: max_packet_size=8900 is appropriate for 9000-byte jumbo ethernet frames, minus 100 bytes for IP and UDP headers.
@@ -94,7 +96,8 @@ l0_params::l0_params(const string &filename)
 	this->ipaddr = vector<string> (port.size(), ipaddr[0]);
     else if ((ipaddr.size() > 1) && (port.size() == 1))
 	this->port = vector<int> (ipaddr.size(), port[0]);
-
+    this->input_beam_ids = p.read_vector<int>("beam_ids");
+    this->start_beam_id = p.read_scalar<int> ("start_beam_id");
     if (ipaddr.size() != port.size())
 	throw runtime_error(filename + " expected 'ip_addr' and 'port' to be lists of equal length");
 
@@ -185,10 +188,11 @@ shared_ptr<ch_frb_io::intensity_network_ostream> l0_params::make_ostream(int ith
 
     int istream = ithread / nthreads_per_stream;
     int jthread = ithread % nthreads_per_stream;
-
+    
     ch_frb_io::intensity_network_ostream::initializer ini_params;
     ini_params.dstname = ipaddr[istream] + ":" + to_string(port[istream]);
-    ini_params.beam_ids = vrange(istream * nbeams_per_stream, (istream+1) * nbeams_per_stream);
+    //ini_params.beam_ids = vrange((istream * nbeams_per_stream)+start_beam_id, ((istream+1) * nbeams_per_stream)+start_beam_id);
+    ini_params.beam_ids = input_beam_ids;
     ini_params.coarse_freq_ids = vrange(jthread * nfreq_coarse_per_thread, (jthread+1) * nfreq_coarse_per_thread);
     ini_params.nupfreq = nupfreq;
     ini_params.nt_per_chunk = nt_per_packet;   // best?
@@ -220,6 +224,7 @@ void l0_params::write(ostream &os) const
        << "max_packet_size = " << max_packet_size << "\n"
        << "nfreq_coarse_per_packet = " << nfreq_coarse_per_packet << "\n"
        << "nt_per_packet = " << nt_per_packet << "\n"
+       //<< "beam_ids = " << input_beam_ids << "\n"
        << "nbeams_per_stream = " << nbeams_per_stream << "\n"
        << "nthreads_per_stream = " << nthreads_per_stream << "\n"
        << "nfreq_coarse_per_thread = " << nfreq_coarse_per_thread << "\n"

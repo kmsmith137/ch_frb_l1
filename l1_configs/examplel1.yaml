@@ -1,0 +1,62 @@
+# This is "example 1", in the section "Quick-start examples
+# which can be run on a laptop" in MANUAL.md.
+
+
+# This toy L1 server instance expects 1 beam, with 1024 frequencies.
+#
+# In subscale test programs, the value of 'nt_per_packet' isn't very important, but
+# should be the same on the L0 simulator and the L1 server.  (For discussion, see
+# "Config file reference: L1 server" in MANUAL.md.)
+
+nbeams: 4
+#nfreq: 1024
+nfreq: 16384
+#nt_per_packet: 64
+nt_per_packet: 16
+
+# Configure the L1 server to use the loopback interface 127.0.0.1 and UDP port 6677.
+# The RPC server will run on TCP port 5555.
+
+ipaddr: "127.0.0.1"
+port: 6677
+rpc_address: "tcp://127.0.0.1:5555"
+beam_ids: [4, 5, 6, 7]
+# This configures the L1 server to use a single I/O thread for all writes.
+# See 'output_devices' in MANUAL.md for discussion!
+output_devices: ""
+
+
+# slow_kernels=True is the only option here, since nfreq is not a multiple
+# of 2048.  Using slow kernels is OK in subscale test instances.  For more
+# discussion, see "Config file reference: L1 server" in MANUAL.md.
+
+#slow_kernels: True
+slow_kernels: False
+
+
+# Buffer configuration.  For documentation on these parameters, see 
+# "Config file reference: L1 server" in MANUAL.md.
+
+#assembled_ringbuf_nsamples: 4096
+#telescoping_ringbuf_nsamples: [ 4096, 4096, 4096 ]
+#write_staging_area_gb: 0.1
+
+#assembled_ringbuf_nsamples: 8192
+#telescoping_ringbuf_nsamples: [ 30000, 60000, 60000 ]
+#telescoping_ringbuf_nsamples: [ 8192, 8192, 8192 ]
+#write_staging_area_gb: 16.
+
+# L1b configuration.
+#
+# Postprocess triggers using 'toy-l1b.py', a placeholder version
+# of the L1b code which "processes" coarse-grained triggers by
+# making a big waterfall plot (toy_l1b_beam0.png).
+#
+# The parameter combination (l1b_buffer_nsamples, l1b_pipe_timeout) = (0, 5.0)
+# makes sense for subscale test instances, but not in the production real-time
+# search.  See MANUAL.md for discussion!
+
+l1b_executable_filename: "../ch_frb_L1b//ch-frb-l1b.py"
+#l1b_executable_filename: "./toy-l1b.py"
+l1b_buffer_nsamples: 4000
+l1b_pipe_timeout: 0
