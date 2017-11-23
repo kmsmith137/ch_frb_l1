@@ -26,28 +26,35 @@ writing-mode: vertical-lr;
 
 <script type="text/javascript">
 
+// Are we updating the plot?
 var do_update = true;
 
+// How many milliseconds between updates?
+var update_period = 2000;
+
+// These are the number of L0 and L1 nodes expected.  The L1 nodes are set in the config file,
+// but (currently) the number of L0 nodes is set here.  There is a way to hack this: pass the
+// "nl0" URL argument, like
+//     http://localhost:5002/packet-matrix-d3?nl0=40
 var nl0 = {{ nl0 }}; //256;
 var nl1 = {{ nl1 }}; //32;
-var nodes = [];
 
-function random(){
-  return Math.floor(Math.random() * 256);
-}
-
+// Form a URL to view the packet rate for a given L0 node
 function node_url_l0(name, ip) {
     // FIXME
     return '/packets-l0/' + name + '/' + ip;
 }
+// Form a URL to view the packet rate for a given L1 node
 function node_url_l1(name) {
     return '/packets-l1/' + name;
 }
 
-// initialize nodes
+// initialize "nodes" -- this is the data array that we pass to the d3
+// matrix (which is just a grid of rectangles)
+var matrix_data = [];
 for (var i=0; i<nl1; i++){
     for (var j=0; j<nl0; j++){
-        nodes.push({
+        matrix_data.push({
             x: j,
             y: i,
             value: [0]
@@ -55,15 +62,18 @@ for (var i=0; i<nl1; i++){
     }
 }
 
-var nodew = 3;
+// The size, in pixels, of the matrix grid cells.
+var nodew = Math.max(3, Math.floor(800 / nl0));
 var nodeh = 8;
 var top_margin = 20;
 var left_margin = 20;
 
+// Create the SVG graphic element and set its size.
 var svg = d3.select("#ratematrix").append('svg')
     .attr('width', left_margin + nl0 * nodew)
     .attr('height', top_margin + nl1 * nodeh);
 
+// Initialize the L0 and L1 node names with bogus values
 var names_l0 = [];
 for (var i=0; i<nl0; i++) {
     names_l0.push({ name: 'node' + i});
@@ -74,6 +84,7 @@ for (var i=0; i<nl1; i++) {
     names_l1.push({ name: 'node' + i});
 }
 
+// A rainbow colormap used for the node links
 function colormap_rainbow(f) {
     // from matplotlib._cm.py
     var r = Math.round(255. * Math.abs(2 * f - 0.5));
@@ -82,6 +93,9 @@ function colormap_rainbow(f) {
     return 'rgb(' + r + ',' + g + ',' + b + ')';
 }
 
+// Function called when the mouse enters either the L0 "title" bars
+// (rainbow), or a matrix cell.  Moves the black outlined "highlight"
+// bar, and updates the text link.
 function mouse_enter_l0(i) {
     //console.log('Mouseenter ' + node + i);
     highlight0.attr('x', left_margin + i * nodew);
@@ -90,12 +104,15 @@ function mouse_enter_l0(i) {
         .html(names_l0[i].name);
 }
 
+// Function called on a mouse click on a matrix cell
+// Updates the "clicked" text
 function mouse_click_l0(node, i) {
     $('#click_l0')
         .attr('href', node_url_l0(names_l0[i].name, names_l0[i].ip))
         .html(names_l0[i].name);
 }
 
+// Mouse enters an L1 title bar or matrix cell
 function mouse_enter_l1(i) {
     //console.log('Mouseenter ' + node + i);
     highlight1.attr('y', top_margin + i * nodeh);
@@ -104,16 +121,19 @@ function mouse_enter_l1(i) {
         .html(names_l1[i].name);
 }
 
+// Mouse click on a matrix cell
 function mouse_click_l1(node, i) {
     $('#click_l1')
         .attr('href', node_url_l1(names_l1[i].name))
         .html(names_l1[i].name);
 }
 
+// Create the d3 title bar for the L0 nodes.  Each node gets an <a> link
+// with a rectangle within it.
 var title0 = svg.selectAll(".title0")
     .data(names_l0)
     .enter().append('a')
-    .attr("xlink:href", function(d) { return ''; }) // /l0-status/' + d.name; })
+    .attr("xlink:href", function(d) { return ''; })
     .attr("class", "link0")
     .append('rect')
     .attr("x", function(d, i) { return left_margin + i * nodew; })
@@ -124,12 +144,11 @@ var title0 = svg.selectAll(".title0")
     .on('mouseenter', function(node, i) { mouse_enter_l0(i); })
     .on('click', function(node, i) { mouse_click_l0(node, i); });
 
-//.on('mouseexit', function(node, i) { mouse_exit_l0(node,i); });
-
+// Create the d3 title bar for the L1 nodes.
 var title1 = svg.selectAll(".title1")
     .data(names_l1)
     .enter().append('a')
-    .attr("xlink:href", function(d) { return '';}) // /l1-status/' + d.name; })
+    .attr("xlink:href", function(d) { return '';})
     .attr("class", "link1")
     .append('rect')
     .attr("x", 0)
@@ -140,16 +159,20 @@ var title1 = svg.selectAll(".title1")
     .on('mouseenter', function(node, i) { mouse_enter_l1(i); })
     .on('click', function(node, i) { mouse_click_l1(node, i); });
 
+// This function is called to produce an rgb color string for a matrix
+// element given its packet rate, and the min and max.  Here, we're
+// just doing a grayscale colormap.
 function rgb(val, mn, mx) {
     g = Math.round(255. * (val - mn) / (mx - mn));
     return 'rgb('+g+','+g+','+g+')';
 }
 
-var rgb_nodes = svg.append('g').attr('class','nodes all');
+// These are the d3 matrix elements
+var matrix_cells = svg.append('g').attr('class','nodes all');
 
-rgb_nodes
+matrix_cells
     .selectAll('rect')
-    .data(nodes)
+    .data(matrix_data)
     .enter().append('rect')
     .attr('x', function(node){return left_margin + node.x * nodew;})
     .attr('y', function(node){return top_margin + node.y * nodeh;})
@@ -164,6 +187,8 @@ rgb_nodes
         mouse_click_l0(node, i % nl0);
         mouse_click_l1(node, Math.floor(i / nl0)); });
 
+// Create the highlight bars -- horizontal and vertical black-outlined bars
+// showing the matrix row & column currently selected.
 var highlight0 = svg.append('rect')
     .attr('class', 'highlight0')
     .attr('width', nodew)
@@ -182,6 +207,7 @@ var highlight1 = svg.append('rect')
     .style('stroke', 'black')
     .style('fill', 'none');
 
+/*
 function array_max(A) {
     if (A.length == 0) { return 0; }
     return A.reduce(function(a, b) { return Math.max(a, b); }, A[0]);
@@ -190,7 +216,9 @@ function array_min(A) {
     if (A.length == 0) { return 0; }
     return A.reduce(function(a, b) { return Math.min(a, b); }, A[0]);
 }
+*/
 
+// Handle the JSON data when we're updating the matrix.
 function json_callback(X) {
     console.log('JSON callback: ' + X);
 
@@ -199,7 +227,7 @@ function json_callback(X) {
     }
     
     if (X == null) {
-        setTimeout('json_update()', 2000);
+        setTimeout('json_update()', update_perid);
         return;
     }
     
@@ -210,53 +238,69 @@ function json_callback(X) {
     var pmax = 0;
     var pmin = pmin_ini;
 
-    // 'packets' is a matrix -- L1 elements long and L0 elements wide.
-    for (var i=0; i<packets.length; i++) {
-	if (i >= nl1) {
-	    break;
-	}
-	var row = packets[i];
-	var n = Math.min(row.length, nl0);
-	for (var j=0; j<n; j++) {
-            nodes[i * nl0 + j].value = row[j];
-	    pmax = Math.max(pmax, row[j]);
-	    pmin = Math.min(pmin, row[j]);
-	}
+    var ptotal = 0;
+    for (const row of packets) {
+        for (const r of row) {
+            ptotal += r;
+        }
+    }
+    
+    // 'packets' is a matrix -- L1 elements long (rows) and L0
+    // elements wide (cols).  Copy to the "matrix_data" array.
+    // set matrix to zeros to start
+    for (var i; i<(nl0*nl1); i++) {
+        matrix_data[i].value = 0;
+    }
+    var ni = Math.min(packets.length, nl1);
+    for (var i=0; i<ni; i++) {
+	    var row = packets[i];
+	    var n = Math.min(row.length, nl0);
+	    for (var j=0; j<n; j++) {
+            matrix_data[i * nl0 + j].value = row[j];
+	        pmax = Math.max(pmax, row[j]);
+	        pmin = Math.min(pmin, row[j]);
+	    }
     }
     if (pmin == pmin_ini) {
-	pmin = 0;
+	    pmin = 0;
     }
 
-    rgb_nodes.selectAll('rect').transition()
-        .style('fill', function(node){return rgb(node.value, 0, pmax);});
+    // Now we update the d3 matrix_cells, which will pull values from the
+    // matrix_data array.
+    matrix_cells.selectAll('rect').transition()
+        .style('fill', function(data) { return rgb(data.value, 0, pmax); });
 
     // jquery update rate low/high text
     $('#rate_low').html(pmin.toFixed(3));
     $('#rate_high').html(pmax.toFixed(3));
 
-    // L0 names
+    // jquery update total packet rate text
+    $('#rate_total').html(ptotal.toFixed(0));
+
+    // Update L0 names & IP addresses
     names = X['l0'];
-    // L0 IP addrs
     ips = X['l0_ip'];
-    //console.log('L0 names:', names);
     for (var i=0, n=Math.min(names_l0.length, names.length); i<n; i++) {
         names_l0[i]['name'] = names[i];
         names_l0[i]['ip'] = ips[i];
     }
+    // Update the <a href> values for the L0 title bar
     svg.selectAll('.link0')
         .attr('xlink:href', function(d) { return node_url_l0(d.name, d.ip); });
 
-    // L1 names
+    // Update L1 names
     names = X['l1'];
     for (var i=0, n=names.length; i<n; i++) {
         names_l1[i]['name'] = names[i];
     }
+    // Update the <a href> values for the L1 title bar.
     svg.selectAll('.link1')
         .attr('xlink:href', function(d) { return node_url_l1(d.name); });
     
-    setTimeout('json_update()', 2000);
+    setTimeout('json_update()', update_period);
 }
 
+// Make a JSON request for the packet matrix; call "json_callback"
 function json_update() {
     d3.request('{{ packet_matrix_json_url }}')
         .mimeType("application/json")
@@ -264,6 +308,7 @@ function json_update() {
         .get(json_callback);
 }
 
+// Fetch first data set!
 json_update();
 
 function startUpdating() {
@@ -275,6 +320,9 @@ function stopUpdating() {
 }
 </script>
 
+<p>
+Total packet rate: <span id="rate_total">---</span> packets/sec
+</p>
 <p>
 Rate range: <span id="rate_low">low</span> to <span id="rate_high">high</span>
 </p>
