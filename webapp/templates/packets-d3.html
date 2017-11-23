@@ -6,23 +6,33 @@
 <script type="text/javascript" src="{{ url_for('static', filename='jquery.js') }}"></script>
 <script type="text/javascript" src="{{ url_for('static', filename='d3.min.js') }}"></script>
 
+<script>
+{% include "strip-chart.js" %}
+</script>
+    
 </head>
 
 <body id="thebody">
 
 <div id="ratematrix"></div>
 
-<style>
-.good {
-background-color: lightsteelblue;
-}
-.bad {
-background-color: pink;
-}
-.rotate {
-writing-mode: vertical-lr;
-}
-</style>
+<p>
+Total packet rate: <span id="rate_total">---</span> packets/sec
+</p>
+<p>
+Rate range: <span id="rate_low">low</span> to <span id="rate_high">high</span>
+</p>
+<p>
+Selected: L0: <a id="select_l0">---</a>, L1: <a id="select_l1">---</a>
+<br />
+Clicked: L0: <a id="click_l0">---</a>, L1: <a id="click_l1">---</a>
+</p>
+<p>
+<input type="button" onClick="stopUpdating()"  value="Stop updating" />
+<input type="button" onClick="startUpdating()" value="Start updating"/>
+</p>
+
+<div id="rategraph"></div>
 
 <script type="text/javascript">
 
@@ -218,6 +228,12 @@ function array_min(A) {
 }
 */
 
+var chart = new StripChart(600, 300, '#rategraph', 60, 2000);
+
+var chart_dates = [];
+var chart_values = [];
+var chart_max = 0;
+
 // Handle the JSON data when we're updating the matrix.
 function json_callback(X) {
     console.log('JSON callback: ' + X);
@@ -277,6 +293,17 @@ function json_callback(X) {
     // jquery update total packet rate text
     $('#rate_total').html(ptotal.toFixed(0));
 
+    chart_dates.push(new Date());
+    chart_values.push(ptotal);
+    if (chart_dates.length > 60) {
+        chart_dates.shift();
+        chart_values.shift();
+    }
+    chart_max = Math.max(chart_max, ptotal);
+    chart.ymin = 0;
+    chart.ymax = chart_max;
+    chart.update(chart_dates, chart_values);
+    
     // Update L0 names & IP addresses
     names = X['l0'];
     ips = X['l0_ip'];
@@ -319,22 +346,6 @@ function stopUpdating() {
     do_update = false;
 }
 </script>
-
-<p>
-Total packet rate: <span id="rate_total">---</span> packets/sec
-</p>
-<p>
-Rate range: <span id="rate_low">low</span> to <span id="rate_high">high</span>
-</p>
-<p>
-Selected: L0: <a id="select_l0">---</a>, L1: <a id="select_l1">---</a>
-<br />
-Clicked: L0: <a id="click_l0">---</a>, L1: <a id="click_l1">---</a>
-</p>
-<p>
-<input type="button" onClick="stopUpdating()"  value="Stop updating" />
-<input type="button" onClick="startUpdating()" value="Start updating"/>
-</p>
 
 </body>
 </html>
