@@ -85,12 +85,15 @@ Here are some external links to the bonsai documentation, which may also be usef
     to create the hdf5 files by hand using the above procedure.  Exception: on the CHIME nodes, 
     the "production" HDF5 files should already be in `/data/bonsai_configs`.
 
-  - Currently, 16K RFI removal is running slower than originally hoped (0.55 cores/beam).
-    If the L1 server is run with 16K RFI removal enabled, then you'll need use the
-    bonsai config file `bonsai_production_noups_nbeta1_xx.hdf5`.  This bonsai config
-    disables spectral index searching and low-DM upsampling, in order to save CPU time.
-    If the other "production" bonsai config files are used, the L1 server will run too
-    slow and crash!
+  - Currently, 16K RFI removal is running slower than originally hoped (0.55 cores/beam),
+    so we need to run with 8 beams/node rather than 16 beams/node.
+
+    The L1 server supports either 8 or 16 beams, but currently our best 16-beam configuration
+    uses "placeholder" RFI removal (which detrends the data but doesn't actually remove RFI) and the least optimal 
+    bonsai configuration (no low-DM upsampled tree or spectral index search).  Our best 8-beam configuration
+    uses a real RFI removal scheme developed by Masoud, and the most optimal bonsai configuration
+    (with a low-DM upsampled tree and two trial spectral indices).  See [Example 3](#user-content-example3)
+    and [Example 4](#user-content-example4) below.
     
   - The L1 server is **fragile**; if anything goes wrong
     (such as a thread running slow and filling a ring buffer)
@@ -231,8 +234,8 @@ over the loopback interface (127.0.0.1).
 **Example 2:** similar to example 1, but slightly more complicated as follows.
 
 We process 4 beams, which are divided between UDP ports 6677 and 6688 (two beams per UDP port).
-This is more representative of the real L1 server configuration, where 16 beams
-will be divided between four IP addresses.
+This is more representative of the real L1 server configuration, where we process 4 beams/NIC
+with either two or four NIC's (i.e. 8 or 16 beams total).
 See the section [L1 streams](#user-content-l1-streams) below for more discussion.
 
 In example 2, we also use three dedispersion trees which search different
@@ -445,7 +448,7 @@ Now let's consider some examples.
     for each NIC), and the correlator nodes would need
     to be configured to send four beams to each IP address.
 
-  - The "production-scale" L1 server with link bonding.  (Link bonding
+  - The "production-scale" 16-beam L1 server with link bonding.  (Link bonding
     is something we were experimenting with at one point, but are
     currently leaning toward not using.)
 
@@ -457,15 +460,22 @@ Now let's consider some examples.
     correlator nodes would need to be configured to send 8 beams
     to each UDP port.
 
+  - A "production" L1 server with 8 beams instead of 16 (assuming no
+    link bonding).  In this case, there are two possibilities.  We could
+    either use two streams (=NIC's) with four beams/NIC, or four streams
+    (=NIC's) with two beams/NIC.  Currently, only the first of these
+    is implemented in the L1 server.
+
   - A subscale test case running on a laptop.  In this case there
     is no reason to use more than one stream, but we sometimes use
     multiple streams for testing.
 
 The L1 server can run in one of two modes:
 
-  - A "production-scale" mode which assumes 16 beams, two 10-core CPU's,
-    and either 2 or 4 streams.  In this mode, we usually use 16384
-    frequency channels.  The L1 server will use 230 GB of memory!
+  - A "production-scale" mode which assumes two 10-core CPU's, and
+    either 16 beams (on four NIC's), or 8 beams (on two NIC's).
+    In this mode, we usually use 16384 frequency channels.
+    The L1 server will use 230 GB of memory!
 
   - A "subscale" mode which assumes <=4 beams, and either 1, 2, or 4 streams.
   
@@ -491,18 +501,18 @@ more machines, for example a file server.
 <a name="example3"></a>
 **Example 3:**
 
+  - This is a 16-beam production-scale example.  It uses "placeholder" RFI removal
+    (which detrends the data but doesn't actually remove RFI), and the least optimal
+    bonsai configuaration (no low-DM upsampled tree or spectral index search).  As
+    remarked above, this is currently the best we can do with 16 beams/node, due to
+    the RFI removal running slower than originally hoped!
+
   - This is a two-node example, with the L0 simulator running on frb-compute-0,
     and the L1 server running on frb-compute-1.  We process 16 beams with 16384
     frequency channels and 1 ms sampling.  The total bandwidth is 2.2 Gbps,
-    distributed on 4x1 Gbps NIC's by assigning four beams to each NIC.  These
-    parameters are representative of what we'll use in production.
+    distributed on 4x1 Gbps NIC's by assigning four beams to each NIC.
 
-    The dedispersion doesn't use an upsampled tree, and searches one trial
-    spectral index.  We use "placeholder" RFI removal, which doesn't actually
-    mask RFI, but does detrend the data.  These search parameters are a little
-    underpowered compared to what we'll use in production.
-
-    Note: because of the "slow start" problem described in "Caveats" at the
+  - Because of the "slow start" problem described in "Caveats" at the
     beginning of this manual, this example is now a 20-minute run (previously,
     it was a 5-minute run).
 
@@ -574,31 +584,22 @@ more machines, for example a file server.
 <a name="example4"></a>
 **Example 4:**
 
-  - **NOTE that example 4 is currently broken and will be fixed soon.**
-    As discussed over email, it runs too slow in the 16-beam L1 server!
-    I am in the process of implementing an 8-beam server which will be able to run example 4.
-    For now, the text of the example is left unchanged for reference.
-
-  - This is the same as example 3, except we run real 16K RFI removal
-    on the L1 server, rather than placeholder RFI removal.
-
-    Note that we re-use most of the configuration files from example 3.
-    The only difference is that `rfi_placeholder.json` has been
-    replaced by `rfi_production_v1.json`.
+  - This is an 8-beam production-scale example.  It uses a real RFI removal scheme developed by Masoud, and the most optimal
+    bonsai configuration (with a low-DM upsampled tree and two trial spectral indices).
 
   - On **frb-compute-1**, start the L1 server:
     ```
     ./ch-frb-l1  \
-       l1_configs/l1_example3.yaml  \
+       l1_configs/l1_example4.yaml  \
        rfi_configs/rfi_production_v1.json  \
-       /data/bonsai_configs/bonsai_production_noups_nbeta1_v2.hdf5  \
+       /data/bonsai_configs/bonsai_production_ups_nbeta2_v2.hdf5  \
        l1b_config_placeholder
     ```
     and wait for it to finish initializing (takes around 1 minute).
 
   - On **frb-compute-0**, start the L0 simulator:
     ```
-    ./ch-frb-simulate-l0 l0_configs/l0_example3.yaml 1200
+    ./ch-frb-simulate-l0 l0_configs/l0_example4.yaml 1200
     ```
 
 <a name="l1-config"></a>
