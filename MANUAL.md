@@ -887,6 +887,11 @@ There are some examples of the L1 server config file in the `ch_frb_l1/l1_config
 <a name="l1-config-misc"></a>
 ##### L1 config: miscellaneous parameters
 
+  - `force_asnychronous_dedispersion` (boolean, default=false).
+
+     Forces RFI removal and dedispersion to run in separate threads (shouldn't
+     need to specify this explicitly, except for debugging).
+
   - `track_global_trigger_max` (boolean, default=false).
 
     If track_global_trigger_max=true, then the L1 server will keep track of the FRB with the

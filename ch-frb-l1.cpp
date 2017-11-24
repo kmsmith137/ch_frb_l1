@@ -150,15 +150,17 @@ struct l1_config
     // "Derived" parameter: L1b pipe capacity (derived from l1b_buffer_nsamples)
     int l1b_pipe_capacity = 0;
 
+    // Forces RFI removal and dedispersion to run in separate threads (shouldn't
+    // need to specify this explicitly, except for debugging).
+    bool force_asynchronous_dedispersion = false;
+
     // Occasionally useful for debugging: If track_global_trigger_max is true, then when 
     // the L1 server exits, it will print the (DM, arrival time) of the most significant FRB.
-
     bool track_global_trigger_max = false;
 
     // Also intended for debugging.  If the optional parameter 'stream_filename_pattern'
     // is specified, then the L1 server will auto-stream all chunks to disk.  Warning:
     // it's very easy to use a lot of disk space this way!
-    
     string stream_filename_pattern;
 
     void _have_warnings() const;
@@ -272,6 +274,7 @@ l1_config::l1_config(int argc, char **argv)
     this->l1b_buffer_nsamples = p.read_scalar<int> ("l1b_buffer_nsamples", 0);
     this->l1b_pipe_timeout = p.read_scalar<double> ("l1b_pipe_timeout", 0.0);
     this->l1b_pipe_blocking = p.read_scalar<bool> ("l1b_pipe_blocking", false);
+    this->force_asynchronous_dedispersion = p.read_scalar<bool> ("force_asynchronous_dedispersion", false);
     this->track_global_trigger_max = p.read_scalar<bool> ("track_global_trigger_max", false);
     this->stream_filename_pattern = p.read_scalar<string> ("stream_filename_pattern", "");
 
@@ -671,6 +674,9 @@ l1_server::l1_server(int argc, char **argv) :
     // Check that these members have been initialized by _init_xxx().
     assert(ncpus > 0);
     assert(cores_on_cpu.size() == size_t(ncpus));
+
+    if (config.force_asynchronous_dedispersion)
+	this->asynchronous_dedispersion = true;
 }
 
 
