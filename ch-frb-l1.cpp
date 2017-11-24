@@ -3,7 +3,7 @@
 //   - Distributed logging is not integrated
 //   - If anything goes wrong, the L1 server will crash!
 //
-// The L1 server can run in two modes: either a "production-scale" mode with 16 beams and 20 cores,
+// The L1 server can run in two modes: either a "production-scale" mode with 20 cores and either 8 or 16 beams,
 // or a "subscale" mode with (nbeams <= 4) and no core-pinning.
 //
 // The "production-scale" mode is hardcoded to assume the NUMA setup of the CHIMEFRB L1 nodes:
@@ -499,6 +499,7 @@ struct dedispersion_thread_context {
     shared_ptr<ch_frb_io::intensity_network_stream> sp;
     shared_ptr<bonsai::trigger_pipe> l1b_subprocess;   // warning: can be empty pointer!
     vector<int> allowed_cores;
+    bool asynchronous_dedispersion;   // run RFI and dedispersion in separate threads?
     int ibeam;
 
     void _thread_main() const;
@@ -523,7 +524,13 @@ void dedispersion_thread_context::_thread_main() const
     bonsai::dedisperser::initializer ini_params;
     ini_params.fill_rfi_mask = true;                   // very important for real-time analysis!
     ini_params.analytic_variance_on_the_fly = false;   // prevent accidental initialization from non-hdf5 config file (should have been checked already, but another check can't hurt)
+    ini_params.allocate = true;                        // redundant, but I like making it explicit
     ini_params.verbosity = 0;
+
+    if (asynchronous_dedispersion) {
+	ini_params.asynchronous = true;
+	ini_params.async_allowed_cores = allowed_cores;  // should be redundant, since bonsai worker thread inherits cpu affinity of parent thread by default
+    }
 
     auto dedisperser = make_shared<bonsai::dedisperser> (bonsai_config, ini_params);  // not config.bonsai_config
 
@@ -605,6 +612,7 @@ struct l1_server {
     corelist_t network_thread_cores;            // assumed same for all network threads
     vector<corelist_t> dedispersion_cores;      // length config.nbeams, used for (RFI, dedisp, L1B).
     vector<corelist_t> assembler_thread_cores;  // length nstreams
+    bool asynchronous_dedispersion = false;     // run RFI and dedispersion in separate threads?
 
     // "Heavyweight" data structures.
     vector<shared_ptr<bonsai::trigger_pipe>> l1b_subprocesses;   // can be vector of empty pointers, if L1B is not being run.
@@ -634,6 +642,7 @@ struct l1_server {
     // Helper methods called by constructor.
     void _init_subscale();
     void _init_20cores_16beams();
+    void _init_20cores_8beams();
 };
 
 
@@ -650,9 +659,11 @@ l1_server::l1_server(int argc, char **argv) :
 	_init_subscale();
     else if ((config.nbeams == 16) && (num_cores == 20))
 	_init_20cores_16beams();
+    else if ((config.nbeams == 8) && (num_cores == 20))
+	_init_20cores_8beams();
     else {
 	cerr << "ch-frb-l1: The L1 server can currently run in two modes: either a \"production-scale\" mode\n"
-	     << "  with 16 beams and 20 cores, or a \"subscale\" mode with 4 beams and no core-pinning.\n"
+	     << "  with 20 cores and either 8 or 16 beams, or a \"subscale\" mode with 4 beams and no core-pinning.\n"
 	     << "  This appears to be an instance with " << config.nbeams << " beams, and " << num_cores << " cores.\n";
 	exit(1);
     }
@@ -718,6 +729,32 @@ void l1_server::_init_20cores_16beams()
     for (int i = 0; i < 2; i++)
 	for (int j = 0; j < 8; j++)
 	    this->dedispersion_cores[8*i+j] = { 10*i+j, 10*i+j+20 };
+}
+
+
+void l1_server::_init_20cores_8beams()
+{
+    if (config.nstreams != 2)
+	throw runtime_error("ch-frb-l1: in the \"production\" 8-beam case, we currently require 2 streams (this could be generalized pretty easily)");
+
+    // The following assignments are very similar to _init_20cores_16beams(), so we omit comments.
+
+    this->ncpus = 2;
+    this->cores_on_cpu.resize(2);
+    this->cores_on_cpu[0] = vconcat(vrange(0,10), vrange(20,30));
+    this->cores_on_cpu[1] = vconcat(vrange(10,20), vrange(30,40));    
+    this->output_thread_cores = {9, 29};
+    this->assembler_thread_cores[0] = {8,28};
+    this->assembler_thread_cores[1] = {18,38};
+    this->network_thread_cores = cores_on_cpu[0];
+
+    // These assignments differ from _init_20cores_8beams().
+    
+    this->asynchronous_dedispersion = true;
+
+    for (int i = 0; i < 2; i++)
+	for (int j = 0; j < 4; j++)
+	    this->dedispersion_cores[4*i+j] = { 10*i+2*j, 10*i+2*j+1, 10*i+j+20, 10*i+j+21 };
 }
 
 
@@ -895,12 +932,14 @@ void l1_server::spawn_dedispersion_threads()
 	context.sp = this->input_streams[istream];
 	context.l1b_subprocess = this->l1b_subprocesses[ibeam];
 	context.allowed_cores = this->dedispersion_cores[ibeam];
+	context.asynchronous_dedispersion = this->asynchronous_dedispersion;
 	context.ibeam = ibeam;
 	
 	if (config.l1_verbosity >= 2) {
 	    cout << "ch-frb-l1: spawning dedispersion thread " << ibeam << ", beam_id=" << config.beam_ids[ibeam] 
 		 << ", stream=" << context.sp->ini_params.ipaddr << ":" << context.sp->ini_params.udp_port
-		 << ", allowed_cores=" << ch_frb_io::vstr(context.allowed_cores) << endl;
+		 << ", allowed_cores=" << ch_frb_io::vstr(context.allowed_cores) 
+		 << ", asynchronous_dedispersion=" << context.asynchronous_dedispersion << endl;
 	}
 
 	dedispersion_threads[ibeam] = std::thread(dedispersion_thread_main, context);
