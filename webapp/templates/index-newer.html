@@ -24,6 +24,14 @@ writing-mode: vertical-lr;
 <script type="text/javascript">
 </script>
 
+<h3>CHIME FRB Diagnostics</h3>
+
+<ul>
+<li><a href="{{ packet_matrix_url }}">Packet rate matrix (text)</a></li>
+<li><a href="{{ packet_matrix_image_url }}">Packet rate matrix (image)</a></li>
+<li><a href="{{ packet_matrix_d3_url }}">Packet rate matrix (d3)</a></li>
+</ul>
+
 <h3>CHIME FRB Data Center status</h3>
 
 <table>
@@ -33,6 +41,8 @@ writing-mode: vertical-lr;
     <td><a href="node/{{node}}">{{ i+1 }}</a></td>
     {% endfor %}
   </tr>
+
+{#
   <tr>
     <th>Up</th>
     {% for node in nodes %}
@@ -47,46 +57,16 @@ writing-mode: vertical-lr;
       </td>
     {% endfor %}
   </tr>
+#}
+
 </table>
 
+{#
 <iframe src="http://localhost:3000/dashboard-solo/db/node-exporter-single-server?orgId=2&panelId=11&var-server=" width="450" height="200" frameborder="0"></iframe>
+#}
 
 <br><hr><br>
 
-<h3>CHIME FRB L1 status</h3>
-
-<table>
-  <tr>
-    <th>Stream</th>
-    {% for i,host in ehosts %}
-    <!--td class="rotate">{{host}}</td> -->
-    <td><a href="host/{{host}}">{{ i+1 }}</a></td>
-    {% endfor %}
-  </tr>
-  <tr>
-    <th>Up</th>
-    {% for host in hosts %}
-    <td
-       {% if up[host] == "0" %}
-       class="bad"
-       {% else %}
-       class="good"
-       {% endif %}
-       >
-      {{ up[host] }}
-      </td>
-    {% endfor %}
-  </tr>
-</table>
-
-<p>Packet receive matrix</p>
-<img src="packet-matrix.png" />
-
-<br><hr><br>
-
-<!--
-<iframe src="http://localhost:3000/dashboard-solo/db/single-l1-beam-ring-buffer?orgId=2&panelId=3" width="450" height="250" frameborder="0"></iframe>
--->
 
 </body>
 </html>

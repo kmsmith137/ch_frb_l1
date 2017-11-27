@@ -69,6 +69,9 @@ rpc-client: rpc_client.o
 ch-frb-l1: ch-frb-l1.o yaml_paramfile.o $(L1_OBJS)
 	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lrf_pipelines -lbonsai -lch_frb_io -lrf_kernels -lzmq -lyaml-cpp -ljsoncpp
 
+packet-receiver: packet-receiver.o yaml_paramfile.o $(L1_OBJS)
+	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lch_frb_io -lzmq -lyaml-cpp -ljsoncpp
+
 sim-l0-set: sim-l0-set.cpp l0-sim.cpp
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io
 
@@ -82,6 +85,9 @@ ch-frb-test-debug: ch-frb-test.cpp $(L1_OBJS) $(IO_OBJS)
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lzmq -lhdf5 -llz4
 
 test-l1-rpc: test-l1-rpc.cpp $(L1_OBJS) $(CIVET_OBJS)
+	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lzmq -lhdf5 -llz4 -lch_frb_io -ldl
+
+test-packet-rates: test-packet-rates.cpp $(L1_OBJS) $(CIVET_OBJS)
 	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lzmq -lhdf5 -llz4 -lch_frb_io -ldl
 
 clean:
