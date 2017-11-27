@@ -49,10 +49,14 @@ slow_kernels: False
 
 # Buffer configuration.  For documentation on these parameters, see 
 # "Config file reference: L1 server" in MANUAL.md.
+#
+# Note that the size of the telescoping_ringbuf and write_staging_area
+# have been increased relative to example 3.  This is because with 8 beams/node, 
+# we have more memory available per beam.
 
 assembled_ringbuf_nsamples: 10000
-telescoping_ringbuf_nsamples: [ 30000, 60000, 60000 ]
-write_staging_area_gb: 64.0
+telescoping_ringbuf_nsamples: [ 120000, 120000, 120000 ]
+write_staging_area_gb: 96.0
 
 
 # L1b configuration.
