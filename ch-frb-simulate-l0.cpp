@@ -272,7 +272,7 @@ void sim_thread_main(const shared_ptr<ch_frb_io::intensity_network_ostream> &ost
             intensity[i] = dist(rng);
 
 	int64_t fpga_count = int64_t(ichunk) * int64_t(ostream->fpga_counts_per_chunk);
-	ostream->send_chunk(&intensity[0], &weights[0], stride, fpga_count);
+	ostream->send_chunk(&intensity[0], stride, &weights[0], stride, fpga_count);
     }
 
     // We don't call ostream->end_stream() here.  This is because end_stream() has the side effect
