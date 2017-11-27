@@ -616,6 +616,7 @@ struct l1_server {
     vector<corelist_t> dedispersion_cores;      // length config.nbeams, used for (RFI, dedisp, L1B).
     vector<corelist_t> assembler_thread_cores;  // length nstreams
     bool asynchronous_dedispersion = false;     // run RFI and dedispersion in separate threads?
+    double sleep_hack = 0.0;                    // a temporary kludge that will go away soon
 
     // "Heavyweight" data structures.
     vector<shared_ptr<bonsai::trigger_pipe>> l1b_subprocesses;   // can be vector of empty pointers, if L1B is not being run.
@@ -699,6 +700,7 @@ void l1_server::_init_20cores_16beams()
 
     this->ncpus = 2;
     this->cores_on_cpu.resize(2);
+    this->sleep_hack = 30.0;
 
     // See comment at top of file.
     this->cores_on_cpu[0] = vconcat(vrange(0,10), vrange(20,30));
@@ -753,6 +755,7 @@ void l1_server::_init_20cores_8beams()
     this->assembler_thread_cores[0] = {8,28};
     this->assembler_thread_cores[1] = {18,38};
     this->network_thread_cores = cores_on_cpu[0];
+    this->sleep_hack = 30.0;
 
     // These assignments differ from _init_20cores_8beams().
     
@@ -873,6 +876,7 @@ void l1_server::make_input_streams()
 	ini_params.telescoping_ringbuf_capacity = config.telescoping_ringbuf_nchunks;
 	ini_params.memory_pool = memory_slab_pool;
 	ini_params.output_devices = this->output_devices;
+	ini_params.sleep_hack = this->sleep_hack;
 	
 	// Setting this flag means that an exception will be thrown if either:
 	//
@@ -1030,8 +1034,6 @@ int main(int argc, char **argv)
     server.make_input_streams();
     server.make_rpc_servers();
     server.spawn_dedispersion_threads();
-
-    cout << "ch-frb-l1: server is now running, but you will want to wait ~60 seconds before sending packets, or it may crash!  This will be fixed soon..." << endl;
 
     server.join_all_threads();
     server.print_statistics();

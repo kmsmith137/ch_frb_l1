@@ -102,10 +102,6 @@ Here are some external links to the bonsai documentation, which may also be usef
     I find that this is actually convenient for debugging, but
     for production we need to carefully enumerate corner cases and
     make sure that the L1 server recovers sensibly.
-
-    Another nuisance issue: after starting a production-scale L1 server instance, 
-    you'll need to wait ~60 seconds before sending packets, or it may crash!
-    (This is to give the L1 server enough time to do all of its initial memory allocation.)
     
   - The code is in a "pre-alpha" state, and serious testing
     will probably uncover bugs!
