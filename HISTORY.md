@@ -1,3 +1,7 @@
+- v5
+  - Implement 8-beam L1 server
+  - Add example 4, an 8-beam L1 server instance with real RFI removal and the most optimal bonsai settings
+
 - v4
   - This large commit is part of the "2017 Mega Merge" affecting many parts of the CHIMEFRB pipeline.
   - Minor changes here and there, matching API changes in underlying libraries
