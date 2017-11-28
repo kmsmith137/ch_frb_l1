@@ -8,6 +8,10 @@
 # file and pointers to example programs, a good place to start is MANUAL.md
 # in the bonsai repository (https://github.com/CHIMEFRB/bonsai/blob/master/MANUAL.md).
 
+# These parameters are used in bonsai's mask-filling and variance estimation logic.
+variance_timescale = 5.0
+reweighting_timescale = 5.0
+
 nfreq = 1024
 freq_lo_MHz = 400.0
 freq_hi_MHz = 800.0

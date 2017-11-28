@@ -1,0 +1,203 @@
+<!doctype html>
+<html>
+<head>
+<title>CHIME FRB L1 status</title>
+
+<script type="text/javascript" src="{{ url_for('static', filename='jquery.js') }}"></script>
+<script type="text/javascript" src="{{ url_for('static', filename='d3.min.js') }}"></script>
+
+</head>
+
+<body id="thebody">
+
+<h3>Packet rate graph for L1 node {{node}}</h3>
+
+<div id="graph"></div>
+
+<style>
+</style>
+
+<script type="text/javascript">
+
+var do_update = true;
+
+var bottom_margin = 20;
+var left_margin = 70;
+
+var totalW = 600;
+var totalH = 400;
+
+// How many seconds of history do we want?
+var history_period = 60;
+
+var update_period = 2000;
+
+var W = totalW - left_margin;
+var H = totalH - bottom_margin;
+
+var svg = d3.select("#graph").append('svg')
+    .attr('width',  totalW)
+    .attr('height', totalH);
+
+var graph = svg.append('g')
+    .attr("transform", "translate(" + left_margin + ",0)");
+
+var xscale = d3.scaleTime().rangeRound([0, W]);
+var yscale = d3.scaleLinear().rangeRound([H, 0]);
+
+var line = d3.line()
+    .x(function(d) { return xscale(d.t); })
+    .y(function(d) { return yscale(d.r); });
+
+var xaxis = d3.axisBottom(xscale);
+var yaxis = d3.axisLeft(yscale);
+
+// add axes
+graph.append('g')
+    .attr('transform', 'translate(0,' + H + ')')
+    .attr('class', 'xaxis')
+    .call(xaxis);
+graph.append('g')
+    .attr('class', 'yaxis')
+    .call(yaxis);
+
+// text label for the y axis
+graph.append("text")
+    .attr("transform", "rotate(-90)")
+    .attr("y", 0 - left_margin)
+    .attr("x",0 - (H / 2))
+    .attr("dy", "1em")
+    .style("text-anchor", "middle")
+    .text("Packet rate (packets/sec)");
+
+function update_axes(t){
+    graph.select(".xaxis")
+        .transition(t)
+        //.ease('linear')
+        .call(xaxis);
+    graph.select(".yaxis")
+        .transition(t)
+        .call(yaxis);
+}
+
+var data = [];
+
+var path = graph.append("path")
+    .attr("class", "line")
+    .datum(data)
+    .attr("fill", "none")
+    .attr("stroke", "steelblue")
+    .attr("stroke-linejoin", "round")
+    .attr("stroke-linecap", "round")
+    .attr("stroke-width", 1.5)
+    .attr("d", line(data));
+
+function array_max(A) {
+    if (A.length == 0) { return 0; }
+    return A.reduce(function(a, b) { return Math.max(a, b); }, A[0]);
+}
+function array_min(A) {
+    if (A.length == 0) { return 0; }
+    return A.reduce(function(a, b) { return Math.min(a, b); }, A[0]);
+}
+
+var ratemax = 0;
+var last_datemax = null;
+
+function json_callback(X) {
+    //console.log('JSON callback: ' + X);
+    if (!do_update) {
+        return;
+    }
+    if (X == null) {
+        setTimeout('json_update()', update_period);
+        return;
+    }
+
+    times = X['times'];
+    rates = X['rates'];
+
+    if (times == undefined || rates == undefined) {
+        setTimeout('json_update()', update_period);
+        return;
+    }
+
+    var rmax = array_max(rates);
+    var rmin = array_min(rates);
+    var tmax = array_max(times);
+    var tmin = array_min(times);
+
+    rmax = Math.max(rmax, ratemax);
+    rmin = 0.;
+    ratemax = rmax;
+    
+    var datemax = new Date(1000. * tmax + update_period);
+    var datemin = new Date(1000. * (tmax - history_period));
+    //console.log('Time: ' + tmin + ' to ' + tmax);
+    //console.log('Rate: ' + rmin + ' to ' + rmax);
+    //console.log('Dates: ' + datemin + ' to ' + datemax);
+    
+    data = [];
+    for (var i=0; i<times.length; i++) {
+        data.push({ t: new Date(1000. * times[i]), r: rates[i] });
+    }
+
+    xscale.domain([datemin, datemax]);
+    yscale.domain([rmin, rmax*1.05]);
+
+    var duration = update_period;
+    
+    if (last_datemax == null) {
+        // We received our first data.  No slow animation.
+        duration = 0.0;
+    }
+    
+    var t = d3.transition()
+        .duration(duration)
+        .ease(d3.easeLinear);
+
+    update_axes(t);
+
+    if (last_datemax != null) {
+        // Slide the line left
+        dx = xscale(last_datemax) - xscale(datemax);
+        path.attr('d', line(data))
+            .attr('transform', 'translate(' + -dx + ')')
+            .transition(t)
+            .attr('transform', 'translate(0)');
+
+        // People normally do the transition like
+        // .attr('d', line(data).attr('transform',null).transition().attr('transform', ...dx...)
+        // but it seems like that means the line is shifted in its
+        // final state, ie, doesn't actually correspond to the axes!
+    }
+    last_datemax = datemax;
+
+    setTimeout('json_update()', update_period);
+}
+
+function json_update() {
+    d3.request('/packet-rate-l1-json/{{ node }}?history=' + history_period)
+        .mimeType("application/json")
+        .response(function(xhr) { return JSON.parse(xhr.responseText); })
+        .get(json_callback);
+}
+
+json_update();
+
+function startUpdating() {
+    do_update = true;
+    json_update();
+}
+function stopUpdating() {
+    do_update = false;
+}
+</script>
+
+<p>
+<input type="button" onClick="stopUpdating()"  value="Stop updating" />
+<input type="button" onClick="startUpdating()" value="Start updating"/>
+</p>
+
+</body>
+</html>

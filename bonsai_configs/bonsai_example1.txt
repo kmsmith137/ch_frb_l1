@@ -1,11 +1,16 @@
 # This is a bonsai config file for "example 1" in ch_frb_l1/MANUAL.md.
 #
 # This toy config uses a single dedispersion tree, to search data
-# with 1024 frequency channels to max DM 207.
+# with 1024 frequency channels to max DM 207 (corresponding to max
+# dispersion delay 4 seconds across the CHIME band).
 #
 # For more information on bonsai, including documentation of the configuration
 # file and pointers to example programs, a good place to start is MANUAL.md
 # in the bonsai repository (https://github.com/CHIMEFRB/bonsai/blob/master/MANUAL.md).
+
+# These parameters are used in bonsai's mask-filling and variance estimation logic.
+variance_timescale = 5.0
+reweighting_timescale = 5.0
 
 nfreq = 1024
 freq_lo_MHz = 400.0
