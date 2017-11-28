@@ -616,7 +616,9 @@ void dedispersion_thread_context::_toy_thread_main() const
     int nstreams = config.nstreams;
     int nbeams_per_stream = xdiv(nbeams, nstreams);
     int ibeam_within_stream = ibeam % nbeams_per_stream;
-    int ichunk = 0;
+
+    // FIXME: stream-starting stuff also needs cleanup.
+    sp->start_stream();
 
     for (;;) {
         auto chunk = sp->get_assembled_chunk(ibeam_within_stream);
@@ -629,11 +631,11 @@ void dedispersion_thread_context::_toy_thread_main() const
 	    return;
 	}
 
-	cout << ("    [beam" + to_string(ibeam) + "]: read chunk " + to_string(ichunk));
+	if (config.l1_verbosity >= 2)
+	    cout << ("    [beam" + to_string(ibeam) + "]: read chunk " + to_string(chunk->ichunk) + "\n");
+
         //chunk->decode(intensity, weights, istride, wstride);
         //chunk.reset();
-
-	ichunk++;
     }
 }
 
@@ -756,7 +758,7 @@ void l1_server::_init_20cores_16beams()
 
     this->ncpus = 2;
     this->cores_on_cpu.resize(2);
-    this->sleep_hack = 30.0;
+    this->sleep_hack = config.tflag ? 5.0 : 30.0;
 
     // See comment at top of file.
     this->cores_on_cpu[0] = vconcat(vrange(0,10), vrange(20,30));
@@ -811,7 +813,7 @@ void l1_server::_init_20cores_8beams()
     this->assembler_thread_cores[0] = {8,28};
     this->assembler_thread_cores[1] = {18,38};
     this->network_thread_cores = cores_on_cpu[0];
-    this->sleep_hack = 30.0;
+    this->sleep_hack = config.tflag ? 5.0 : 30.0;
 
     // These assignments differ from _init_20cores_8beams().
     
