@@ -73,9 +73,10 @@ app.nodes = parse_config()
 
 @app.route('/')
 def index():
+    nodes = [n.replace('tcp://','') for n in app.nodes]
     return render_template('index-newer.html',
-                           nodes = app.nodes,
-                           enodes = enumerate(app.nodes),
+                           nodes = nodes,
+                           enodes = enumerate(nodes),
                            node_status_url='/node-status',
                            packet_matrix_url='/packet-matrix',
                            packet_matrix_image_url='/packet-matrix.png',
@@ -176,6 +177,10 @@ def packets_l1(name=None):
     return render_template('packets-l1-d3.html',
                            node=name)
 
+def _get_rpc_servers(client, names):
+    rservers = dict([(v,k) for k,v in client.servers.items()])
+    return [rservers['tcp://' + str(name)] for name in names]
+
 @app.route('/packet-rate-l1-json/<name>')
 def packet_rate_l1_json(name=None):
     assert(name is not None)
@@ -184,9 +189,7 @@ def packet_rate_l1_json(name=None):
 
     history = int(request.args.get('history', 60))
 
-    rservers = dict([(v,k) for k,v in client.servers.items()])
-    servers = [rservers['tcp://' + str(name)]]
-    
+    servers = _get_rpc_servers(client, [name])
     graph = client.get_packet_rate_history(start=-history,
                                            servers=servers,
                                            timeout=timeout)
@@ -381,7 +384,24 @@ def index_xxx():
 
 @app.route('/node/<name>')
 def node(name=None):
-    return redirect('http://localhost:3000/dashboard/db/node-exporter-single-server?orgId=2&from=now-1h&to=now&var-server=%s' % name)
+    return render_template('node-status.html',
+                           node=name,
+                           node_status_json_url='/node-status-json/' + name)
+    #return redirect('http://localhost:3000/dashboard/db/node-exporter-single-server?orgId=2&from=now-1h&to=now&var-server=%s' % name)
+
+@app.route('/node-status-json/<name>')
+def node_status_json(name=None):
+    client = get_rpc_client()
+    timeout = 5000.
+    servers = _get_rpc_servers(client, [name])
+    stats = client.get_statistics(servers=servers, timeout=timeout)
+    # [0]: first node; [0][0]: just the whole-node stats
+    stats = stats[0][0]
+    ss = ''
+    for k,v in stats.items():
+        ss += '  %s = %s\n' % (k, v)
+    print('Got stats:', ss)
+    return jsonify(stats)
 
 
 
