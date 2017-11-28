@@ -1,3 +1,6 @@
+- v6
+  - From Dustin: packet_count history RPC + web viewer
+
 - v5
   - Implement 8-beam L1 server
   - Add example 4, an 8-beam L1 server instance with real RFI removal and the most optimal bonsai settings
