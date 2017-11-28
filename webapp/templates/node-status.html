@@ -17,11 +17,18 @@
 
 <div id="packet-count-graph"></div>
 
-<p>Packets received: <span id="packet-received">---</span><br />
+    <p>
+    Bytes received: <span id="bytes-received">---</span><br />
+    Packets received: <span id="packet-received">---</span><br />
     Good packets: <span id="packet-good">---</span><br />
     Bad packets: <span id="packet-bad">---</span><br />
     Packets dropped: <span id="packet-dropped">---</span><br />
-    Beam id mismatch: <span id="beam-id-mismatch">---</span>
+    Beam id mismatch: <span id="beam-id-mismatch">---</span><br />
+    Stream mismatch: <span id="stream-mismatch">---</span><br />
+    Assembler queued: <span id="assembler-queued">---</span><br />
+    Assembler hits: <span id="assembler-hits">---</span><br />
+    Assembler drops: <span id="assembler-drops">---</span><br />
+    Assembler misses: <span id="assembler-misses">---</span>
     </p>
 
 <p>
@@ -43,6 +50,12 @@ var chart_dates = [];
 var chart_values = [];
 var chart_max = 0;
 
+function commas(n) {
+  var parts = n.toString().split(".");
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return parts.join(".");
+}
+
 // Handle the JSON data when we're updating the matrix.
 function json_callback(X) {
     console.log('JSON callback: ' + X);
@@ -57,12 +70,18 @@ function json_callback(X) {
     pcounts = X['count_packets_received'];
     console.log('Packet counts: ' + pcounts);
     
-    $('#packet-received').html(pcounts);
-    $('#packet-good').html(X['count_packets_good']);
-    $('#packet-bad').html(X['count_packets_bad']);
-    $('#packet-dropped').html(X['count_packets_dropped']);
-    $('#beam-id-mismatch').html(X['count_beam_id_mismatch']);
-    
+    $('#bytes-received').html(commas(X['count_bytes_received']));
+    $('#packet-received').html(commas(pcounts));
+    $('#packet-good').html(commas(X['count_packets_good']));
+    $('#packet-bad').html(commas(X['count_packets_bad']));
+    $('#packet-dropped').html(commas(X['count_packets_dropped']));
+    $('#beam-id-mismatch').html(commas(X['count_beam_id_mismatch']));
+    $('#stream-mismatch').html(commas(X['count_stream_mismatch']));
+    $('#assembler-queued').html(commas(X['count_assembler_queued']));
+    $('#assembler-hits').html(commas(X['count_assembler_hits']));
+    $('#assembler-drops').html(commas(X['count_assembler_drops']));
+    $('#assembler-misses').html(commas(X['count_assembler_misses']));
+
     chart_dates.push(new Date());
     chart_values.push(pcounts);
     if (chart_dates.length > 60) {
