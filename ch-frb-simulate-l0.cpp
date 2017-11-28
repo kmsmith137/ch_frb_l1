@@ -272,7 +272,7 @@ void sim_thread_main(const shared_ptr<ch_frb_io::intensity_network_ostream> &ost
             intensity[i] = dist(rng);
 
 	int64_t fpga_count = int64_t(ichunk) * int64_t(ostream->fpga_counts_per_chunk);
-	ostream->send_chunk(&intensity[0], &weights[0], stride, fpga_count);
+	ostream->send_chunk(&intensity[0], stride, &weights[0], stride, fpga_count);
     }
 
     // We don't call ostream->end_stream() here.  This is because end_stream() has the side effect
@@ -386,7 +386,7 @@ void sim_thread_pulse(const shared_ptr<ch_frb_io::intensity_network_ostream> &os
 
         
         int64_t fpga_count = int64_t(ichunk) * int64_t(ostream->fpga_counts_per_chunk);
-        ostream->send_chunk(&intensity[0], &weights[0], stride, fpga_count);
+        ostream->send_chunk(&intensity[0], stride, &weights[0], stride, fpga_count);
     }
 
 }
@@ -513,7 +513,7 @@ int main(int argc, char **argv)
             beam[i].width = (int)(t/(0.98304*3));
             fpin>>beam[i].dm;
 	    fpin>>beam[i].snr;
-	    std::cout<<3*beam[i].width<<" "<<beam[i].dm<<" "<<beam[i].snr<<" "<<" \n";
+	    //std::cout<<3*beam[i].width<<" "<<beam[i].dm<<" "<<beam[i].snr<<" "<<" \n";
         }
 	num_seconds = (num_beams/p.nbeams_tot)*100+300; 
         cout << "num seconds : " << num_seconds << endl;
