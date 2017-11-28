@@ -12,6 +12,7 @@ nbeams: 16
 nfreq: 16384
 nt_per_packet: 16
 
+beam_ids: [96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111]
 
 # This example assumes the nodes are in a non-link-bonded configuration, where
 # each of the four 1 Gbps NIC's is on an independent /24 network.  We use UDP
