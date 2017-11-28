@@ -27,6 +27,9 @@ fpga_counts_per_sample: 384
 ipaddr: [ "10.2.1.101", "10.2.2.101" ]
 port: 6677
 
+start_beam_id: 0
+beam_ids : [0,1,2,3,4,5,6,7]
+
 
 # Total number of threads used by the L0 simulator.
 # Note: nthreads must be a multiple of the number of "streams", which

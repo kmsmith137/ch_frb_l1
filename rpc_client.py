@@ -110,6 +110,15 @@ class WriteChunkReply(object):
     def __repr__(self):
         return str(self)
 
+class PacketRate(object):
+    def __init__(self, msgpack):
+        self.start = msgpack[0]
+        self.period = msgpack[1]
+        self.packets = msgpack[2]
+
+    def __str__(self):
+        return 'PacketRate: start %g, period %g, packets: ' % (self.start, self.period) + str(self.packets)
+        
 class RpcClient(object):
     def __init__(self, servers, context=None, identity=None):
         '''
@@ -163,6 +172,59 @@ class RpcClient(object):
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
 
+    def get_packet_rate(self, start=None, period=None, servers=None, wait=True, timeout=-1):
+        if servers is None:
+            servers = self.servers.keys()
+        tokens = []
+
+        if start is None:
+            start = 0.
+        if period is None:
+            period = 0.
+
+        for k in servers:
+            self.token += 1
+            req = msgpack.packb(['get_packet_rate', self.token])
+            args = msgpack.packb([float(start), float(period)])
+            tokens.append(self.token)
+            self.sockets[k].send(req + args)
+        if not wait:
+            return tokens
+        parts = self.wait_for_tokens(tokens, timeout=timeout)
+        # We expect one message part for each token.
+        return [PacketRate(msgpack.unpackb(p[0])) if p is not None else None
+                for p in parts]
+
+    def get_packet_rate_history(self, l0nodes=None,
+                                start=None, end=None, period=None,
+                                servers=None, wait=True, timeout=-1):
+        if servers is None:
+            servers = self.servers.keys()
+        tokens = []
+
+        if start is None:
+            start = 0.
+        if end is None:
+            end = 0.
+        if period is None:
+            period = 0.
+        if l0nodes is None:
+            l0nodes = ['sum']
+
+        for k in servers:
+            self.token += 1
+            req = msgpack.packb(['get_packet_rate_history', self.token])
+            args = msgpack.packb([float(start), float(end), float(period),
+                                  l0nodes])
+            tokens.append(self.token)
+            self.sockets[k].send(req + args)
+        if not wait:
+            return tokens
+        parts = self.wait_for_tokens(tokens, timeout=timeout)
+        # We expect one message part for each token.
+        return [msgpack.unpackb(p[0]) if p is not None else None
+                for p in parts]
+    
     def list_chunks(self, servers=None, wait=True, timeout=-1):
         '''
         Retrieves lists of chunks held by each server.
@@ -431,6 +493,9 @@ class RpcClient(object):
 
         Returns a list of result messages, one for each *token*.
         '''
+
+        #print('Waiting for tokens (timeout', timeout, '):', tokens)
+
         results = {}
         if get_sockets:
             sockets = {}
@@ -443,6 +508,7 @@ class RpcClient(object):
             for token in todo:
                 r = self._pop_token(token, get_socket=get_sockets)
                 if r is not None:
+                    #print('Popped token', token, '->', r)
                     done.append(token)
                     if get_sockets:
                         # unpack socket,result tuple
@@ -452,8 +518,10 @@ class RpcClient(object):
             for token in done:
                 todo.remove(token)
             if len(todo):
+                #print('Receiving (timeout', timeout, ')')
                 if not self._receive(timeout=timeout):
                     # timed out
+                    #print('timed out')
                     break
                 # adjust timeout
                 if timeout > 0:
@@ -518,6 +586,12 @@ if __name__ == '__main__':
         default=[])
     parser.add_argument('--list', action='store_true', default=False,
                         help='Just send list_chunks command and exit.')
+    parser.add_argument('--rate', action='store_true', default=False,
+                        help='Send packet rate matrix request')
+    parser.add_argument('--rate-history', action='store_true', default=False,
+                        help='Send packet rate history request')
+    parser.add_argument('--l0', action='append', default=[],
+                        help='Request rate history for the list of L0 nodes')
     parser.add_argument('--identity', default='client',
                         help='Identity to report to the server')
     parser.add_argument('ports', nargs='*',
@@ -558,6 +632,22 @@ if __name__ == '__main__':
                 print('  beam %4i, FPGA range %i to %i' % (beam, f0, f1))
         doexit = True
 
+    if opt.rate:
+        rates = client.get_packet_rate()
+        print('Received packet rates:')
+        for r in rates:
+            print('Got rate:', r)
+        doexit = True
+
+    if opt.rate_history:
+        kwa = {}
+        if len(opt.l0):
+            kwa.update(l0nodes=opt.l0)
+        rates = client.get_packet_rate_history(start=-20, **kwa)
+        print('Received packet rate history:')
+        print(rates)
+        doexit = True
+        
     if len(opt.write):
         for beams, f0, f1, fnpat in opt.write:
             beams = beams.split(',')

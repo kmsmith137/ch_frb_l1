@@ -409,6 +409,103 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         }
         return 0;
 
+    } else if (funcname == "get_packet_rate") {
+        // grab *start* and *period* arguments
+        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
+        if (oh.get().via.array.size != 2) {
+            chlog("get_packet_rate RPC: failed to parse input arguments");
+            return -1;
+        }
+        double start = oh.get().via.array.ptr[0].as<double>();
+        double period = oh.get().via.array.ptr[1].as<double>();
+        //chlog("get_packet_rate: start " << start << ", period " << period);
+        shared_ptr<packet_counts> rate = _stream->get_packet_rates(start, period);
+        PacketRate pr;
+        if (rate) {
+            pr.start = rate->start_time();
+            pr.period = rate->period;
+            pr.packets = rate->to_string();
+            int total = 0;
+            for (auto it=pr.packets.begin(); it!=pr.packets.end(); it++)
+                total += it->second;
+            chlog(_port << ": Retrieved packet rate for " << rate->start_time() << ", period " << rate->period << ", average counts " << (float)total/float(pr.packets.size()));
+        } else {
+            chlog("No packet rate available");
+            pr.start = 0;
+            pr.period = 0;
+        }
+        
+        // Pack return value into msgpack buffer
+        msgpack::sbuffer buffer;
+        msgpack::pack(buffer, pr);
+        //  Send reply back to client.
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(*client, *token_to_message(token), *reply);
+
+    } else if (funcname == "get_packet_rate_history") {
+
+        // grab arguments: *start*, *end*, *period*, *l0*
+        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
+        if (oh.get().via.array.size != 4) {
+            chlog("get_packet_rate_history RPC: failed to parse input arguments");
+            return -1;
+        }
+        double start = oh.get().via.array.ptr[0].as<double>();
+        double end   = oh.get().via.array.ptr[1].as<double>();
+        double period = oh.get().via.array.ptr[2].as<double>();
+        vector<string> l0 = oh.get().via.array.ptr[3].as<vector<string> >();
+
+        vector<shared_ptr<packet_counts> > packets = _stream->get_packet_rate_history(start, end, period);
+
+        // For now, only compute the sum over L0 nodes.
+        vector<double> times;
+        vector<vector<double> > rates;
+
+        for (int i=0; i<l0.size(); i++)
+            rates.push_back(vector<double>());
+
+        //for (int i=0; i<l0.size(); i++)
+        //    chlog("packet history: getting l0 node " << l0[i]);
+        //chlog("packet history: " << packets.size() << " time slices");
+
+        // for each time slice
+        for (auto it=packets.begin(); it!=packets.end(); it++) {
+            int j;
+            times.push_back((*it)->start_time());
+            auto l0name=l0.begin();
+            for (j=0; l0name != l0.end(); l0name++, j++) {
+                int64_t val = 0;
+                if (*l0name == "sum") {
+                    // for each l0->npackets pair
+                    for (auto it2=(*it)->counts.begin();
+                         it2!=(*it)->counts.end(); it2++)
+                        val += it2->second;
+                } else {
+                    // Yuck -- convert to string:int map!
+                    // Should instead parse name to int and look up directly
+                    auto scounts = (*it)->to_string();
+                    auto pval = scounts.find(*l0name);
+                    if (pval != scounts.end())
+                        val = pval->second;
+                }
+                rates[j].push_back((double)val / (*it)->period);
+            }
+        }
+
+        //chlog("times: " << times.size());
+        
+        pair<vector<double>,
+             vector<vector<double> > > rtn = make_pair(times, rates);
+
+        //chlog("Returning " << rtn.first.size() << " times");
+        
+        // Pack return value into msgpack buffer
+        msgpack::sbuffer buffer;
+        msgpack::pack(buffer, rtn);
+        //  Send reply back to client.
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(*client, *token_to_message(token), *reply);
+
     } else if (funcname == "get_statistics") {
         //cout << "RPC get_statistics() called" << endl;
         // No input arguments, so don't unpack anything more.

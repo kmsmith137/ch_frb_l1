@@ -1,0 +1,84 @@
+# This is "example 4" to run on the 8-node system, described in MANUAL.md.
+
+# This is a production-scale example which will monopolize 4 x 20-core
+# nodes cf0g[0-3] acting as receivers and cf0g[4-7] acting as senders.
+# The L1 server will dedisperse 16 beams, with 16384 frequency
+# channels.
+#
+# nt_per_packet=16 is important here, since the 'fast' kernels are hardcoded to
+# use nt_per_packet=16.  See MANUAL.md for more dicussion!
+
+nbeams: 16
+nfreq: 16384
+nt_per_packet: 16
+
+beam_ids: [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
+
+# This example assumes the nodes are in a non-link-bonded configuration, where
+# each of the four 1 Gbps NIC's is on an independent /24 network.  We use UDP
+# port 6677 on all four NIC's.  Traffic is divided between NIC's "per beam", 
+# i.e. four beams will be sent to each NIC.  All NIC's use TCP port 5555 for
+# their RPC server.
+
+ipaddr: [ "10.6.200.12",
+	  "10.7.200.12",
+	  "10.8.200.12",
+	  "10.9.200.12" ]
+port: 1313
+
+rpc_address: [ "tcp://10.6.200.12:5555", 
+	       "tcp://10.7.200.12:5555", 
+	       "tcp://10.8.200.12:5555", 
+	       "tcp://10.9.200.12:5555" ]
+
+# The L1 node is configured so that it "thinks" the NFS server is four different
+# servers, mounted on directories /frb-archiver1, /frb-archiver2, /frb-archiver3,
+# /frb-archiver4.  File writes to each of these four filesystems will be sent from
+# the corresponding NIC.  The node is responsible for load-balancing file writes 
+# between these filesystems.
+#
+# Here, we define 5 output_devices, corresponding to (4 NIC's) + (1 SSD).
+# Each output device will get a separate file I/O thread.  This allows file
+# I/O on each device to proceed independently.
+
+output_devices: [ "/local", "/frb-archiver-1", "/frb-archiver-2", "/frb-archiver-3", "/frb-archiver-4" ]
+
+# Need to use fast kernels in this example (slow kernels are too slow.)
+slow_kernels: False
+
+
+# Buffer configuration.  For documentation on these parameters, see 
+# "Config file reference: L1 server" in MANUAL.md.
+#
+# Note: with write_staging_area_gb=64, the L1 server will use 
+# ~231 GB memory (the L1 node has 256 GB available).
+
+assembled_ringbuf_nsamples: 10000
+telescoping_ringbuf_nsamples: [ 30000, 60000, 60000 ]
+write_staging_area_gb: 64.0
+
+
+# L1b configuration.
+#
+# Postprocess triggers using 'toy-l1b.py', a placeholder version
+# of the L1b code which "processes" coarse-grained triggers by
+# making a big waterfall plot (toy_l1b_beam*.png).
+#
+# For a production-scale example, it makes sense to set l1b_pipe_timeout=0,
+# and set l1b_buffer_nsamples based on the maximum acceptable latency between
+# L1a and L1b (in this case we use 4000, corresponding to 4 seconds).  See
+# MANUAL.md for discussion!
+
+l1b_executable_filename: "./toy-l1b.py"
+l1b_buffer_nsamples: 4000
+l1b_pipe_timeout: 0
+
+
+# stream_filename_pattern
+#
+# If this is uncommented, the L1 node will continuously stream all of its
+# data to disk.  The first line below streams to SSD, and the second line
+# streams to NFS.
+
+# stream_filename_pattern: "/ssd/kmsmith/chunk_(BEAM)_(CHUNK)_(NCHUNK).msg"
+# stream_filename_pattern: "/frb-archiver-(STREAM)/kmsmith/dir0/chunk_(BEAM)_(CHUNK)_(NCHUNK).msg"

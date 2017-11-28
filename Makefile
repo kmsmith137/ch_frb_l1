@@ -84,6 +84,9 @@ ch-frb-test-debug: ch-frb-test.cpp $(L1_OBJS) $(IO_OBJS)
 test-l1-rpc: test-l1-rpc.cpp $(L1_OBJS) $(CIVET_OBJS)
 	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lzmq -lhdf5 -llz4 -lch_frb_io -ldl
 
+test-packet-rates: test-packet-rates.cpp $(L1_OBJS) $(CIVET_OBJS)
+	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lzmq -lhdf5 -llz4 -lch_frb_io -ldl
+
 clean:
 	rm -f *.o *~ civetweb/*.o civetweb/*~ $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES) terminus-l1 hdf5-stream
 

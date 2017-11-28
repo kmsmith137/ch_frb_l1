@@ -37,13 +37,15 @@ using namespace ch_frb_l1;
 
 static void usage()
 {
-    cerr << "Usage: ch-frb-l1 [-fvpmc] <l1_config.yaml> <rfi_config.json> <bonsai_config.hdf5> <l1b_config_file>\n"
+    cerr << "Usage: ch-frb-l1 [-fvpmct] <l1_config.yaml> <rfi_config.json> <bonsai_config.hdf5> <l1b_config_file>\n"
 	 << "  -f forces the L1 server to run, even if the config files look fishy\n"
 	 << "  -v increases verbosity of the toplevel ch-frb-l1 logic\n"
 	 << "  -p enables a very verbose debug trace of the pipe I/O between L1a and L1b\n"
 	 << "  -m enables a very verbose debug trace of the memory_slab_pool allocation\n"
 	 << "  -w enables a very verbose debug trace of the logic for writing chunks\n"
-	 << "  -c deliberately crash dedispersion thread (for debugging, obviously)\n";
+	 << "  -c deliberately crash dedispersion thread (for debugging, obviously)\n"
+	 << "  -t starts a \"toy server\" which assembles packets, but does not run RFI removal,\n"
+	 << "     dedispersion, or L1B (if -t is specified, then the last 3 arguments are optional)\n";
 
     exit(2);
 }
@@ -74,6 +76,7 @@ struct l1_config
     //   1: pretty quiet
     //   2: pretty noisy
 
+    bool tflag = false;
     bool fflag = false;
     bool l1b_pipe_io_debug = false;
     bool memory_pool_debug = false;
@@ -167,6 +170,7 @@ struct l1_config
 };
 
 
+// FIXME: split this monster constructor into multiple functions for readability?
 l1_config::l1_config(int argc, char **argv)
 {
     const int nfreq_c = ch_frb_io::constants::nfreq_coarse_tot;
@@ -194,61 +198,72 @@ l1_config::l1_config(int argc, char **argv)
 		this->write_chunk_debug = true;
 	    else if (argv[i][j] == 'c')
 		this->deliberately_crash = true;
+	    else if (argv[i][j] == 't')
+		this->tflag = true;
 	    else
 		usage();
 	}
     }
 
-    if (args.size() != 4)
+    if (args.size() == 4) {
+	this->l1_config_filename = args[0];
+	this->rfi_config_filename = args[1];
+	this->bonsai_config_filename = args[2];
+	this->l1b_config_filename = args[3];
+    }
+    else if (tflag && (args.size() == 1))
+	this->l1_config_filename = args[0];
+    else
 	usage();
 
-    this->l1_config_filename = args[0];
-    this->rfi_config_filename = args[1];
-    this->bonsai_config_filename = args[2];
-    this->l1b_config_filename = args[3];
 
-    // Read rfi_config file.
-    std::ifstream rfi_config_file(rfi_config_filename);
-    if (rfi_config_file.fail())
-        throw runtime_error("ch-frb-l1: couldn't open file " + rfi_config_filename);
+    if (!tflag) {
+	// Open rfi_config file.
+	std::ifstream rfi_config_file(rfi_config_filename);
+	if (rfi_config_file.fail())
+	    throw runtime_error("ch-frb-l1: couldn't open file " + rfi_config_filename);
 
-    Json::Reader rfi_config_reader;
-    if (!rfi_config_reader.parse(rfi_config_file, this->rfi_transform_chain_json))
-	throw runtime_error("ch-frb-l1: couldn't parse json file " + rfi_config_filename);
-
-    // Throwaway call, to get an early check that rfi_config_file is valid.
-    // FIXME bind() here?
-    auto rfi_chain = rf_pipelines::pipeline_object::from_json(rfi_transform_chain_json);
+	// Parse rfi_config file and initialize 'rfi_transform_chain_json'.
+	Json::Reader rfi_config_reader;
+	if (!rfi_config_reader.parse(rfi_config_file, this->rfi_transform_chain_json))
+	    throw runtime_error("ch-frb-l1: couldn't parse json file " + rfi_config_filename);
+	
+	// Throwaway call, to get an early check that rfi_config_file is valid.
+	// FIXME bind() here?
+	auto rfi_chain = rf_pipelines::pipeline_object::from_json(rfi_transform_chain_json);
 
 #if 0
-    // FIXME pretty-print rfi_chain
-    if (l1_verbosity >= 2) {
-	cout << rfi_config_filename << ": " << rfi_chain.size() << " transforms\n";
-	for (unsigned int i = 0; i < rfi_chain.size(); i++)
-	    cout << rfi_config_filename << ": transform " << i << "/" << rfi_chain.size() << ": " << rfi_chain[i]->name << "\n";
-    }
+	// FIXME pretty-print rfi_chain
+	if (l1_verbosity >= 2) {
+	    cout << rfi_config_filename << ": " << rfi_chain.size() << " transforms\n";
+	    for (unsigned int i = 0; i < rfi_chain.size(); i++)
+		cout << rfi_config_filename << ": transform " << i << "/" << rfi_chain.size() << ": " << rfi_chain[i]->name << "\n";
+	}
 #endif
 
-    // Read bonsai_config file.
-    this->bonsai_config = bonsai::config_params(bonsai_config_filename);
+	// Parse bonsai_config file and initialize 'bonsai_config'.
+	this->bonsai_config = bonsai::config_params(bonsai_config_filename);
 
-    if (l1_verbosity >= 2) {
-	bool write_derived_params = true;
-	string prefix = bonsai_config_filename + ": ";
-	bonsai_config.write(cout, write_derived_params, prefix);
+	if (l1_verbosity >= 2) {
+	    bool write_derived_params = true;
+	    string prefix = bonsai_config_filename + ": ";
+	    bonsai_config.write(cout, write_derived_params, prefix);
+	}
+
+	// Check that the bonsai config file contains all transfer matrices.
+	// This will be the case if it is the output of 'bonsai-mkweight'.
+	
+	bool have_transfer_matrices = true;
+
+	for (int itree = 0; itree < bonsai_config.ntrees; itree++)
+	    if (!bonsai_config.transfer_matrices[itree])
+		have_transfer_matrices = false;
+	
+	if (!have_transfer_matrices) {
+	    throw runtime_error(bonsai_config_filename + ": transfer matrices not found.  Maybe you accidentally specified a .txt file"
+				+ " instead of .hdf5?  See ch_frb_l1/MANUAL.md for more info");
+	}
     }
-
-    // Check that the bonsai config file contains all transfer matrices.
-    // This will be the case if it is the output of 'bonsai-mkweight'.
-
-    bool have_transfer_matrices = true;
-
-    for (int itree = 0; itree < bonsai_config.ntrees; itree++)
-	if (!bonsai_config.transfer_matrices[itree])
-	    have_transfer_matrices = false;
-
-    if (!have_transfer_matrices)
-	throw runtime_error(bonsai_config_filename + ": transfer matrices not found.  Maybe you accidentally specified a .txt file instead of .hdf5?  See ch_frb_l1/MANUAL.md for more info");
 
     // Remaining code in this function reads l1_config yaml file.
 
@@ -269,7 +284,7 @@ l1_config::l1_config(int argc, char **argv)
     this->telescoping_ringbuf_nsamples = p.read_vector<int> ("telescoping_ringbuf_nsamples", {});
     this->write_staging_area_gb = p.read_scalar<double> ("write_staging_area_gb", 0.0);
     this->output_device_names = p.read_vector<string> ("output_devices");
-    this->l1b_executable_filename = p.read_scalar<string> ("l1b_executable_filename");
+    this->l1b_executable_filename = tflag ? p.read_scalar<string> ("l1b_executable_filename","") : p.read_scalar<string> ("l1b_executable_filename");
     this->l1b_search_path = p.read_scalar<bool> ("l1b_search_path", false);
     this->l1b_buffer_nsamples = p.read_scalar<int> ("l1b_buffer_nsamples", 0);
     this->l1b_pipe_timeout = p.read_scalar<double> ("l1b_pipe_timeout", 0.0);
@@ -295,7 +310,7 @@ l1_config::l1_config(int argc, char **argv)
 
     if (nbeams <= 0)
 	throw runtime_error(l1_config_filename + ": 'nbeams' must be >= 1");
-    if (nfreq != bonsai_config.nfreq)
+    if (!tflag && (nfreq != bonsai_config.nfreq))
 	throw runtime_error("ch-frb-l1: 'nfreq' values in l1 config file and bonsai config file must match");
     if (nfreq <= 0)
 	throw runtime_error(l1_config_filename + ": 'nfreq' must be >= 1");
@@ -431,7 +446,7 @@ l1_config::l1_config(int argc, char **argv)
 
     // l1b_pipe_capacity
 
-    if (l1b_buffer_nsamples > 0) {
+    if (!tflag && (l1b_buffer_nsamples > 0)) {
 	int nt_chunk = bonsai_config.nt_chunk;
 	int nchunks = (l1b_buffer_nsamples + nt_chunk - 1) / nt_chunk;
 
@@ -464,7 +479,7 @@ l1_config::l1_config(int argc, char **argv)
 	have_warnings = true;
     }
 
-    if ((bonsai_config.nfreq > 4096) && slow_kernels) {
+    if (!tflag && (bonsai_config.nfreq > 4096) && slow_kernels) {
 	cout << l1_config_filename << ": nfreq > 4096 and slow_kernels=true, presumably unintentional?" << endl;
 	have_warnings = true;
     }
@@ -506,11 +521,14 @@ struct dedispersion_thread_context {
     int ibeam;
 
     void _thread_main() const;
+    void _toy_thread_main() const;  // if -t command-line argument is specified
 };
 
 
+// Note: only called if config.tflag == false.
 void dedispersion_thread_context::_thread_main() const
 {
+    assert(!config.tflag);
     assert(ibeam >= 0 && ibeam < config.nbeams);
 
     // Pin thread before allocating anything.
@@ -585,10 +603,68 @@ void dedispersion_thread_context::_thread_main() const
 } 
 
 
+// Note: Called if config.tflag == false.
+void dedispersion_thread_context::_toy_thread_main() const
+{
+    assert(config.tflag);
+    assert(ibeam >= 0 && ibeam < config.nbeams);
+
+    ch_frb_io::pin_thread_to_cores(allowed_cores);
+
+    // FIXME: beam_id stuff is more confusing than it needs to be!  This will be simplified soon.
+    int nbeams = config.nbeams;
+    int nstreams = config.nstreams;
+    int nbeams_per_stream = xdiv(nbeams, nstreams);
+    int ibeam_within_stream = ibeam % nbeams_per_stream;
+
+    // FIXME: stream-starting stuff also needs cleanup.
+    sp->start_stream();
+
+    for (;;) {
+        auto chunk = sp->get_assembled_chunk(ibeam_within_stream);
+
+	// Some voodoo to reduce interleaved output
+	usleep(ibeam * 10000);
+
+        if (!chunk) {
+	    cout << ("    [beam" + to_string(ibeam) + "]: got NULL chunk, exiting\n");
+	    return;
+	}
+
+	if (ibeam_within_stream == 0) {
+	    auto event_counts = sp->get_event_counts();
+
+	    stringstream ss;
+
+	    ss << sp->ini_params.ipaddr << ":" << sp->ini_params.udp_port << ": "
+	       << " nrecv=" << event_counts[ch_frb_io::intensity_network_stream::packet_received]
+	       << ", ngood=" << event_counts[ch_frb_io::intensity_network_stream::packet_good]
+	       << ", nbad=" << event_counts[ch_frb_io::intensity_network_stream::packet_bad]
+	       << ", ndropped=" << event_counts[ch_frb_io::intensity_network_stream::packet_dropped]
+	       << ", ahit=" << event_counts[ch_frb_io::intensity_network_stream::assembler_hit]
+	       << ", amiss=" << event_counts[ch_frb_io::intensity_network_stream::assembler_miss]
+	       << "\n";
+
+	    string s = ss.str();
+	    cout << s.c_str();
+	}
+
+	if (config.l1_verbosity >= 2)
+	    cout << ("    [beam" + to_string(ibeam) + "]: read chunk " + to_string(chunk->ichunk) + "\n");
+
+        //chunk->decode(intensity, weights, istride, wstride);
+        //chunk.reset();
+    }
+}
+
+
 static void dedispersion_thread_main(const dedispersion_thread_context &context)
 {
     try {
-	context._thread_main();
+	if (context.config.tflag)
+	    context._toy_thread_main();
+	else
+	    context._thread_main();
     }
     catch (exception &e) {
 	cerr << e.what() << "\n";
@@ -700,7 +776,7 @@ void l1_server::_init_20cores_16beams()
 
     this->ncpus = 2;
     this->cores_on_cpu.resize(2);
-    this->sleep_hack = 30.0;
+    this->sleep_hack = config.tflag ? 5.0 : 30.0;
 
     // See comment at top of file.
     this->cores_on_cpu[0] = vconcat(vrange(0,10), vrange(20,30));
@@ -755,7 +831,7 @@ void l1_server::_init_20cores_8beams()
     this->assembler_thread_cores[0] = {8,28};
     this->assembler_thread_cores[1] = {18,38};
     this->network_thread_cores = cores_on_cpu[0];
-    this->sleep_hack = 30.0;
+    this->sleep_hack = config.tflag ? 5.0 : 30.0;
 
     // These assignments differ from _init_20cores_8beams().
     
@@ -773,6 +849,9 @@ void l1_server::spawn_l1b_subprocesses()
 	throw("ch-frb-l1 internal error: double call to spawn_l1b_subprocesses()");
     
     this->l1b_subprocesses.resize(config.nbeams);
+
+    if (config.tflag)
+	return;  // 
 
     if (config.l1b_executable_filename.size() == 0) {
 	if (config.l1_verbosity >= 1)

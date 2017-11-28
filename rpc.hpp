@@ -72,6 +72,12 @@
         'ringbuf_ntotal': 7},
       ]
 
+ * get_packet_rate(double start, double period)
+
+     *start* and *period* are unix time values.  0 requests the most
+     recent available.
+
+     Returns a PacketRate struct
 
  * list_chunks(void)
 
@@ -194,3 +200,10 @@ public:
     MSGPACK_DEFINE(beam, fpga0, fpgaN, filename, success, error_message);
 };
 
+class PacketRate {
+public:
+    double start;
+    double period;
+    std::unordered_map<std::string, uint64_t> packets;
+    MSGPACK_DEFINE(start, period, packets);
+};
