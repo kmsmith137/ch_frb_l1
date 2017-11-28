@@ -19,6 +19,7 @@
 
     <p>
     Bytes received: <span id="bytes-received">---</span><br />
+    Bytes queued: <span id="bytes-queued">---</span><br />
     Packets received: <span id="packet-received">---</span><br />
     Good packets: <span id="packet-good">---</span><br />
     Bad packets: <span id="packet-bad">---</span><br />
@@ -28,7 +29,9 @@
     Assembler queued: <span id="assembler-queued">---</span><br />
     Assembler hits: <span id="assembler-hits">---</span><br />
     Assembler drops: <span id="assembler-drops">---</span><br />
-    Assembler misses: <span id="assembler-misses">---</span>
+    Assembler misses: <span id="assembler-misses">---</span><br />
+    Network thread busy: <span id="network-busy-percent">---</span>%<br />
+    Assembler thread busy: <span id="assembler-busy-percent">---</span>%<br />
     </p>
 
 <p>
@@ -49,6 +52,11 @@ var chart = new StripChart(600, 300, '#packet-count-graph', 'Packet count',
 var chart_dates = [];
 var chart_values = [];
 var chart_max = 0;
+
+var last_network_waiting = 0;
+var last_network_working = 0;
+var last_assembler_waiting = 0;
+var last_assembler_working = 0;
 
 function commas(n) {
   var parts = n.toString().split(".");
@@ -71,6 +79,7 @@ function json_callback(X) {
     console.log('Packet counts: ' + pcounts);
     
     $('#bytes-received').html(commas(X['count_bytes_received']));
+    $('#bytes-queued').html(commas(X['count_bytes_queued']));
     $('#packet-received').html(commas(pcounts));
     $('#packet-good').html(commas(X['count_packets_good']));
     $('#packet-bad').html(commas(X['count_packets_bad']));
@@ -81,6 +90,25 @@ function json_callback(X) {
     $('#assembler-hits').html(commas(X['count_assembler_hits']));
     $('#assembler-drops').html(commas(X['count_assembler_drops']));
     $('#assembler-misses').html(commas(X['count_assembler_misses']));
+    
+    var net_wait = X['network_thread_waiting_usec'];
+    var net_work = X['network_thread_working_usec'];
+    var asm_wait = X['assembler_thread_waiting_usec'];
+    var asm_work = X['assembler_thread_working_usec'];
+
+    var net_pct = (100. * (net_work - last_network_working) /
+                   Math.max(1, net_wait + net_work - last_network_working - last_network_waiting));
+    var asm_pct = (100. * (asm_work - last_assembler_working) /
+                   Math.max(1, asm_wait + asm_work - last_assembler_working - last_assembler_waiting));
+
+    last_network_waiting = net_wait;
+    last_network_working = net_work;
+    last_assembler_waiting = asm_wait;
+    last_assembler_working = asm_work;
+    
+    $('#network-busy-percent').html(net_pct.toFixed(1));
+    $('#assembler-busy-percent').html(asm_pct.toFixed(1));
+    
 
     chart_dates.push(new Date());
     chart_values.push(pcounts);
