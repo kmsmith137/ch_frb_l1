@@ -631,6 +631,24 @@ void dedispersion_thread_context::_toy_thread_main() const
 	    return;
 	}
 
+	if (ibeam_within_stream == 0) {
+	    auto event_counts = sp->get_event_counts();
+
+	    stringstream ss;
+
+	    ss << sp->ini_params.ipaddr << ":" << sp->ini_params.udp_port << ": "
+	       << " nrecv=" << event_counts[ch_frb_io::intensity_network_stream::packet_received]
+	       << ", ngood=" << event_counts[ch_frb_io::intensity_network_stream::packet_good]
+	       << ", nbad=" << event_counts[ch_frb_io::intensity_network_stream::packet_bad]
+	       << ", ndropped=" << event_counts[ch_frb_io::intensity_network_stream::packet_dropped]
+	       << ", ahit=" << event_counts[ch_frb_io::intensity_network_stream::assembler_hit]
+	       << ", amiss=" << event_counts[ch_frb_io::intensity_network_stream::assembler_miss]
+	       << "\n";
+
+	    string s = ss.str();
+	    cout << s.c_str();
+	}
+
 	if (config.l1_verbosity >= 2)
 	    cout << ("    [beam" + to_string(ibeam) + "]: read chunk " + to_string(chunk->ichunk) + "\n");
 
