@@ -17,6 +17,13 @@
 
 <div id="packet-count-graph"></div>
 
+<p>Packets received: <span id="packet-received">---</span><br />
+    Good packets: <span id="packet-good">---</span><br />
+    Bad packets: <span id="packet-bad">---</span><br />
+    Packets dropped: <span id="packet-dropped">---</span><br />
+    Beam id mismatch: <span id="beam-id-mismatch">---</span>
+    </p>
+
 <p>
 <input type="button" onClick="stopUpdating()"  value="Stop updating" />
 <input type="button" onClick="startUpdating()" value="Start updating"/>
@@ -49,6 +56,12 @@ function json_callback(X) {
 
     pcounts = X['count_packets_received'];
     console.log('Packet counts: ' + pcounts);
+    
+    $('#packet-received').html(pcounts);
+    $('#packet-good').html(X['count_packets_good']);
+    $('#packet-bad').html(X['count_packets_bad']);
+    $('#packet-dropped').html(X['count_packets_dropped']);
+    $('#beam-id-mismatch').html(X['count_beam_id_mismatch']);
     
     chart_dates.push(new Date());
     chart_values.push(pcounts);
