@@ -192,7 +192,12 @@ shared_ptr<ch_frb_io::intensity_network_ostream> l0_params::make_ostream(int ith
     ch_frb_io::intensity_network_ostream::initializer ini_params;
     ini_params.dstname = ipaddr[istream] + ":" + to_string(port[istream]);
     //ini_params.beam_ids = vrange((istream * nbeams_per_stream)+start_beam_id, ((istream+1) * nbeams_per_stream)+start_beam_id);
-    ini_params.beam_ids = input_beam_ids;
+    vector<int> temp_beam_ids;
+    for (int idx=istream*nbeams_per_stream; idx<(istream+1)*nbeams_per_stream; idx++){
+        temp_beam_ids.push_back(input_beam_ids[idx]);
+        cout << input_beam_ids[idx] << endl;
+        }
+    ini_params.beam_ids = temp_beam_ids;
     ini_params.coarse_freq_ids = vrange(jthread * nfreq_coarse_per_thread, (jthread+1) * nfreq_coarse_per_thread);
     ini_params.nupfreq = nupfreq;
     ini_params.nt_per_chunk = nt_per_packet;   // best?
@@ -315,7 +320,6 @@ void sim_thread_pulse(const shared_ptr<ch_frb_io::intensity_network_ostream> &os
     assert(ostream->target_gbps > 0.0);
     long double target_nbytes = 1.25e8 * ostream->target_gbps * num_seconds;
     long nchunks = long(target_nbytes / ostream->nbytes_per_chunk) + 1;
-    std::cout<<"nchunks = "<<nchunks<<" \n";
     long double block_nbytes = 1.25e8 * ostream->target_gbps * 200;
     long block_nchunks = long(block_nbytes / ostream->nbytes_per_chunk) + 1;
     vector<float> intensity(ostream->elts_per_chunk, 0.0);
@@ -396,13 +400,11 @@ void sim_thread_file(const shared_ptr<ch_frb_io::intensity_network_ostream> &ost
 {
   ifstream fpin;
   fpin.open("simpulse.dat",ios_base::binary);
-  
   if(!fpin.is_open()) std::cout<<"Exit file is not open \n";
   	
     assert(ostream->target_gbps > 0.0);
     long double target_nbytes = 1.25e8 * ostream->target_gbps * num_seconds;
     long nchunks = long(target_nbytes / ostream->nbytes_per_chunk) + 1;
-    std::cout<<"nchunks = "<<nchunks<<" \n";
     int num_loops = num_beams_per_thread/4;
     long double block_nbytes = 1.25e8 * ostream->target_gbps * 200;
     //long block_nchunks = long(block_nbytes / ostream->nbytes_per_chunk) + 1;
@@ -428,7 +430,6 @@ void sim_thread_file(const shared_ptr<ch_frb_io::intensity_network_ostream> &ost
     for (long ichunk = 0; ichunk < nchunks; ichunk++){
         if(ichunk%(nchunks/num_loops)==0){
             float location = ichunk*time_per_chunk+ 10;
-            cout << ichunk << ", loop num:" << iteration << ", num loops: " << num_loops << endl;
 	    for(int i=0;i<4;i++){
                 if (iteration >= num_loops) break;
                 int skip_to = iteration*numthreads*4;
@@ -452,7 +453,7 @@ void sim_thread_file(const shared_ptr<ch_frb_io::intensity_network_ostream> &ost
     sim2.add_value(&intensity[2*intensity.size()/4],chunk_t0,chunk_nfreq);
     sim3.add_value(&intensity[3*intensity.size()/4],chunk_t0,chunk_nfreq);
     int64_t fpga_count = int64_t(ichunk) * int64_t(ostream->fpga_counts_per_chunk);
-    ostream->send_chunk(&intensity[0], &weights[0], stride, fpga_count);
+    ostream->send_chunk(&intensity[0], stride, &weights[0], stride, fpga_count);
   }
 }
 
@@ -498,7 +499,6 @@ int main(int argc, char **argv)
 	}
 	fpin.close();
     }		
-    std::cout<<"Num beams: "<<num_beams<<"\n";
     if (num_beams>0)
         num_beams = num_beams-1; 
     //num_beams = (num_beams%p.nbeams_tot)*p.nbeams_tot;
@@ -523,7 +523,6 @@ int main(int argc, char **argv)
     int nthreads = p.nthreads_tot;
     int num_beams_extra = num_beams-(nthreads*p.nbeams_tot);
     int num_beams_per_thread = p.nbeams_tot + (num_beams_extra)/nthreads;
-
     vector<shared_ptr<ch_frb_io::intensity_network_ostream>> streams(nthreads);
     vector<std::thread> threads(nthreads);
 
