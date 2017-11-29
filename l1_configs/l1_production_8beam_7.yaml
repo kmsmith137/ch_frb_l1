@@ -1,35 +1,35 @@
-# This is "example 5" to run on the 8-node system, described in MANUAL.md.
-
-# This is a production-scale example which will monopolize 4 x 20-core
-# nodes cf0g[0-3] acting as receivers and cf0g[4-7] acting as senders.
-# The L1 server will dedisperse 16 beams, with 16384 frequency
-# channels.
+# This is a "production" config, intended to run on the real DRAO backend, 
+# and receive data from the real correlator!
 #
-# nt_per_packet=16 is important here, since the 'fast' kernels are hardcoded to
-# use nt_per_packet=16.  See MANUAL.md for more dicussion!
+# See ch_frb_l1/OPERATIONS_MANAUL.md for usage.
+#
+# This is an 8-beam example.  We use real RFI removal (provisional), and dedispersion 
+# with the most optimal settings (spectral index search, low-DM upsampled tree).
+#
+# In this example, we still use a "toy" version of the L1B code which just prints messages
+# as it receives coarse-grained triggers.  (It it also supposed to make a trigger plot, but 
+# this doesn't work in production yet, since the production L1 server has no way of shutting 
+# down gracefully.)
 
-nbeams: 16
+nbeams: 8
 nfreq: 16384
 nt_per_packet: 16
 
+beam_ids: [112, 113, 114, 115, 116, 117, 118, 119]
 
 # This example assumes the nodes are in a non-link-bonded configuration, where
 # each of the four 1 Gbps NIC's is on an independent /24 network.  We use UDP
-# port 6677 on all four NIC's.  Traffic is divided between NIC's "per beam", 
+# port 1313 on all four NIC's.  Traffic is divided between NIC's "per beam", 
 # i.e. four beams will be sent to each NIC.  All NIC's use TCP port 5555 for
 # their RPC server.
 
-ipaddr: [ "10.6.200.12",
-	  "10.7.200.12",
-	  "10.8.200.12",
-	  "10.9.200.12" ]
+ipaddr: [ "10.6.200.17",
+	  "10.7.200.17" ]
 
-port: 6677
+port: 1313
 
-rpc_address: [ "tcp://10.6.200.12:5555", 
-	       "tcp://10.7.200.12:5555", 
-	       "tcp://10.8.200.12:5555", 
-	       "tcp://10.9.200.12:5555" ]
+rpc_address: [ "tcp://10.6.200.17:5555", 
+	       "tcp://10.7.200.17:5555" ]
 
 # The L1 node is configured so that it "thinks" the NFS server is four different
 # servers, mounted on directories /frb-archiver1, /frb-archiver2, /frb-archiver3,
@@ -40,6 +40,9 @@ rpc_address: [ "tcp://10.6.200.12:5555",
 # Here, we define 5 output_devices, corresponding to (4 NIC's) + (1 SSD).
 # Each output device will get a separate file I/O thread.  This allows file
 # I/O on each device to proceed independently.
+#
+# Note that the way things are currently implemented, in the 8-beam case, we only e
+# end up using 2 out of 4 NIC's to write to NFS.  (I'm not sure if this is good or bad.)
 
 output_devices: [ "/local", "/frb-archiver-1", "/frb-archiver-2", "/frb-archiver-3", "/frb-archiver-4" ]
 
@@ -54,7 +57,8 @@ slow_kernels: False
 # ~231 GB memory (the L1 node has 256 GB available).
 
 assembled_ringbuf_nsamples: 10000
-telescoping_ringbuf_nsamples: [ 30000, 60000, 60000 ]
+#telescoping_ringbuf_nsamples: [ 30000, 60000, 60000 ]
+telescoping_ringbuf_nsamples: [ 10000, 10000, 10000 ]
 write_staging_area_gb: 64.0
 
 
@@ -80,5 +84,5 @@ l1b_pipe_timeout: 0
 # data to disk.  The first line below streams to SSD, and the second line
 # streams to NFS.
 
-# stream_filename_pattern: "/ssd/kmsmith/chunk_(BEAM)_(CHUNK)_(NCHUNK).msg"
+# stream_filename_pattern: "/local/chunk_(BEAM)_(CHUNK)_(NCHUNK).msg"
 # stream_filename_pattern: "/frb-archiver-(STREAM)/kmsmith/dir0/chunk_(BEAM)_(CHUNK)_(NCHUNK).msg"

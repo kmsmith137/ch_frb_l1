@@ -48,3 +48,5 @@ from scratch:
    - [Rebuilding the pipeline](./doc/rebuilding_pipeline.md)
 
 For a manual-in-progress, see [MANUAL.md](./MANUAL.md).
+
+For an "operations manual" explaining how to run the L1 server on-site, see [OPERATIONS_MANUAL.md](./OPERATIONS_MANUAL.md).

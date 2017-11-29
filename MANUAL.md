@@ -2,6 +2,10 @@
 
 This manual is incomplete and some sections are placeholders!
 
+The MANUAL.md is intended to be a systematic tutorial/reference with self-contained examples.
+See [OPERATIONS_MANUAL.md](./OPERATIONS_MANUAL.md) for instructions for running the L1 server on-site,
+in more of a "cookbook" format with production-scale examples.
+
 ### CONTENTS
 
   - [High-level overview](#user-content-overview)
