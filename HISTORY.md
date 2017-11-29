@@ -1,3 +1,6 @@
+- v7
+  - Update toy-l1b.py to show how to get fpga counts in L1B
+
 - v6
   - From Dustin: packet_count history RPC + web viewer
 

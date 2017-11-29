@@ -957,7 +957,8 @@ void l1_server::make_input_streams()
 	ini_params.output_devices = this->output_devices;
 	ini_params.sleep_hack = this->sleep_hack;
 	
-	// Setting this flag means that an exception will be thrown if either:
+	// Setting the 'throw_exception_on_buffer_drop' flag means that an exception 
+	// will be thrown if either:
 	//
 	//    1. the unassembled-packet ring buffer between the network and
 	//       assembler threads is full (i.e. assembler thread is running slow)
@@ -970,8 +971,11 @@ void l1_server::make_input_streams()
 	// Note that in situation (2), the pipeline will crash anyway since
 	// rf_pipelines doesn't contain code to handle gaps in the data.  This
 	// is something that we'll fix soon, but it's nontrivial.
-	
-	ini_params.throw_exception_on_buffer_drop = true;
+	//
+	// We currently set the flag in the "normal" case, but leave it un-set
+	// for the "toy" server (ch-frb-l1 -t).
+
+	ini_params.throw_exception_on_buffer_drop = !config.tflag;
 
 	input_streams[istream] = ch_frb_io::intensity_network_stream::make(ini_params);
 	

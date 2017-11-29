@@ -228,7 +228,8 @@ function array_min(A) {
 }
 */
 
-var chart = new StripChart(600, 300, '#rategraph', 60, 2000);
+var chart = new StripChart(600, 300, '#rategraph', "Packet rate (packets/sec)",
+                           60, update_period);
 
 var chart_dates = [];
 var chart_values = [];

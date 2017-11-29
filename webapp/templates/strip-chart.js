@@ -1,4 +1,5 @@
 function StripChart(W, H, target,
+                    ylabel,
                     // How many seconds of history do we want?
                     history_period,
                     update_period) {
@@ -50,7 +51,7 @@ function StripChart(W, H, target,
         .attr("x",0 - (H / 2))
         .attr("dy", "1em")
         .style("text-anchor", "middle")
-        .text("Packet rate (packets/sec)");
+        .text(ylabel);
 
     this.data = [];
 
