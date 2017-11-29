@@ -32,7 +32,7 @@ writing-mode: vertical-lr;
 <li><a href="{{ packet_matrix_d3_url }}">Packet rate matrix (d3)</a></li>
 </ul>
 
-<h3>CHIME FRB Data Center status</h3>
+<h3>CHIME FRB L1 node status</h3>
 
 <table>
   <tr>
@@ -58,12 +58,60 @@ writing-mode: vertical-lr;
     {% endfor %}
   </tr>
 #}
-
 </table>
 
 {#
 <iframe src="http://localhost:3000/dashboard-solo/db/node-exporter-single-server?orgId=2&panelId=11&var-server=" width="450" height="200" frameborder="0"></iframe>
 #}
+
+<h3>CHIME FRB L1 Command and Control</h3>
+
+{#<form action="{{ cnc_run }}" method="POST">
+</form>
+  #}
+    <input type="text" id="cnc_run" size="50" value="echo hello world, I am $HOSTNAME, $(date), __INDEX__" />
+    <span id="cnc_status"></span><br />
+    <p id="cnc_output"></p>
+
+<script type="text/javascript">
+
+function cnc_run_callback(err, X) {
+    console.log('cnc_run_callback: ' + X);
+    $('#cnc_status').html('Received results.');
+    ss = '<pre>';
+    for (var i=0; i<X.length; i++) {
+        xi = X[i];
+        server = xi[0];
+        res = xi[1];
+        if (res == null) {
+            rtn = 'null';
+            out = '';
+            err = '';
+        } else {
+            rtn = res[0];
+            out = res[1];
+            err = res[2];
+        }
+        ss += 'server ' + server + ': return value ' + rtn;
+        ss += '<br/>out: ' + out;
+        ss += '<br/>err: ' + err;
+        ss += '<br/><br/>';
+    }
+    ss += '</pre>';
+    $('#cnc_output').html(ss);
+}
+
+$('#cnc_run').keyup(function(event) {
+    if (event.keyCode == 13){
+        $('#cnc_status').html('Sending command...');
+        d3.request('{{ cnc_run_url }}')
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .mimeType("application/json")
+            .response(function(xhr) { return JSON.parse(xhr.responseText); })
+            .post("cmd=" + $('#cnc_run').val(), cnc_run_callback);
+    }
+});
+</script>
 
 <br><hr><br>
 
