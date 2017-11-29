@@ -50,8 +50,23 @@ dedisp = bonsai.PipedDedisperser()
 #
 # Note that many config params are also available as PipedDedisperser properties, e.g.
 # dedisp.ntrees is the same as dedisp.config['ntrees'].
-#
+
 # print dedisp.config
+
+
+# Here is where we read 'initial_fpga_count', the fpga count of the first sample in
+# the first chunk, and 'fpga_counts_per_sample', the number of fpga counts per time
+# sample (currently 384).
+#
+# Note that this code blocks until the pipeline starts receiving data, so it's best
+# to put it after any slow initializations.
+#
+# (Just to explain what is going on in the code: the bonsai.PipedDedisperser contains a
+#  "context" string which is opaque to bonsai.  In the CHIME pipeline, this string is
+#  constructed by serializing a json object containing pipeline "attributes"
+#  defined in rf_pipelines.  Currently there are only two pipeline attributes,
+#  initial_fpga_count and fpga_counts_per_sample, but I plan to put the beam_id
+#  here soon, and remove it from the L1B command line.)
 
 pipeline_attrs = json.loads(dedisp.opaque_context)
 initial_fpga_count = pipeline_attrs['initial_fpga_count']
