@@ -1,4 +1,4 @@
-# This is "example 5" to run on the 8-node system, described in MANUAL.md.
+# This is "example 4" to run on the 8-node system, described in MANUAL.md.
 
 # This is a production-scale example which will monopolize 4 x 20-core
 # nodes cf0g[0-3] acting as receivers and cf0g[4-7] acting as senders.
@@ -12,6 +12,7 @@ nbeams: 16
 nfreq: 16384
 nt_per_packet: 16
 
+beam_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
 # This example assumes the nodes are in a non-link-bonded configuration, where
 # each of the four 1 Gbps NIC's is on an independent /24 network.  We use UDP
@@ -19,17 +20,18 @@ nt_per_packet: 16
 # i.e. four beams will be sent to each NIC.  All NIC's use TCP port 5555 for
 # their RPC server.
 
-ipaddr: [ "10.6.200.12",
-	  "10.7.200.12",
-	  "10.8.200.12",
-	  "10.9.200.12" ]
+ipaddr: [ "10.6.200.10",
+	  "10.7.200.10",
+	  "10.8.200.10",
+	  "10.9.200.10" ]
+port: 1313
 
-port: 6677
+beam_ids: [ 0,1,2,3, 0,1,2,3, 0,1,2,3, 0,1,2,3 ]
 
-rpc_address: [ "tcp://10.6.200.12:5555", 
-	       "tcp://10.7.200.12:5555", 
-	       "tcp://10.8.200.12:5555", 
-	       "tcp://10.9.200.12:5555" ]
+rpc_address: [ "tcp://10.6.200.10:5555", 
+	       "tcp://10.7.200.10:5555", 
+	       "tcp://10.8.200.10:5555", 
+	       "tcp://10.9.200.10:5555" ]
 
 # The L1 node is configured so that it "thinks" the NFS server is four different
 # servers, mounted on directories /frb-archiver1, /frb-archiver2, /frb-archiver3,
@@ -54,7 +56,8 @@ slow_kernels: False
 # ~231 GB memory (the L1 node has 256 GB available).
 
 assembled_ringbuf_nsamples: 10000
-telescoping_ringbuf_nsamples: [ 30000, 60000, 60000 ]
+#telescoping_ringbuf_nsamples: [ 30000, 60000, 60000 ]
+telescoping_ringbuf_nsamples: [ 10000, 10000, 10000 ]
 write_staging_area_gb: 64.0
 
 

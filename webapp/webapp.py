@@ -3,6 +3,12 @@
 
 from __future__ import print_function
 
+try:
+    basestring
+except:
+    # py3
+    basestring = str
+
 from flask import Flask, render_template, jsonify, request, redirect
 
 import os
@@ -37,7 +43,7 @@ def parse_config():
     sanity checks.
     """
 
-    if not os.environ.has_key('WEBAPP_CONFIG'):
+    if 'WEBAPP_CONFIG' not in os.environ:
         print("webapp: WEBAPP_CONFIG environment variable not set")
         print("  Maybe you want to run the webapp through the wrapper script")
         print("  'run-webapp.sh' in the toplevel ch_frb_l1 directory, which")
@@ -54,33 +60,72 @@ def parse_config():
         print("webapp: couldn't parse yaml config file '%s'" % config_filename_1)
         sys.exit(1)
 
-    if not isinstance(y,dict) or not y.has_key('rpc_address'):
+    if not isinstance(y,dict) or not 'rpc_address' in y:
         print("webapp: no 'rpc_address' field found in yaml file '%s'" % config_filename_1)
         sys.exit(1)
 
     nodes = y['rpc_address']
     # allow a single string (not a list)
-    if isinstance(nodes,basestring):
+    if isinstance(nodes, basestring):
         nodes = [nodes]
-    if not isinstance(nodes,list) or not all(isinstance(x,basestring) for x in nodes):
+    if not isinstance(nodes,list) or not all(isinstance(x, basestring) for x in nodes):
         print("%s: expected 'rpc_address' field to be a list of strings" % config_filename)
         sys.exit(1)
+
+    if not 'cnc_address' in y:
+        print('No cnc_address item in YAML file; not sending command-n-control')
+        cnc_nodes = []
+    else:
+        cnc_nodes = y['cnc_address']
+        # allow a single string (not a list)
+        if isinstance(cnc_nodes, basestring):
+            cnc_nodes = [cnc_nodes]
+        if not isinstance(cnc_nodes,list) or not all(isinstance(x, basestring) for x in cnc_nodes):
+            print("%s: expected 'cnc_address' field to be a list of strings" % config_filename)
+            sys.exit(1)
+
     # FIXME(?): check the format of the node strings here?
     # (Should be something like 'tcp://10.0.0.101:5555')
-    return nodes
+    return nodes, cnc_nodes
 
-app.nodes = parse_config()
+app.nodes, app.cnc_nodes = parse_config()
+
+import zmq
+app.zmq = zmq.Context()
 
 @app.route('/')
 def index():
+    nodes = [n.replace('tcp://','') for n in app.nodes]
     return render_template('index-newer.html',
-                           nodes = app.nodes,
-                           enodes = enumerate(app.nodes),
+                           nodes = nodes,
+                           enodes = enumerate(nodes),
                            node_status_url='/node-status',
                            packet_matrix_url='/packet-matrix',
                            packet_matrix_image_url='/packet-matrix.png',
                            packet_matrix_d3_url='/packet-matrix-d3',
+                           cnc_run_url='/cnc-run',
         )
+
+@app.route('/cnc-run', methods=['POST',
+                                # debug
+                                'GET'])
+def cnc_run():
+    if request.method == 'POST':
+        cmd = request.form['cmd']
+        launch = request.form.get('launch', False)
+    else:
+        cmd = request.args.get('cmd')
+        launch = request.args.get('launch', False)
+    print('Launch', launch, 'Command:', cmd)
+    from cnc_client import CncClient
+    client = CncClient(ctx=app.zmq)
+
+    results = client.run(cmd, app.cnc_nodes, timeout=5000, launch=launch)
+    print('Got results:')
+    for r in results:
+        print('  ', r)
+    results = list(zip(app.cnc_nodes, results))
+    return jsonify(results)
 
 def sort_l0_nodes(senders):
     # Assume that senders are IP:port addresses; drop port
@@ -176,6 +221,10 @@ def packets_l1(name=None):
     return render_template('packets-l1-d3.html',
                            node=name)
 
+def _get_rpc_servers(client, names):
+    rservers = dict([(v,k) for k,v in client.servers.items()])
+    return [rservers['tcp://' + str(name)] for name in names]
+
 @app.route('/packet-rate-l1-json/<name>')
 def packet_rate_l1_json(name=None):
     assert(name is not None)
@@ -184,9 +233,7 @@ def packet_rate_l1_json(name=None):
 
     history = int(request.args.get('history', 60))
 
-    rservers = dict([(v,k) for k,v in client.servers.items()])
-    servers = [rservers['tcp://' + str(name)]]
-    
+    servers = _get_rpc_servers(client, [name])
     graph = client.get_packet_rate_history(start=-history,
                                            servers=servers,
                                            timeout=timeout)
@@ -381,7 +428,24 @@ def index_xxx():
 
 @app.route('/node/<name>')
 def node(name=None):
-    return redirect('http://localhost:3000/dashboard/db/node-exporter-single-server?orgId=2&from=now-1h&to=now&var-server=%s' % name)
+    return render_template('node-status.html',
+                           node=name,
+                           node_status_json_url='/node-status-json/' + name)
+    #return redirect('http://localhost:3000/dashboard/db/node-exporter-single-server?orgId=2&from=now-1h&to=now&var-server=%s' % name)
+
+@app.route('/node-status-json/<name>')
+def node_status_json(name=None):
+    client = get_rpc_client()
+    timeout = 5000.
+    servers = _get_rpc_servers(client, [name])
+    stats = client.get_statistics(servers=servers, timeout=timeout)
+    # [0]: first node; [0][0]: just the whole-node stats
+    stats = stats[0][0]
+    ss = ''
+    for k,v in stats.items():
+        ss += '  %s = %s\n' % (k, v)
+    print('Got stats:', ss)
+    return jsonify(stats)
 
 
 

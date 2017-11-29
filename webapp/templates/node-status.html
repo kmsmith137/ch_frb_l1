@@ -1,0 +1,150 @@
+<!doctype html>
+<html>
+<head>
+<title>CHIME FRB L1 status</title>
+
+<script type="text/javascript" src="{{ url_for('static', filename='jquery.js') }}"></script>
+<script type="text/javascript" src="{{ url_for('static', filename='d3.min.js') }}"></script>
+
+<script type="text/javascript">
+{% include "strip-chart.js" %}
+</script>
+
+</head>
+<body>
+
+<h3>L1 node {{node}}</h3>
+
+<div id="packet-count-graph"></div>
+
+    <p>
+    Bytes received: <span id="bytes-received">---</span><br />
+    Bytes queued: <span id="bytes-queued">---</span><br />
+    Packets received: <span id="packet-received">---</span><br />
+    Good packets: <span id="packet-good">---</span><br />
+    Bad packets: <span id="packet-bad">---</span><br />
+    Packets dropped: <span id="packet-dropped">---</span><br />
+    Beam id mismatch: <span id="beam-id-mismatch">---</span><br />
+    Stream mismatch: <span id="stream-mismatch">---</span><br />
+    Assembler queued: <span id="assembler-queued">---</span><br />
+    Assembler hits: <span id="assembler-hits">---</span><br />
+    Assembler drops: <span id="assembler-drops">---</span><br />
+    Assembler misses: <span id="assembler-misses">---</span><br />
+    Network thread busy: <span id="network-busy-percent">---</span>%<br />
+    Assembler thread busy: <span id="assembler-busy-percent">---</span>%<br />
+    </p>
+
+<p>
+<input type="button" onClick="stopUpdating()"  value="Stop updating" />
+<input type="button" onClick="startUpdating()" value="Start updating"/>
+</p>
+
+<script type="text/javascript">
+
+// Are we updating the plot?
+var do_update = true;
+
+// How many milliseconds between updates?
+var update_period = 2000;
+
+var chart = new StripChart(600, 300, '#packet-count-graph', 'Packet count',
+                           60, update_period);
+var chart_dates = [];
+var chart_values = [];
+var chart_max = 0;
+
+var last_network_waiting = 0;
+var last_network_working = 0;
+var last_assembler_waiting = 0;
+var last_assembler_working = 0;
+
+function commas(n) {
+  var parts = n.toString().split(".");
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return parts.join(".");
+}
+
+// Handle the JSON data when we're updating the matrix.
+function json_callback(X) {
+    console.log('JSON callback: ' + X);
+    if (!do_update) {
+        return;
+    }
+    if (X == null) {
+        setTimeout('json_update()', update_period);
+        return;
+    }
+
+    pcounts = X['count_packets_received'];
+    console.log('Packet counts: ' + pcounts);
+    
+    $('#bytes-received').html(commas(X['count_bytes_received']));
+    $('#bytes-queued').html(commas(X['count_bytes_queued']));
+    $('#packet-received').html(commas(pcounts));
+    $('#packet-good').html(commas(X['count_packets_good']));
+    $('#packet-bad').html(commas(X['count_packets_bad']));
+    $('#packet-dropped').html(commas(X['count_packets_dropped']));
+    $('#beam-id-mismatch').html(commas(X['count_beam_id_mismatch']));
+    $('#stream-mismatch').html(commas(X['count_stream_mismatch']));
+    $('#assembler-queued').html(commas(X['count_assembler_queued']));
+    $('#assembler-hits').html(commas(X['count_assembler_hits']));
+    $('#assembler-drops').html(commas(X['count_assembler_drops']));
+    $('#assembler-misses').html(commas(X['count_assembler_misses']));
+    
+    var net_wait = X['network_thread_waiting_usec'];
+    var net_work = X['network_thread_working_usec'];
+    var asm_wait = X['assembler_thread_waiting_usec'];
+    var asm_work = X['assembler_thread_working_usec'];
+
+    var net_pct = (100. * (net_work - last_network_working) /
+                   Math.max(1, net_wait + net_work - last_network_working - last_network_waiting));
+    var asm_pct = (100. * (asm_work - last_assembler_working) /
+                   Math.max(1, asm_wait + asm_work - last_assembler_working - last_assembler_waiting));
+
+    last_network_waiting = net_wait;
+    last_network_working = net_work;
+    last_assembler_waiting = asm_wait;
+    last_assembler_working = asm_work;
+    
+    $('#network-busy-percent').html(net_pct.toFixed(1));
+    $('#assembler-busy-percent').html(asm_pct.toFixed(1));
+    
+
+    chart_dates.push(new Date());
+    chart_values.push(pcounts);
+    if (chart_dates.length > 60) {
+        chart_dates.shift();
+        chart_values.shift();
+    }
+    chart_max = Math.max(chart_max, pcounts);
+    chart.ymin = 0;
+    chart.ymax = chart_max;
+    chart.update(chart_dates, chart_values);
+
+    setTimeout('json_update()', update_period);
+}
+
+// Make a JSON request for the node status
+function json_update() {
+    d3.request('{{ node_status_json_url }}')
+        .mimeType("application/json")
+        .response(function(xhr) { return JSON.parse(xhr.responseText); })
+        .get(json_callback);
+}
+
+// Fetch first data set!
+json_update();
+
+function startUpdating() {
+    do_update = true;
+    json_update();
+}
+function stopUpdating() {
+    do_update = false;
+}
+
+</script>
+
+
+</body>
+</html>
