@@ -1,12 +1,17 @@
-# This is "example 4" to run on the 8-node system, described in MANUAL.md.
-
-# This is a production-scale example which will monopolize 4 x 20-core
-# nodes cf0g[0-3] acting as receivers and cf0g[4-7] acting as senders.
-# The L1 server will dedisperse 16 beams, with 16384 frequency
-# channels.
+# This is a "production" config, intended to run on the real DRAO backend, 
+# and receive data from the real correlator!
 #
-# nt_per_packet=16 is important here, since the 'fast' kernels are hardcoded to
-# use nt_per_packet=16.  See MANUAL.md for more dicussion!
+# See ch_frb_l1/OPERATIONS_MANAUL.md for usage.
+#
+# This is a 16-beam example.  Currently, in 16-beam configurations we are limited 
+# to using "placeholder" RFI removal (detrenders but not clippers), and dedispersion
+# using the least optimal settings (no spectral index search, no low-DM upsampled tree).
+# This won't work on real data, since we don't remove RFI!
+#
+# In this example, we still use a "toy" version of the L1B code which just prints messages
+# as it receives coarse-grained triggers.  (It it also supposed to make a trigger plot, but 
+# this doesn't work in production yet, since the production L1 server has no way of shutting 
+# down gracefully.)
 
 nbeams: 16
 nfreq: 16384
@@ -17,7 +22,7 @@ beam_ids: [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
 
 # This example assumes the nodes are in a non-link-bonded configuration, where
 # each of the four 1 Gbps NIC's is on an independent /24 network.  We use UDP
-# port 6677 on all four NIC's.  Traffic is divided between NIC's "per beam", 
+# port 1313 on all four NIC's.  Traffic is divided between NIC's "per beam", 
 # i.e. four beams will be sent to each NIC.  All NIC's use TCP port 5555 for
 # their RPC server.
 
