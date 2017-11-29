@@ -11,7 +11,7 @@ if __name__ == '__main__':
     opt = parser.parse_args()
 
     if opt.port:
-        addr = 'tcp://' + str(opt.port)
+        addr = 'tcp://*:' + str(opt.port)
     else:
         addr = opt.address
     

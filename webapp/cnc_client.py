@@ -1,6 +1,59 @@
 from __future__ import print_function
 import zmq
 import msgpack
+import time
+
+class CncClient(object):
+    def __init__(self, ctx=None):
+        if ctx is not None:
+            self.ctx = ctx
+        else:
+            self.ctx = zmq.Context()
+
+    def run(self, command, servers, timeout=1000):
+        # Create one socket per server
+        sockets = [self.ctx.socket(zmq.REQ) for s in servers]
+        # Send the request
+        for i,(socket,server) in enumerate(zip(sockets, servers)):
+            if '__INDEX__' in command:
+                cmd = command.replace('__INDEX__', str(i))
+            else:
+                cmd = command
+            msg = msgpack.packb(['run', cmd])
+            socket.connect(server)
+            socket.send(msg)
+
+        poll = zmq.Poller()
+        todo = sockets
+        for socket in todo:
+            poll.register(socket, zmq.POLLIN)
+        t0 = time.time()
+        results = dict([(socket, None) for socket in sockets])
+        while True:
+            print('Polling with timeout', timeout)
+            print('poll.sockets:', poll.sockets)
+            events = poll.poll(timeout=timeout)
+            if len(events) == 0:
+                # timeout
+                print('Poll timed out')
+                break
+            for socket,event in events:
+                print('Reading from socket', sockets.index(socket))
+                reply = socket.recv()
+                msg = msgpack.unpackb(reply)
+                #print('Got result:', msg)
+                results[socket] = msg
+                poll.unregister(socket)
+            print('poll.sockets:', poll.sockets)
+            if len(poll.sockets) == 0:
+                # all done
+                break
+            t1 = time.time()
+            timeout -= 1000. * (t1 - t0)
+            t0 = t1
+        rtn = [results[s] for s in sockets]
+        #print('Returning:', rtn)
+        return rtn
 
 if __name__ == '__main__':
     import argparse
