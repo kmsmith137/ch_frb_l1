@@ -90,6 +90,9 @@ def parse_config():
 
 app.nodes, app.cnc_nodes = parse_config()
 
+import zmq
+app.zmq = zmq.Context()
+
 @app.route('/')
 def index():
     nodes = [n.replace('tcp://','') for n in app.nodes]
@@ -103,14 +106,25 @@ def index():
                            cnc_run_url='/cnc-run',
         )
 
-@app.route('/cnc-run', methods=['POST'])
+@app.route('/cnc-run', methods=['POST',
+                                # debug
+                                'GET'])
 def cnc_run():
-    cmd = request.form['cmd']
-    #print('Command:', cmd)
+    if request.method == 'POST':
+        cmd = request.form['cmd']
+        launch = request.form.get('launch', False)
+    else:
+        cmd = request.args.get('cmd')
+        launch = request.args.get('launch', False)
+    print('Launch', launch, 'Command:', cmd)
     from cnc_client import CncClient
-    client = CncClient()
-    results = client.run(cmd, app.cnc_nodes, timeout=5000)
-    results = zip(app.cnc_nodes, results)
+    client = CncClient(ctx=app.zmq)
+
+    results = client.run(cmd, app.cnc_nodes, timeout=5000, launch=launch)
+    print('Got results:')
+    for r in results:
+        print('  ', r)
+    results = list(zip(app.cnc_nodes, results))
     return jsonify(results)
 
 def sort_l0_nodes(senders):

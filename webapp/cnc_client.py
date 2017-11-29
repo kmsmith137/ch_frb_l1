@@ -10,16 +10,19 @@ class CncClient(object):
         else:
             self.ctx = zmq.Context()
 
-    def run(self, command, servers, timeout=1000):
+    def run(self, command, servers, timeout=1000, launch=False):
         # Create one socket per server
         sockets = [self.ctx.socket(zmq.REQ) for s in servers]
         # Send the request
+        runcmd = 'run'
+        if launch:
+            runcmd = 'launch'
         for i,(socket,server) in enumerate(zip(sockets, servers)):
             if '__INDEX__' in command:
                 cmd = command.replace('__INDEX__', str(i))
             else:
                 cmd = command
-            msg = msgpack.packb(['run', cmd])
+            msg = msgpack.packb([runcmd, cmd])
             socket.connect(server)
             socket.send(msg)
 
@@ -53,7 +56,14 @@ class CncClient(object):
             t0 = t1
         rtn = [results[s] for s in sockets]
         #print('Returning:', rtn)
+        for s in sockets:
+            s.close()
         return rtn
+
+    # def close(self):
+    #     if self.ctx is not None:
+    #         self.ctx.destroy()
+    #         self.ctx = None
 
 if __name__ == '__main__':
     import argparse
