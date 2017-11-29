@@ -1,4 +1,4 @@
-# This is "example 4" to run on the 8-node system, described in MANUAL.md.
+# This is "example 5" to run on the 8-node system, described in MANUAL.md.
 
 # This is a production-scale example which will monopolize 4 x 20-core
 # nodes cf0g[0-3] acting as receivers and cf0g[4-7] acting as senders.
@@ -23,6 +23,7 @@ ipaddr: [ "10.6.200.10",
 	  "10.7.200.10",
 	  "10.8.200.10",
 	  "10.9.200.10" ]
+
 port: 6677
 
 rpc_address: [ "tcp://10.6.200.10:5555", 
