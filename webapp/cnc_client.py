@@ -33,21 +33,21 @@ class CncClient(object):
         t0 = time.time()
         results = dict([(socket, None) for socket in sockets])
         while True:
-            print('Polling with timeout', timeout)
-            print('poll.sockets:', poll.sockets)
+            print('Polling with timeout', timeout, 'for', len(poll.sockets), 'sockets')
+            #print('poll.sockets:', poll.sockets)
             events = poll.poll(timeout=timeout)
             if len(events) == 0:
                 # timeout
                 print('Poll timed out')
                 break
             for socket,event in events:
-                print('Reading from socket', sockets.index(socket))
+                #print('Reading from socket', sockets.index(socket))
                 reply = socket.recv()
                 msg = msgpack.unpackb(reply)
                 #print('Got result:', msg)
                 results[socket] = msg
                 poll.unregister(socket)
-            print('poll.sockets:', poll.sockets)
+            #print('poll.sockets:', poll.sockets)
             if len(poll.sockets) == 0:
                 # all done
                 break
@@ -59,11 +59,6 @@ class CncClient(object):
         for s in sockets:
             s.close()
         return rtn
-
-    # def close(self):
-    #     if self.ctx is not None:
-    #         self.ctx.destroy()
-    #         self.ctx = None
 
 if __name__ == '__main__':
     import argparse

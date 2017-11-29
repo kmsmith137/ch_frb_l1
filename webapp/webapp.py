@@ -121,9 +121,9 @@ def cnc_run():
     client = CncClient(ctx=app.zmq)
 
     results = client.run(cmd, app.cnc_nodes, timeout=5000, launch=launch)
-    print('Got results:')
-    for r in results:
-        print('  ', r)
+    # print('Got results:')
+    # for r in results:
+    #     print('  ', r)
     results = list(zip(app.cnc_nodes, results))
     return jsonify(results)
 

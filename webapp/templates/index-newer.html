@@ -72,7 +72,7 @@ writing-mode: vertical-lr;
 <p id="cnc_output"></p>
 
 <p>Launch a command on all L1 nodes:</p>
-<input type="text" id="cnc_launch" size="50" value="./ch-frb-l1 -t l1_config/l1_production_16beam___INDEX__.yaml" />
+<input type="text" id="cnc_launch" size="50" value="echo l1_config/l1_production_16beam___INDEX__.yaml" />
 <span id="cnc_launch_status"></span><br />
 <p id="cnc_launch_output"></p>
 
@@ -97,9 +97,9 @@ function cnc_callback(stat, output, err, X) {
         }
         ss += 'server ' + server + ': return value ' + rtn + '<br/>';
 	if ((out != null) && (out.length))
-	    ss += out + '<br/>';
+	    ss += out.replace('<','&lt;').replace('>','&gt;') + '<br/>';
 	if ((err != null) && (err.length))
-	    ss += '</pre><font color="red"><pre>' + err + '</pre></font><br/>';
+	    ss += '</pre><font color="red"><pre>' + err.replace('<','&lt;').replace('>','&gt;') + '</pre></font><br/>';
         //ss += '<br/>out: ' + out;
         //ss += '<br/>err: ' + err;
         ss += '<br/>';
