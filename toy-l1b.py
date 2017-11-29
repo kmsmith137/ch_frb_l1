@@ -14,6 +14,7 @@
 # examples_python/example4*.py in the bonsai repository.
 
 import sys
+import json
 import bonsai
 import itertools
 import numpy as np
@@ -52,6 +53,12 @@ dedisp = bonsai.PipedDedisperser()
 #
 # print dedisp.config
 
+pipeline_attrs = json.loads(dedisp.opaque_context)
+initial_fpga_count = pipeline_attrs['initial_fpga_count']
+fpga_counts_per_sample = pipeline_attrs['fpga_counts_per_sample']
+
+print 'initial_fpga_count =', initial_fpga_count
+print 'fpga_counts_per_sample =', fpga_counts_per_sample
 
 #
 # This is the main receive loop, which gets triggers from L1a.
@@ -74,7 +81,9 @@ for ichunk in itertools.count():
         print 'toy-l1b.py: last trigger chunk received, exiting'
         break
 
-    print 'toy-l1b.py: received (beam_id,chunk_id) = (%d,%d)' % (beam_id, ichunk)
+    # Print FPGA count of chunk, just to illustrate how it is calculated from the pipeline_attrs above.
+    fpga_chunk = initial_fpga_count + ichunk * dedisp.nt_chunk * fpga_counts_per_sample
+    print 'toy-l1b.py: received (beam_id,chunk_id) = (%d,%d), starting fpga_count of chunk = %d' % (beam_id, ichunk, fpga_chunk)
 
     # Just for fun, a sanity check here
     assert len(t) == dedisp.ntrees
