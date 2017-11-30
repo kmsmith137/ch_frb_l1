@@ -29,6 +29,9 @@ if __name__ == '__main__':
     # don't know if this is necessary... launched process handles
     launched_procs = []
 
+    # pid -> (proc, stdoutq, stderrq)
+    captive_procs = {}
+
     # use a poller with timeout to periodically check whether
     # launched_procs have terminated...
     poll = zmq.Poller()
@@ -68,10 +71,16 @@ if __name__ == '__main__':
                 print('Got result:', reply)
             elif func == 'launch':
                 cmd = msg[1]
-                print('Launching command:', cmd)
+                captive = False
+                if len(msg) > 2:
+                    captive = msg[2]
+                print('Launching command:', cmd, 'captive?', captive)
                 #p = subprocess.Popen(cmd, shell=True, stdin=subprocess.DEVNULL)
-                p = subprocess.Popen(cmd, shell=True, close_fds=True)
-                launched_procs.append(p)
+                if not captive:
+                    p = subprocess.Popen(cmd, shell=True, close_fds=True)
+                    launched_procs.append(p)
+                else:
+                    p = subprocess.Popen(cmd, shell=True, close_fds=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 reply = (0, 'Started pid %i' % p.pid, '')
                 print('Got result:', reply)
 
