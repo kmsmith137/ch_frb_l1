@@ -80,7 +80,14 @@ writing-mode: vertical-lr;
 <input type="text" id="cnc_follow" size="50" value="for ((i=1;;i++)); do echo $i; sleep 1; done" />
 <span id="cnc_follow_status"></span><br />
 <p id="cnc_follow_output"></p>
-<p id="cnc_follow_0"></p>
+<table border="1"><tr>
+{% for i,n in ecnodes %}
+<td id="cnc_follow_{{ i }}">Node {{ i }}</td>
+{% endfor %}
+</tr></table>
+
+{#<p id="cnc_follow_0"></p>
+#}
 
 <script type="text/javascript">
 
@@ -164,15 +171,19 @@ function follow_callback(server, pid, nodeid, X) {
     err = X[2];
     ss = '';
     console.log('err: ' + err);
+    again = true;
     if (out != null)
         ss += out.replace('\n','<br/>') + '<br/>';
     if ((err != null) && (err.length > 0))
         ss += '<font color="red">' + err + '</font>';
-    if (rtn != null)
+    if (rtn != null) {
         ss += '<br/>Exited with return value: ' + rtn;
+        again = false;
+    }
     $(nodeid).append(ss);
 
-    setTimeout(function(){ follow_request(server, pid, nodeid); }, 2000);
+    if (again)
+	setTimeout(function(){ follow_request(server, pid, nodeid); }, 2000);
 }
 
 $('#cnc_run').keyup(function(event) {

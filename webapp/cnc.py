@@ -3,6 +3,7 @@ import zmq
 import msgpack
 import subprocess
 from threading  import Thread
+import sys
 
 try:
     # py2
@@ -136,6 +137,9 @@ if __name__ == '__main__':
                     err = '\n'.join(err)
                     reply = (proc.returncode, out, err)
 
+            elif func == 'quit':
+                print('Quitting!')
+                sys.exit(0)
         except:
             import traceback
             traceback.print_exc()

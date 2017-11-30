@@ -98,7 +98,8 @@ def index():
     nodes = [n.replace('tcp://','') for n in app.nodes]
     return render_template('index-newer.html',
                            nodes = nodes,
-                           enodes = enumerate(nodes),
+                           enodes = list(enumerate(nodes)),
+                           ecnodes = list(enumerate(app.cnc_nodes)),
                            node_status_url='/node-status',
                            packet_matrix_url='/packet-matrix',
                            packet_matrix_image_url='/packet-matrix.png',
