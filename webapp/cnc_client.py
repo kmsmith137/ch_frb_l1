@@ -10,7 +10,7 @@ class CncClient(object):
         else:
             self.ctx = zmq.Context()
 
-    def run(self, command, servers, timeout=1000, launch=False):
+    def run(self, command, servers, timeout=1000, launch=False, captive=False):
         # Create one socket per server
         sockets = [self.ctx.socket(zmq.REQ) for s in servers]
         # Send the request
@@ -22,7 +22,10 @@ class CncClient(object):
                 cmd = command.replace('__INDEX__', str(i))
             else:
                 cmd = command
-            msg = msgpack.packb([runcmd, cmd])
+            msg = [runcmd, cmd]
+            if launch and captive:
+                msg.append(True)
+            msg = msgpack.packb(msg)
             socket.connect(server)
             socket.send(msg)
 
@@ -60,6 +63,23 @@ class CncClient(object):
             s.close()
         return rtn
 
+    def poll(self, pid, server, timeout=1000):
+        socket = self.ctx.socket(zmq.REQ)
+        socket.connect(server)
+        msg = msgpack.packb(['read_proc', pid])
+        socket.send(msg)
+        poll = zmq.Poller()
+        poll.register(socket, zmq.POLLIN)
+        events = poll.poll(timeout=timeout)
+        if len(events):
+            reply = socket.recv()
+            msg = msgpack.unpackb(reply)
+        else:
+            msg = (None, None, 'timed out')
+        socket.close()
+        return msg
+
+    
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
