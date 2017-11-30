@@ -40,7 +40,7 @@ rpc_address: [ "tcp://10.2.1.101:5555",
 # Each output device will get a separate file I/O thread.  This allows file
 # I/O on each device to proceed independently.
 
-output_devices: [ "/local", "/ssd", "/frb-archiver-1", "/frb-archiver-2" ]
+output_devices: [ "/ssd", "/frb-archiver-1", "/frb-archiver-2", "/local" ]
 
 
 # Need to use fast kernels in this example (slow kernels are too slow.)
@@ -57,7 +57,9 @@ slow_kernels: False
 assembled_ringbuf_nsamples: 10000
 telescoping_ringbuf_nsamples: [ 120000, 120000, 120000 ]
 write_staging_area_gb: 96.0
-
+# For quicker startup:
+# telescoping_ringbuf_nsamples: [ 10000, 10000, 10000 ]
+# write_staging_area_gb: 1.0
 
 # L1b configuration.
 #

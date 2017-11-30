@@ -104,6 +104,7 @@ def index():
                            packet_matrix_image_url='/packet-matrix.png',
                            packet_matrix_d3_url='/packet-matrix-d3',
                            cnc_run_url='/cnc-run',
+                           cnc_follow_url='/cnc-poll',
         )
 
 @app.route('/cnc-run', methods=['POST',
@@ -113,19 +114,29 @@ def cnc_run():
     if request.method == 'POST':
         cmd = request.form['cmd']
         launch = request.form.get('launch', False)
+        captive = request.form.get('captive', False)
     else:
         cmd = request.args.get('cmd')
         launch = request.args.get('launch', False)
-    print('Launch', launch, 'Command:', cmd)
+        captive = request.args.get('captive', False)
+    print('Launch', launch, 'Captive', captive, 'Command:', cmd)
     from cnc_client import CncClient
     client = CncClient(ctx=app.zmq)
 
-    results = client.run(cmd, app.cnc_nodes, timeout=5000, launch=launch)
+    results = client.run(cmd, app.cnc_nodes, timeout=5000, launch=launch,
+                         captive=captive)
     # print('Got results:')
     # for r in results:
     #     print('  ', r)
     results = list(zip(app.cnc_nodes, results))
     return jsonify(results)
+
+@app.route('/cnc-poll/<name>/<pid>')
+def cnc_poll(name=None, pid=None):
+    from cnc_client import CncClient
+    client = CncClient(ctx=app.zmq)
+    res = client.poll(int(pid), 'tcp://' + name)
+    return jsonify(res)
 
 def sort_l0_nodes(senders):
     # Assume that senders are IP:port addresses; drop port

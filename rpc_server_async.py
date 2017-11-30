@@ -120,7 +120,7 @@ if __name__ == '__main__':
             msgs = socket.recv_multipart()
             client = msgs[0]
             msg = msgs[1]
-        
+
             up = msgpack.Unpacker()
             up.feed(msg)
             funcname = up.next()
