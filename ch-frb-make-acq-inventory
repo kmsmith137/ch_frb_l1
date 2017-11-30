@@ -104,7 +104,7 @@ class acqdir:
         for beamdir_basename in os.listdir(self.acqdir_abspath):
             beamdir_abspath = os.path.join(self.acqdir_abspath, beamdir_basename)
 
-            m = re.match(r'beam(\d+)$', beamdir_basename)
+            m = re.match(r'beam_(\d+)$', beamdir_basename)
             if not m:
                 continue
             if not os.path.isdir(beamdir_abspath):
@@ -186,7 +186,10 @@ class toplevel_dir:
 
 ####################################################################################################
 
-            
+
+print >>sys.stdout, 'Inspecting %s, this may take a minute...' % input_acqdir
+sys.stdout.flush()
+
 a = toplevel_dir(input_acqdir)
 backup_flag = False
 
