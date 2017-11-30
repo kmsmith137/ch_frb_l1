@@ -11,6 +11,7 @@ and installation instructions.
   - [The DRAO backend](#user-content-drao-backend)
   - [Starting the L1 server](#user-content-starting-the-l1-server)
   - [Web services](#user-content-web-services)
+  - [Analyzing acquisitions](#user-content-analyzing-acquisitions)
   - [Cookbook of miscellaneous tasks](#user-content-cookbook-of-miscellaneous-tasks)
 
 <a name="drao-backend"></a>
@@ -61,6 +62,10 @@ and installation instructions.
 - **Example 1**: 16 beams, running the L1 server in "toy" mode.  "Toy" mode means that the server
   does not do RFI removal or dedisperse the data.  It does assemble packets, maintain a telescoping
   ring buffer for triggered NFS writes, and (optionally) stream incoming data to its local SSD.
+
+  First, I suggest verfiying that the correlator is sending data (`sudo iftop`)
+  and verify that nothing else is running on the node (`htop`).
+  Then, launch the L1 server with:
   ```
   # To see what all the ch-frb-l1 command-line arguments do, type `ch-frb-l1` with no arguments!
   # This starts the L1 server on node 0.  For e.g. node 1, replace cf0g0 by cf0g1, and 
@@ -70,7 +75,45 @@ and installation instructions.
   cd git/ch_frb_l1
   ./ch-frb-l1 -tv l1_configs/l1_production_16beam_0.yaml
   ```
-  By default, this will not stream incoming data to the local SSD.
+  After ~90 seconds or so, the server should start processing data.  At this point, you
+  may want to check out the "Dustin webapp" for live L1 monitoring, see [Web services](#user-content-web-services)
+  below.
+
+  To stop the server, press control-C in the terminal window where the server is running.
+  This will be improved soon, by implementing an RPC-triggered "graceful exit"!
+
+- **Example 1b**: Same as example 1, but streaming incoming data to the node's local SSD.
+
+  To enable streaming, you need to hand-edit all the l1 yaml files.
+  At the bottom of the file, you'll see this text:
+  ```
+  # stream_acqname.
+  #
+  # If the line below is uncommented, the node will continuously stream all incoming data
+  # to its local SSD.  The stream_acqname should be a unique identifying string which is
+  # not the same as any existing acquisition on the node.  The data will be written to
+  # /local/acq_data/$(stream_acqname).
+  
+  # stream_acqname: "test_acq"
+  ```
+  You should uncomment the last line, possibly replacing `test_acq` by a different acqname.
+  (Unfortunately you need to hand-edit all 8 configuration files!  We'll improve this soon.)
+
+  After making this change, you need to restart the L1 server.  It should start streaming
+  data to its local SSD.  A good way to confirm this is to monitor disk usage with `df`.
+
+  The server will fill its local disk in 2 hours (if initially empty), so you should stop
+  it before this with control-C.  I usually capture at least 20 minutes of data, since bonsai
+  currently has a "slow start" problem (see MANUAL.md for more info) and has trouble analyzing
+  the first 10 minutes of data.
+  
+  Congratulations, you now have an acquisition!  You may now want to postprocess it with our
+  offline pipeline.  For info on how to do this,
+  see [Analyzing acquisitions](#user-content-analyzing-acquisitions) below.
+
+I don't recommend trying examples 2 and 3 just yet!
+Instead I suggest just running the server in its "toy" mode, following example 1,
+and postprocessing the captured data with the offline pipeline.
 
 - **Example 2**: 16 beams, with "placeholder" RFI removal (detrenders but no clippers), and dedispersion
   using the least optimal settings (no spectral index search, no low-DM upsampled tree).  This won't work
@@ -145,10 +188,89 @@ and installation instructions.
   5140-5149 = Alex
   ```
 
+<a name="analyzing-acquisitions"></a>
+### Analyzing acquisitions
+
+After acquiring an acqusition (see "example 1b" above), you can run our "offline pipeline"
+to dedisperse, make web-browsable plots, etc.
+
+For now, this section just contains hints for getting started.
+There is a lot more to say here!
+
+- Make sure to clone the
+  [mrafieir/ch_frb_rfi](https://github.com/mrafieir/ch_frb_rfi) repo,
+  which isn't needed to run the real-time search, but is needed for
+  offline analysis and prototyping new RFI removal.
+
+- With our current scripting framework, each node can only analyze
+  the data stored on its own local SSD.  The offline pipeline uses
+  a lot of CPU and RAM, so you can't run it at the same time as an
+  L1 server instance!  (Use `htop` to check`.)
+
+- After acquiring a new acquisition, you should run the script
+  `ch-frb-make-acq-inventory`, which will populate `/local/acq_json`
+  with json files corresponding to the acquisitions on the node.
+
+  Note that this won't work if the SSD is 100% full!  If this situation
+  arises, you'll need to delete a few acqusition data files by hand to 
+  make room.
+
+- You can then use the `rfp-run` command in multithreaded mode (`-t NTHREADS`)
+  to run instances of the offline pipeline.  An rfp-run invocation
+  looks something like this:
+  ```
+  # Use 20 threads, since the L1 nodes have 20 cores
+  rfp-run -w WEB_VIEWER_RUN_NAME -t 20 <acq_file.json> <rfi_file.json> <bonsai_file.json>
+  ```
+  where any of the three json files can be a "run-list" pointing to multiple
+  json files which are looped over.
+
+     - The `acq_file.json` argument can be any of the json files produced 
+       by the `ch-frb-make-acq-inventory` script.
+     - The `rfi_file.json` argument can be any of the json files in `git/ch_frb_l1/rfi_configs`
+       or `git/ch_frb_rfi/json_files/rfi_16k`.
+     - The `bonsai_file.json` argument can be any of the json files
+       in `git/ch_frb_rfi/json_files/bonsai_16k`.
+
+  Here is an example rfp-run invocation which analyzes all acquisitions on the node's SSD.
+  (This assumes that `~/git/ch_frb_l1` and `~/git/ch_frb_rfi` contain the appropriate repos!)
+  ```
+  rfp-run -w testrun -t 20 /local/acq_json/master_runlist.json ~/git/ch_frb_l1/rfi_configs/rfi_placeholder.json ~/git/ch_frb_rfi/json_files/bonsai_16k/bonsai_production_noups_nbeta1_v2.json
+  ```
+  This may take a while to run, depending on how much data has been captured!
+
+- Here is the most fun part!  After this finishes, you should be able to use the 
+  "Maya web viewer" to inspect the result of the run.  See [Web services](#user-content-web-services)
+  above for instructions.
+
+- Some interesting variants on the above `rfp-run` invocation.
+
+    - Replace `rfi_placeholder.json` by `rfi_production_v1.json`
+      to get real RFI removal instead of "placeholder" (= detrending
+      but no actual masking) RFI removal.  Or use tools in `ch_frb_rfi`
+      to make your own RFI removal strategy and serialize it to a json file!
+
+    - Replace `master_runlist.json` by another json file in the
+      `/local/acq_json` tree, to analyze specific acqusitions,
+      rather than analyzing everything on the SSD.
+
+- To delete an acquisition, just `rm -rf` the appropriate subdirectory of `/local/acq_data`,
+  then rerun `ch-frb-make-acq-inventory` to bring the json files in sync with the current
+  contents of the SSD.
+
+- This discussion just scratches the surface of how to use the offline pipeline.
+  For a lot more info, see [rf_pipelines/MANUAL.md](https://github.com/kmsmith137/rf_pipelines/blob/master/MANUAL.md)
+  or [ch_frb_rfi/MANUAL.md](https://github.com/mrafieir/ch_frb_rfi/blob/master/MANUAL.md).
+
+
 <a name="cookbook-of-miscellaneous-tasks"></a>
 ### Cookbook of miscellaneous tasks
 
 Everyone should feel free to add to this list!
+
+- Checking disk usage: `df -h`
+- Inspecting network traffic in/out of node: `iftop`
+- How to figure out which process is listening on a given TCP or UDP port: `sudo netstat -plntu4 | grep PORT`
 
 - Shutting down the L1 server.  Currently the only way to do this is to
   press control-C in the ssh window running the L1 server instance!
@@ -161,6 +283,3 @@ Everyone should feel free to add to this list!
   # This reboots node 0.  To reboot e.g. node 1, replace cf0i0 by cf0i1.
   ipmitool -I lanplus -H cf0i0 -U ADMIN -P ADMIN power reset
   ```
-
-- Inspecting network traffic in/out of node: `iftop`
-- How to figure out which process is listening on a given TCP or UDP port: `sudo netstat -plntu4 | grep PORT`
