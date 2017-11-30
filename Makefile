@@ -68,13 +68,13 @@ civetweb/civetweb.o: civetweb/civetweb.c
 rpc-client: rpc_client.o
 	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lch_frb_io -lzmq
 
-ch-frb-l1: ch-frb-l1.o yaml_paramfile.o $(L1_OBJS)
+ch-frb-l1: ch-frb-l1.o file_utils.o yaml_paramfile.o $(L1_OBJS)
 	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lrf_pipelines -lbonsai -lch_frb_io -lrf_kernels -lzmq -lyaml-cpp -ljsoncpp
 
 sim-l0-set: sim-l0-set.cpp l0-sim.cpp
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io
 
-ch-frb-simulate-l0: ch-frb-simulate-l0.o l0-sim.o yaml_paramfile.o
+ch-frb-simulate-l0: ch-frb-simulate-l0.o l0-sim.o file_utils.o yaml_paramfile.o
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io -lyaml-cpp
 
 ch-frb-test: ch-frb-test.cpp $(L1_OBJS)
