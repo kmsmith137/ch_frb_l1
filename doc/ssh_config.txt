@@ -1,0 +1,51 @@
+ServerAliveInterval 60
+
+Host github
+  User git
+  Hostname github.com
+  IdentityFile ~/.ssh/id_rsa_work17
+
+Host tubular
+  User kmsmith
+  Hostname tubular.drao.nrc.ca
+
+Host cf0g0
+  User kmsmith
+  ProxyCommand ssh -q tubular nc cf0g0 22
+
+Host cf0g1
+  User kmsmith
+  ProxyCommand ssh -q tubular nc cf0g1 22
+
+Host cf0g2
+  User kmsmith
+  ProxyCommand ssh -q tubular nc cf0g2 22
+
+Host cf0g3
+  User kmsmith
+  ProxyCommand ssh -q tubular nc cf0g3 22
+
+Host cf0g4
+  User kmsmith
+  ProxyCommand ssh -q tubular nc cf0g4 22
+
+Host cf0g5
+  User kmsmith
+  ProxyCommand ssh -q tubular nc cf0g5 22
+
+Host cf0g6
+  User kmsmith
+  ProxyCommand ssh -q tubular nc cf0g6 22
+
+Host cf0g7
+  User kmsmith
+  ProxyCommand ssh -q tubular nc cf0g7 22
+
+Host cf0hn
+  User kmsmith
+  ProxyCommand ssh -q tubular nc cf0hn 22
+
+# CHIME L4 node
+Host cf0g9
+  User kmsmith
+  ProxyCommand ssh -q tubular nc cf0g9 22

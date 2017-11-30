@@ -20,6 +20,10 @@
 Total packet rate: <span id="rate_total">---</span> packets/sec
 </p>
 <p>
+Number of L0 nodes (IP:ports) sending packets: <span id="n_l0_sending">---</span><br/>
+Number of L1 nodes (IP:ports) receiving packets: <span id="n_l1_receiving">---</span><br/>
+</p>
+<p>
 Rate range: <span id="rate_low">low</span> to <span id="rate_high">high</span>
 </p>
 <p>
@@ -244,7 +248,7 @@ function json_callback(X) {
     }
     
     if (X == null) {
-        setTimeout('json_update()', update_perid);
+        setTimeout('json_update()', update_period);
         return;
     }
     
@@ -268,12 +272,28 @@ function json_callback(X) {
     for (var i; i<(nl0*nl1); i++) {
         matrix_data[i].value = 0;
     }
+    var l0_sending = [];
+    var l1_receiving = [];
+    for (var i=0; i<packets.length; i++) {
+	var row = packets[i];
+	for (var j=0; j<row.length; j++) {
+	    if (row[j] > 0) {
+		l1_receiving[i] = true;
+		break;
+	    }
+	}
+    }
     var ni = Math.min(packets.length, nl1);
     for (var i=0; i<ni; i++) {
 	    var row = packets[i];
+	    for (var j=0; j<row.length; j++) {
+		if (row[j] > 0) {
+		    l0_sending[j] = true;
+		}
+	    }
 	    var n = Math.min(row.length, nl0);
 	    for (var j=0; j<n; j++) {
-            matrix_data[i * nl0 + j].value = row[j];
+		matrix_data[i * nl0 + j].value = row[j];
 	        pmax = Math.max(pmax, row[j]);
 	        pmin = Math.min(pmin, row[j]);
 	    }
@@ -281,6 +301,9 @@ function json_callback(X) {
     if (pmin == pmin_ini) {
 	    pmin = 0;
     }
+
+    $('#n_l0_sending').html(l0_sending.length);
+    $('#n_l1_receiving').html(l1_receiving.length);
 
     // Now we update the d3 matrix_cells, which will pull values from the
     // matrix_data array.

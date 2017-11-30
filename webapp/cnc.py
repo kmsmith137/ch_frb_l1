@@ -29,8 +29,22 @@ if __name__ == '__main__':
     # don't know if this is necessary... launched process handles
     launched_procs = []
 
+    # use a poller with timeout to periodically check whether
+    # launched_procs have terminated...
+    poll = zmq.Poller()
+    poll.register(socket, zmq.POLLIN)
+
     while True:
         print('Waiting for request...')
+        events = poll.poll(timeout=5000)
+        if len(events) == 0:
+            # timed out
+            for p in launched_procs:
+                print('Checking child pid', p.pid)
+                if p.poll() is not None:
+                    print('Child PID', p.pid, 'terminated with', p.returncode)
+                    launched_procs.remove(p)
+            continue
         msg = socket.recv()
         print('Received:', msg)
 
