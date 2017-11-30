@@ -22,11 +22,25 @@ and installation instructions.
   during debugging/commissioning, where we all want to be on different git branches.  When we transition 
   into an "operations" mode, we can switch to using a dedicated account for the L1 server.
 
-- The examples below run a "toy" version of the L1B code which just prints messages as it receives
+- The examples below run a placeholder version of the L1B code which just prints messages as it receives
   coarse-grained triggers.  (It it also supposed to make a trigger plot, but this doesn't work in
   production yet, since the production L1 server has no way of shutting down gracefully.)
 
-- **Example 1**: 16 beams, with "placeholder" RFI removal (detrenders but no clippers), and dedispersion
+- **Example 1**: 16 beams, running the L1 server in "toy" mode.  "Toy" mode means that the server
+  does not do RFI removal or dedisperse the data.  It does assemble packets, maintain a telescoping
+  ring buffer for triggered NFS writes, and (optionally) stream incoming data to its local SSD.
+  ```
+  # To see what all the ch-frb-l1 command-line arguments do, type `ch-frb-l1` with no arguments!
+  # This starts the L1 server on node 0.  For e.g. node 1, replace cf0g0 by cf0g1, and 
+  # replace l1_production_16beam_0.yaml by l1_production_16beam_1.yaml.
+  
+  ssh cf0g0
+  cd git/ch_frb_l1
+  ./ch-frb-l1 -tv l1_configs/l1_production_16beam_0.yaml
+  ```
+  By default, this will not stream incoming data to the local SSD.  To enable streaming,
+
+- **Example 2**: 16 beams, with "placeholder" RFI removal (detrenders but no clippers), and dedispersion
   using the least optimal settings (no spectral index search, no low-DM upsampled tree).  This won't work
   on real data, since we don't remove RFI!
   ```
@@ -37,7 +51,7 @@ and installation instructions.
   ./ch-frb-l1 l1_configs/l1_production_16beam_0.yaml rfi_configs/rfi_placeholder.json /data/bonsai_configs/bonsai_production_noups_nbeta1_v2.hdf5 l1b_placeholder
   ```
 
-- **Example 2**: 8 beams, with real RFI removal (provisional), and dedispersion with the most optimal settings
+- **Example 3**: 8 beams, with real RFI removal (provisional), and dedispersion with the most optimal settings
   (spectral index search, low-DM upsampled tree).
   ```
   # This starts the L1 server on node 0.  For e.g. node 1, replace cf0g0 by cf0g1, and 
