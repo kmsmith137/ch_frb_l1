@@ -21,6 +21,8 @@ namespace ch_frb_l1 {
 
 
 extern bool file_exists(const std::string &filename);
+extern bool is_directory(const std::string &filename);
+extern bool is_empty_directory(const std::string &dirname);
 
 
 // -------------------------------------------------------------------------------------------------
