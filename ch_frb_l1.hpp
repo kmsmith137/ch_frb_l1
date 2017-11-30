@@ -24,6 +24,11 @@ extern bool file_exists(const std::string &filename);
 extern bool is_directory(const std::string &filename);
 extern bool is_empty_directory(const std::string &dirname);
 
+extern std::vector<std::string> listdir(const std::string &dirname);
+
+// Note: umask will be applied to 'mode'
+extern void makedir(const std::string &filename, bool throw_exception_if_directory_exists=true, mode_t mode=0777);
+
 
 // -------------------------------------------------------------------------------------------------
 //
