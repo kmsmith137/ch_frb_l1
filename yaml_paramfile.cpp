@@ -1,7 +1,6 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
-#include <sys/stat.h>
 
 #include "ch_frb_l1.hpp"
 
@@ -11,20 +10,6 @@ namespace ch_frb_l1 {
 #if 0
 }   // compiler pacifier
 #endif
-
-
-bool file_exists(const string &filename)
-{
-    struct stat s;
-
-    int err = stat(filename.c_str(), &s);
-    if (err >= 0)
-        return true;
-    if (errno == ENOENT)
-        return false;
-
-    throw runtime_error(filename + ": " + strerror(errno));
-}
 
 
 yaml_paramfile::yaml_paramfile(const string &filename_, int verbosity_) :
