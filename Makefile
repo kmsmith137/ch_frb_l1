@@ -35,6 +35,8 @@ endif
 #
 #
 
+SCRIPTS := ch-frb-make-acq-inventory
+
 # Is this the correct split into installed/non-installed?
 INSTALLED_BINARIES := ch-frb-l1 ch-frb-simulate-l0
 NON_INSTALLED_BINARIES := rpc-client test-l1-rpc sim-l0-set
@@ -95,10 +97,11 @@ clean:
 install: $(INSTALLED_BINARIES)
 	mkdir -p $(BINDIR)
 	rm -f $(BINDIR)/terminus-l1
+	for f in $(SCRIPTS); do cp $$f $(BINDIR)/; done
 	for f in $(INSTALLED_BINARIES); do cp $$f $(BINDIR)/; done
 
 uninstall:
-	for f in $(INSTALLED_BINARIES) terminus-l1; do rm -f $(BINDIR)/$$f; done
+	for f in $(INSTALLED_BINARIES) $(SCRIPTS) terminus-l1; do rm -f $(BINDIR)/$$f; done
 
 
 # These are files; don't apply implicit make rules
