@@ -8,8 +8,40 @@ and installation instructions.
 
 ### CONTENTS
 
+  - [The DRAO backend](#user-content-drao-backend)
   - [Starting the L1 server](#user-content-starting-the-l1-server)
+  - [Web services](#user-content-web-services)
   - [Cookbook of miscellaneous tasks](#user-content-cookbook-of-miscellaneous-tasks)
+
+<a name="drao-backend"></a>
+### The DRAO backend
+
+- Gateway machines: `tubular.drao.nrc.ca` and `liberty.drao.nrc.ca`.
+  All ssh connections to the outside world go through one of these machines!
+
+- L1 compute nodes: `cf0g0`, `cf0g1`, ..., `cf0g7`.  These machines are diskless and
+  share a root filesystem.  The root filesystem is mounted read-write on `cf0g0` and
+  mounted read-only on the other nodes.  Therefore, to make changes (such as recompiling,
+  editing a config file, etc.) you should use `cf0g0`, and the changes will automatically
+  appear on the other nodes.
+
+  There is also an SSD (actually two SSD's in RAID-0) in each compute node, mounted
+  at `/local`.
+
+- L1 head node: `cf0hn`.  This exports (via NFS) the root filesystem to the compute nodes,
+  and is used for a few other things, like rebooting the nodes (see "Cookbook of miscelleanous
+  tasks" below).
+
+- L4 node: `cf0g9`.  Our web services run here, and can be accessed from outside DRAO
+  using ad hoc ssh tunnels.  See [Web services](#user-content-web-services) below.
+
+- NFS server: `cf0fs`.  A central machine where L1 nodes can write data (although currently
+  we usually use the local SSD's in the L1 nodes instead of the NFS server).
+
+  Right now our NFS server is a pulsar node which has been retrofitted with a few HDD's.
+  It may be a little underpowered, but we have a much larger NFS server coming soon.
+
+- My `.ssh/config` looks something like [this](./doc/ssh_config.txt).
 
 <a name="starting-the-l1-server"></a>
 ### Starting the L1 server
@@ -38,7 +70,7 @@ and installation instructions.
   cd git/ch_frb_l1
   ./ch-frb-l1 -tv l1_configs/l1_production_16beam_0.yaml
   ```
-  By default, this will not stream incoming data to the local SSD.  To enable streaming,
+  By default, this will not stream incoming data to the local SSD.
 
 - **Example 2**: 16 beams, with "placeholder" RFI removal (detrenders but no clippers), and dedispersion
   using the least optimal settings (no spectral index search, no low-DM upsampled tree).  This won't work
@@ -61,9 +93,11 @@ and installation instructions.
   ./ch-frb-l1 l1_configs/l1_production_8beam_0.yaml rfi_configs/rfi_production_v1.json /data/bonsai_configs/bonsai_production_ups_nbeta2_v2.hdf5 l1b_placeholder
   ```
 
-### Starting and accessing web services
+<a name="web-services"></a>
+### Web services
 
 - Using the Dustin "webapp", for live L1 monitoring and control.
+
   There is a persistent instance of the webapp maintained by Dustin, which runs at port 5002 on cf0g9.
   Since this is behind the DRAO firewall, you'll need to create an ad hoc ssh tunnel.
   In a terminal window on your laptop, do:
@@ -83,6 +117,7 @@ and installation instructions.
   Then follow the instructions in the previous paragraph with 5002 replaced by PORT.
 
 - Using the Maya "web viewer", for viewing results of our offline analysis pipeline.
+
   There is a persistent instance of the web viewer maintained by Kendrick, which runs at port 5003 on cf0g9.
   The instructions are the same as the "Dustin webapp" case above, with 5002 replaced by 5003.
   (I.e. `ssh -L 5003:cf0g9:5003 tubular`, then point browser at `localhost:5003`.)
