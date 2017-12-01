@@ -24,6 +24,10 @@
 #include <fstream>
 #include <iomanip>
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <ifaddrs.h>
+
 #include <ch_frb_io_internals.hpp>
 #include <rf_pipelines.hpp>
 #include <bonsai.hpp>
@@ -365,6 +369,43 @@ l1_config::l1_config(int argc, char **argv)
     this->force_asynchronous_dedispersion = p.read_scalar<bool> ("force_asynchronous_dedispersion", false);
     this->track_global_trigger_max = p.read_scalar<bool> ("track_global_trigger_max", false);
     this->stream_acqname = p.read_scalar<string> ("stream_acqname", "");
+
+    // Convert network interface names in "ipaddr", eg, "eno2", into the interface's IP address.
+    for (int i=0; i<ipaddr.size(); i++) {
+        chlog("IP addr: " << ipaddr[i]);
+
+        struct in_addr inaddr;
+        if (inet_aton(ipaddr[i].c_str(), &inaddr) == 1) {
+            // Correctly parsed as dotted-decimal IP address.
+            continue;
+        }
+        chlog("YAML ipaddr entry \"" << ipaddr[i] << "\" not dotted IP address; looking up network interfaces");
+        
+        // Get list of network interfaces...
+        struct ifaddrs *interfaces, *iface;
+        if (getifaddrs(&interfaces)) {
+            chlog("Failed to getipaddrs\n");
+            exit(-1);
+        }
+        for (iface = interfaces; iface; iface = iface->ifa_next) {
+            chlog("Checking interface: " << iface->ifa_name);
+            if (string(iface->ifa_name) != ipaddr[i]) {
+                continue;
+            }
+            struct sockaddr* address = iface->ifa_addr;
+            if (address->sa_family != AF_INET) {
+                chlog("not INET");
+                continue;
+            }
+            struct sockaddr_in* inaddress = reinterpret_cast<struct sockaddr_in*>(address);
+            struct in_addr addr = inaddress->sin_addr;
+            char* addrstring = inet_ntoa(addr);
+            chlog("Found match with IP address: " << addrstring);
+            ipaddr[i] = string(addrstring);
+            break;
+        }
+        freeifaddrs(interfaces);
+    }
 
     // Lots of sanity checks.
     // First check that we have a consistent 'nstreams'.
