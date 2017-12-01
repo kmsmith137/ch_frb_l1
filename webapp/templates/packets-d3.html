@@ -351,9 +351,11 @@ function json_callback(X) {
     setTimeout('json_update()', update_period);
 }
 
+var group_l0 = 'node';
+
 // Make a JSON request for the packet matrix; call "json_callback"
 function json_update() {
-    d3.request('{{ packet_matrix_json_url }}')
+    d3.request('{{ packet_matrix_json_url }}?group_l0=' + group_l0)
         .mimeType("application/json")
         .response(function(xhr) { return JSON.parse(xhr.responseText); })
         .get(json_callback);
