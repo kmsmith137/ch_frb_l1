@@ -2,6 +2,6 @@
 
 for ((;;)); do
     echo "Starting cnc.py..."
-    python cnc.py $*
+    python webapp/cnc.py $*
     sleep 10
 done
