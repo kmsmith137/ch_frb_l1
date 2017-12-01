@@ -29,7 +29,8 @@ extern std::vector<std::string> listdir(const std::string &dirname);
 // Note: umask will be applied to 'mode'
 extern void makedir(const std::string &filename, bool throw_exception_if_directory_exists=true, mode_t mode=0777);
 
-
+extern std::string acqname_to_filename_pattern(const std::string &acqname,
+                                               const std::vector<int> &beam_ids);
 // -------------------------------------------------------------------------------------------------
 //
 // Inlines

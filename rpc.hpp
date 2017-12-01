@@ -79,6 +79,11 @@
 
      Returns a PacketRate struct
 
+ * stream(string acq_name)
+
+     Starts streaming data to the given acquisition name *acq_name*.
+     An empty string halts streaming.
+
  * list_chunks(void)
 
      Retrieves the list of chunks in the ring buffers of this L1 node.

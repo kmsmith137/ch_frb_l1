@@ -9,7 +9,7 @@
 #include <msgpack.hpp>
 
 #include "ch_frb_io.hpp"
-
+#include "ch_frb_l1.hpp"
 #include "l1-rpc.hpp"
 #include "rpc.hpp"
 #include "chlog.hpp"
@@ -409,6 +409,19 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         }
         return 0;
 
+    } else if (funcname == "stream") {
+        // grab acq_name argument
+        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
+        string acq_name = oh.get().as<string>();
+        chlog("Stream to: \"" << acq_name << "\"");
+        if (acq_name.size() == 0) {
+            // Turn off streaming
+            _stream->stream_to_files("", 0);
+        } else {
+            string pattern = ch_frb_l1::acqname_to_filename_pattern(acq_name, _stream->ini_params.beam_ids);
+            _stream->stream_to_files(pattern, 0);
+        }
+        
     } else if (funcname == "get_packet_rate") {
         // grab *start* and *period* arguments
         msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
