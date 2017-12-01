@@ -79,6 +79,7 @@ writing-mode: vertical-lr;
 <p>Launch and follow a command on cf0g0:</p>
 <input type="text" id="cnc_follow" size="50" value="for ((i=1;;i++)); do echo $i; sleep 1; done" />
 <span id="cnc_follow_status"></span><br />
+<input type="button" id="cnc_follow_kill" value="Kill" disabled="true">
 <p id="cnc_follow_output"></p>
 <table border="1"><tr>
 {% for i,n in ecnodes %}
@@ -121,6 +122,10 @@ function cnc_callback(stat, output, err, X) {
     $(output).html(ss);
 }
 
+var follow_pids = [];
+
+// This gets called when we get the reply to our request to start
+// following processes on the L1 nodes.
 function cnc_follow_callback(stat, output, err, X) {
     console.log('cnc_follow_callback: err ' + err + ', result ' + X);
     $(stat).html('Received results.');
@@ -137,6 +142,8 @@ function cnc_follow_callback(stat, output, err, X) {
             rtn = res[0];
             pid = res[1];
             err = res[2];
+
+	    follow_pids.push([server, pid]);
         }
         ss += 'server ' + server + ': return value ' + rtn + '<br/>';
         if (pid != null)
@@ -218,9 +225,18 @@ $('#cnc_follow').keyup(function(event) {
             .response(function(xhr) { return JSON.parse(xhr.responseText); })
             .post("cmd=" + encodeURIComponent($('#cnc_follow').val()) + "&launch=yes&captive=yes",
 		  function(err,X){ cnc_follow_callback('#cnc_follow_status', '#cnc_follow_output', err, X)});
+	$('#cnc_follow_kill').attr('disabled', false);
     }
 });
 
+$('#cnc_follow_kill').click(function(event) {
+    $('#cnc_follow_kill').attr('disabled', true);
+    d3.request('{{ cnc_kill_url }}')
+        .mimeType("application/json")
+        .response(function(xhr) { return JSON.parse(xhr.responseText); })
+        .post(JSON.stringify(follow_pids));
+    follow_pids = [];
+});
                               
 </script>
 
