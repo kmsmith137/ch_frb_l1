@@ -115,7 +115,8 @@ def main(addr):
                     except Empty:
                         pass
                     #print('Got from queue:', out)
-                    out = '\n'.join(out)
+                    #out = '\n'.join(out)
+                    out = ''.join(out)
                     err = []
                     try:
                         while True:
@@ -124,7 +125,8 @@ def main(addr):
                     except Empty:
                         pass
                     #print('Got from err queue:', err)
-                    err = '\n'.join(err)
+                    #err = '\n'.join(err)
+                    err = ''.join(err)
                     reply = (proc.returncode, out, err)
 
             elif func == 'kill':

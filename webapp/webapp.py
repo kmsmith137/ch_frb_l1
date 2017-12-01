@@ -113,8 +113,9 @@ def index():
 def cnc_kill():
     if request.method != 'POST':
         return 'POST only'
-    pids = request.json
+    pids = request.get_json()
     print('CNC_kill:', pids)
+    pids = dict(pids)
     from cnc_client import CncClient
     client = CncClient(ctx=app.zmq)
     results = client.kill(pids, timeout=3000)

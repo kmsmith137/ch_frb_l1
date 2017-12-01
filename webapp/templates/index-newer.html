@@ -81,9 +81,20 @@ writing-mode: vertical-lr;
 <span id="cnc_follow_status"></span><br />
 <input type="button" id="cnc_follow_kill" value="Kill" disabled="true">
 <p id="cnc_follow_output"></p>
-<table border="1"><tr>
+<table border="1">
+<tr>
 {% for i,n in ecnodes %}
-<td id="cnc_follow_{{ i }}">Node {{ i }}</td>
+<td>Node {{ i }}</td>
+{% endfor %}
+</tr><tr>
+{% for i,n in ecnodes %}
+<td id="cnc_follow_pid_{{ i }}" class="cnc_follow_pids">-</td>
+{% endfor %}
+</tr><tr>
+{% for i,n in ecnodes %}
+{#<td id="cnc_follow_{{ i }}" class="cnc_follow_outs"> </td>
+#}
+<td valign="top"><pre id="cnc_follow_{{ i }}" class="cnc_follow_outs"> </pre></td>
 {% endfor %}
 </tr></table>
 
@@ -129,7 +140,7 @@ var follow_pids = [];
 function cnc_follow_callback(stat, output, err, X) {
     console.log('cnc_follow_callback: err ' + err + ', result ' + X);
     $(stat).html('Received results.');
-    ss = '<pre>';
+    //ss = '<pre>';
     for (var i=0; i<X.length; i++) {
         xi = X[i];
         server = xi[0];
@@ -145,19 +156,21 @@ function cnc_follow_callback(stat, output, err, X) {
 
 	    follow_pids.push([server, pid]);
         }
-        ss += 'server ' + server + ': return value ' + rtn + '<br/>';
+        //ss += 'server ' + server + ': return value ' + rtn + '<br/>';
         if (pid != null)
-            ss += 'pid ' + pid + '<br/>';
-        ss += '<br/>';
-        if (pid == null)
-            continue;
-
+            //ss += 'pid ' + pid + '<br/>';
+	    $('#cnc_follow_pid_' + i).html(pid);
+        //ss += '<br/>';
+        if (pid == null) {
+	    $('#cnc_follow_pid_' + i).html('(failed)');
+	    $('#cnc_follow_' + i).html(rtn + err);
+	}
         // Start following!
         server = server.replace('tcp://', '');
         follow_request(server, pid, '#cnc_follow_' + i);
     }
-    ss += '</pre>';
-    $(output).html(ss);
+    //ss += '</pre>';
+    //$(output).html(ss);
 }
 
 function follow_request(server, pid, nodeid) {
@@ -168,7 +181,7 @@ function follow_request(server, pid, nodeid) {
 }
 
 function follow_callback(server, pid, nodeid, X) {
-    console.log('Follow callback for ' + server + ', pid ' + pid + ': ' + X);
+    //console.log('Follow callback for ' + server + ', pid ' + pid + ': ' + X);
     if (X == null) {
         setTimeout(function(){ follow_request(server, pid, nodeid); }, 2000);
         return;
@@ -177,10 +190,10 @@ function follow_callback(server, pid, nodeid, X) {
     out = X[1];
     err = X[2];
     ss = '';
-    console.log('err: ' + err);
+    //console.log('err: ' + err);
     again = true;
     if (out != null)
-        ss += out.replace('\n','<br/>') + '<br/>';
+	ss += out; //.replace('\n','<br/>') + '<br/>';
     if ((err != null) && (err.length > 0))
         ss += '<font color="red">' + err + '</font>';
     if (rtn != null) {
@@ -219,6 +232,8 @@ $('#cnc_launch').keyup(function(event) {
 $('#cnc_follow').keyup(function(event) {
     if (event.keyCode == 13){
         $('#cnc_follow_status').html('Sending command...');
+	$('.cnc_follow_pids').html('-');
+	$('.cnc_follow_outs').html(' ');
         d3.request('{{ cnc_run_url }}')
             .header("Content-Type", "application/x-www-form-urlencoded")
             .mimeType("application/json")
@@ -230,9 +245,12 @@ $('#cnc_follow').keyup(function(event) {
 });
 
 $('#cnc_follow_kill').click(function(event) {
-    $('#cnc_follow_kill').attr('disabled', true);
+    //$('#cnc_follow_kill').attr('disabled', true);
+    console.log('Sending kill JSON: ' + JSON.stringify(follow_pids));
+    $('#cnc_follow_status').html('Killing processes...');
     d3.request('{{ cnc_kill_url }}')
         .mimeType("application/json")
+	.header('Content-Type', 'application/json')
         .response(function(xhr) { return JSON.parse(xhr.responseText); })
         .post(JSON.stringify(follow_pids));
     follow_pids = [];
