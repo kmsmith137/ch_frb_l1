@@ -106,7 +106,19 @@ def index():
                            packet_matrix_d3_url='/packet-matrix-d3',
                            cnc_run_url='/cnc-run',
                            cnc_follow_url='/cnc-poll',
+                           cnc_kill_url='/cnc-kill',
         )
+
+@app.route('/cnc-kill', methods=['POST'])
+def cnc_kill():
+    if request.method != 'POST':
+        return 'POST only'
+    pids = request.json
+    print('CNC_kill:', pids)
+    from cnc_client import CncClient
+    client = CncClient(ctx=app.zmq)
+    results = client.kill(pids, timeout=3000)
+    return jsonify(results)
 
 @app.route('/cnc-run', methods=['POST',
                                 # debug

@@ -21,18 +21,8 @@ def enqueue_output(out, queue):
         queue.put(line)
     out.close()
 
-if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--address', default='tcp://*:9999')
-    parser.add_argument('--port', default=0)
-    opt = parser.parse_args()
 
-    if opt.port:
-        addr = 'tcp://*:' + str(opt.port)
-    else:
-        addr = opt.address
-    
+def main(addr):
     context = zmq.Context()
     socket = context.socket(zmq.REP)
     print('Binding', addr)
@@ -137,12 +127,42 @@ if __name__ == '__main__':
                     err = '\n'.join(err)
                     reply = (proc.returncode, out, err)
 
+            elif func == 'kill':
+                pid = msg[1]
+                if not pid in captive_procs:
+                    print('Request to kill PID', pid, 'not in captive procs; ignore')
+                    reply = None
+                else:
+                    proc = captive_procs[pid]
+                    proc.terminate()
+                    reply = True
+
             elif func == 'quit':
                 print('Quitting!')
-                sys.exit(0)
+                return 0
+
+            else:
+                print('Unknown function "%s"' % func)
+
         except:
             import traceback
             traceback.print_exc()
         # Send reply
         msg = msgpack.packb(reply)
         socket.send(msg)
+
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--address', default='tcp://*:9999')
+    parser.add_argument('--port', default=0)
+    opt = parser.parse_args()
+
+    if opt.port:
+        addr = 'tcp://*:' + str(opt.port)
+    else:
+        addr = opt.address
+
+    sys.exit(main(addr))
+
