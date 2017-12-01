@@ -25,4 +25,4 @@ export FLASK_DEBUG=1
 
 export PYTHONPATH=${PYTHONPATH}:.
 
-flask run --host 0.0.0.0 --port 5002
+flask run --host 0.0.0.0 --port 5002 #--with-threads

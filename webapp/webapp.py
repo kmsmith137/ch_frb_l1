@@ -113,6 +113,7 @@ def index():
 @app.route('/l0-node-map')
 def l0_node_map():
     return render_template('l0-node-map.html',
+                           packet_matrix_json_url='/packet-matrix.json',
                            racks=list(enumerate(['%x' % x for x in range(15)])),
                            nodesperrack=[0,1,2,3,4,5,6,7,8,9])
 
@@ -226,15 +227,15 @@ def get_packet_matrix(group_l0=None):
             senders = p.packets.keys()
             for s in senders:
                 # ip:port
-                ip = s.split(':')[0]
+                ip,port = s.split(':')
                 # a.b.c.d
-                abcd = [int(x) for x in s.split('.')]
+                abcd = [int(x) for x in ip.split('.')]
                 # L0 nodes have aliases 10.[6789].x.y == 10.1.x.y
                 if abcd[1] in [6,7,8,9]:
                     abcd[1] = 1
                 ip = '.'.join(str(x) for x in abcd)
-                sender_map[s] = sgroup
-        print('Applying sender map:', sender_map)
+                sender_map[s] = ip + ':' + port
+        #print('Applying sender map:', sender_map)
         for i,p in enumerate(rates):
             if p is None:
                 continue

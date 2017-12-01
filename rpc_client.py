@@ -191,6 +191,7 @@ class RpcClient(object):
         if not wait:
             return tokens
         parts = self.wait_for_tokens(tokens, timeout=timeout)
+        #print('parts:', parts)
         # We expect one message part for each token.
         return [PacketRate(msgpack.unpackb(p[0])) if p is not None else None
                 for p in parts]
