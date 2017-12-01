@@ -40,7 +40,7 @@ def main(addr):
     poll.register(socket, zmq.POLLIN)
 
     while True:
-        print('Waiting for request...')
+        #print('Waiting for request...')
         events = poll.poll(timeout=5000)
         if len(events) == 0:
             # timed out
