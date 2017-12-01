@@ -22,6 +22,7 @@
 
 #include <thread>
 #include <fstream>
+#include <iomanip>
 
 #include <ch_frb_io_internals.hpp>
 #include <rf_pipelines.hpp>
@@ -48,6 +49,76 @@ static void usage()
 	 << "     dedispersion, or L1B (if -t is specified, then the last 3 arguments are optional)\n";
 
     exit(2);
+}
+
+
+// The L1 server defines a parameter 'stream_acqname'.  If this is a nonempty string,
+// then the L1 server will stream all of its incoming data to filenames of the form
+//
+//   /local/acq_data/(ACQNAME)/beam_(BEAM)/chunk_(CHUNK).msg      (*)
+//
+// This filename pattern is expected by the script 'ch-frb-make-acq-inventory', which
+// is the first step in postprocessing the captured data with our "offline" pipeline.
+//
+// The stream_acqname is implemented using a more general feature of ch_frb_io, which
+// allows a general stream_filename_pattern of the form (*) to be specified.
+//
+// The helper function acqname_to_filename_pattern() does three things:
+//
+//   - does some sanity checks on the acqname and throws an exception if anything goes wrong
+//     (most importantly, checking that an acquisition by the same name doesn't already
+//     exist, and that the proper filesystem is mounted)
+// 
+//   - creates acqdir if it doesn't already exist, and beam subdirs corresponding
+//     to the server's beam ids
+//
+//   - returns the ch_frb_io 'stream_filename_pattern' corresponding to the given
+//     ch_frb_l1 acqname.
+
+static string acqname_to_filename_pattern(const string &acqname, const vector<int> &beam_ids)
+{
+    // FIXME currently hardcoded, should be a config parameter 'stream_acqdir_base'.
+    static const string acqdir_base = "/local/acq_data";
+
+    if (acqname.size() == 0)
+	return string();  // no acqname specified, map empty string to empty string
+
+    if (!file_exists(acqdir_base))
+	throw runtime_error("ch-frb-l1: acqdir_base " + acqdir_base + " does not exist (probably need to mount device)");
+    if (!is_directory(acqdir_base))
+	throw runtime_error("ch-frb-l1: acqdir_base " + acqdir_base + " exists but is not a directory?!");
+
+    string acqdir = acqdir_base + "/" + acqname;
+    makedir(acqdir, false);  // throw_exception_if_directory_exists=false
+    
+    if (!is_empty_directory(acqdir)) {
+	// We throw an exception if acqdir exists and is a nonempty directory,
+	// unless it just contains some empty directories.
+
+	for (const auto &d: listdir(acqdir)) {
+	    if ((d == ".") || (d == ".."))
+		continue;
+	    
+	    string subdir = acqdir + "/" + d;
+
+	    if (!is_directory(subdir) || !is_empty_directory(subdir))
+		throw runtime_error("ch-frb-l1: acqdir " + acqdir + " already exists and is nonempty");
+	}
+    }
+
+    for (int beam_id: beam_ids) {
+	// FIXME it would be better to do directory creation on-the-fly in ch_frb_io.
+	// (At some point this will be necessary, to implement on-the-fly beam_ids.)
+
+	stringstream beamdir_s;
+	beamdir_s << acqdir << "/beam_" << setfill('0') << setw(4) << beam_id;
+	
+	string beamdir = beamdir_s.str();
+	makedir(beamdir, false);   // throw_exception_if_directory_exists=false
+    }
+
+    // ch_frb_io 'stream_filename_pattern' corresponding to the given ch_frb_l1 acqname
+    return acqdir + "/beam_(BEAM)/chunk_(CHUNK).msg";
 }
 
 
@@ -161,10 +232,12 @@ struct l1_config
     // the L1 server exits, it will print the (DM, arrival time) of the most significant FRB.
     bool track_global_trigger_max = false;
 
-    // Also intended for debugging.  If the optional parameter 'stream_filename_pattern'
-    // is specified, then the L1 server will auto-stream all chunks to disk.  Warning:
+    // Also intended for debugging.  If the optional parameter 'stream_acqname' is
+    // specified, then the L1 server will auto-stream all chunks to disk.  Warning:
     // it's very easy to use a lot of disk space this way!
-    string stream_filename_pattern;
+
+    string stream_acqname;            // specified in config file
+    string stream_filename_pattern;   // derived from 'stream_acqname'
 
     void _have_warnings() const;
 };
@@ -291,7 +364,7 @@ l1_config::l1_config(int argc, char **argv)
     this->l1b_pipe_blocking = p.read_scalar<bool> ("l1b_pipe_blocking", false);
     this->force_asynchronous_dedispersion = p.read_scalar<bool> ("force_asynchronous_dedispersion", false);
     this->track_global_trigger_max = p.read_scalar<bool> ("track_global_trigger_max", false);
-    this->stream_filename_pattern = p.read_scalar<string> ("stream_filename_pattern", "");
+    this->stream_acqname = p.read_scalar<string> ("stream_acqname", "");
 
     // Lots of sanity checks.
     // First check that we have a consistent 'nstreams'.
@@ -486,6 +559,10 @@ l1_config::l1_config(int argc, char **argv)
 
     if (have_warnings)
 	_have_warnings();
+
+    // I put this last, since it creates directories.
+    this->stream_filename_pattern = acqname_to_filename_pattern(stream_acqname, beam_ids);
+    cout << "XXX stream_filename_pattern = " << stream_filename_pattern << endl;
 }
 
 
@@ -957,7 +1034,8 @@ void l1_server::make_input_streams()
 	ini_params.output_devices = this->output_devices;
 	ini_params.sleep_hack = this->sleep_hack;
 	
-	// Setting this flag means that an exception will be thrown if either:
+	// Setting the 'throw_exception_on_buffer_drop' flag means that an exception 
+	// will be thrown if either:
 	//
 	//    1. the unassembled-packet ring buffer between the network and
 	//       assembler threads is full (i.e. assembler thread is running slow)
@@ -970,8 +1048,11 @@ void l1_server::make_input_streams()
 	// Note that in situation (2), the pipeline will crash anyway since
 	// rf_pipelines doesn't contain code to handle gaps in the data.  This
 	// is something that we'll fix soon, but it's nontrivial.
-	
-	ini_params.throw_exception_on_buffer_drop = true;
+	//
+	// We currently set the flag in the "normal" case, but leave it un-set
+	// for the "toy" server (ch-frb-l1 -t).
+
+	ini_params.throw_exception_on_buffer_drop = !config.tflag;
 
 	input_streams[istream] = ch_frb_io::intensity_network_stream::make(ini_params);
 	

@@ -1,3 +1,11 @@
+- v8
+  - Replace 'stream_filename_pattern' config_param by 'stream_acqname'
+  - Scripting framework for postprocessing real-time server with offline analysis pipeline
+  - See OPERATIONS_MANUAL.md for instructions!
+
+- v7
+  - Update toy-l1b.py to show how to get fpga counts in L1B
+
 - v6
   - From Dustin: packet_count history RPC + web viewer
 

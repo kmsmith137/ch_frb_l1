@@ -1,4 +1,4 @@
-# This is "example 4" to run on the 8-node system, described in MANUAL.md.
+# This is "example 5" to run on the 8-node system, described in MANUAL.md.
 
 # This is a production-scale example which will monopolize 4 x 20-core
 # nodes cf0g[0-3] acting as receivers and cf0g[4-7] acting as senders.
@@ -23,6 +23,7 @@ ipaddr: [ "10.6.200.11",
 	  "10.7.200.11",
 	  "10.8.200.11",
 	  "10.9.200.11" ]
+
 port: 6677
 
 rpc_address: [ "tcp://10.6.200.11:5555", 
@@ -73,11 +74,11 @@ l1b_buffer_nsamples: 4000
 l1b_pipe_timeout: 0
 
 
-# stream_filename_pattern
+# stream_acqname.
 #
-# If this is uncommented, the L1 node will continuously stream all of its
-# data to disk.  The first line below streams to SSD, and the second line
-# streams to NFS.
+# If the line below is uncommented, the node will continuously stream all incoming data
+# to its local SSD.  The stream_acqname should be a unique identifying string which is
+# not the same as any existing acquisition on the node.  The data will be written to
+# /local/acq_data/$(stream_acqname).
 
-# stream_filename_pattern: "/ssd/kmsmith/chunk_(BEAM)_(CHUNK)_(NCHUNK).msg"
-# stream_filename_pattern: "/frb-archiver-(STREAM)/kmsmith/dir0/chunk_(BEAM)_(CHUNK)_(NCHUNK).msg"
+# stream_acqname: "test_acq"

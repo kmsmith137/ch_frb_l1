@@ -1,0 +1,167 @@
+<!doctype html>
+<html>
+<head>
+<title>CHIME FRB L1 status</title>
+<script type="text/javascript" src="{{ url_for('static', filename='jquery.js') }}"></script>
+<script type="text/javascript" src="{{ url_for('static', filename='d3.min.js') }}"></script>
+</head>
+
+<style>
+table {
+    border-collapse: collapse;
+}
+th, td {
+    padding: 5px;
+    text-align: left;
+}
+</style>
+
+<body>
+
+<p>
+<input type="button" onClick="stopUpdating()"  value="Stop updating" />
+<input type="button" onClick="startUpdating()" value="Start updating"/>
+</p>
+
+<p>Max rate: <span id="l0_max">---</span></p>
+
+<table><tr>
+<td id="r0">0%</td>
+<td id="r25">25%</td>
+<td id="r50">50%</td>
+<td id="r75">75%</td>
+<td id="r100">100%</td>
+</tr></table>
+
+<h3>GPU-North</h3>
+<table border="1">
+<tr>
+{% for rnum,rname in racks %}
+<th>Rack {{ rname }}/{{ rnum }}</th>
+{% endfor %}
+</tr>
+{% for node in nodesperrack %}
+  <tr>
+  {% for rnum,rname in racks %}
+  <td id="ip10.1.{{rnum}}.1{{node}}">10.1.{{rnum}}.1{{node}} cn{{rname}}g{{node}}</td>
+  {% endfor %}
+  </tr>
+{% endfor %}
+</table>
+
+<h3>GPU-South</h3>
+<table border="1">
+<tr>
+{% for rnum,rname in racks %}
+<th>Rack {{ rname }}/{{ rnum }}</th>
+{% endfor %}
+</tr>
+{% for node in nodesperrack %}
+  <tr>
+  {% for rnum,rname in racks %}
+  <td id="ip10.1.{{ rnum + 100 }}.1{{node}}">10.1.{{rnum + 100}}.1{{node}} cs{{rname}}g{{node}}</td>
+  {% endfor %}
+  </tr>
+{% endfor %}
+</table>
+
+<hr />
+
+</body>
+
+<script type="text/javascript">
+
+// Are we updating the plot?
+var do_update = true;
+
+// How many milliseconds between updates?
+var update_period = 2000;
+
+// Handle the JSON data when we're updating the matrix.
+function json_callback(X) {
+    console.log('JSON callback: ' + X);
+
+    if (!do_update) {
+        return;
+    }
+    
+    if (X == null) {
+        setTimeout('json_update()', update_period);
+        return;
+    }
+    
+    packets = X['packets'];
+
+    // 'packets' is a matrix -- L1 elements long (rows) and L0
+    // elements wide (cols).  Copy to the "matrix_data" array.
+    // set matrix to zeros to start
+
+    var l0_total = [];
+    for (var i=0; i<packets.length; i++) {
+	var row = packets[i];
+	// yuck
+	if (i == 0) {
+	    for (var j=0; j<row.length; j++) {
+		l0_total[j] = 0;
+	    }
+	}
+	for (var j=0; j<row.length; j++) {
+	    l0_total[j] += row[j];
+	}
+    }
+    var l0_max = 0;
+    for (var j=0; j<l0_total.length; j++) {
+	l0_max = Math.max(l0_max, l0_total[j]);
+    }
+    $('#l0_max').html(l0_max);
+
+    ips = X['l0_ip'];
+    for (var j=0; j<l0_total.length; j++) {
+	//$('#' + ips[j]).attr('bgcolor', colormap(l0_total[j], l0_max));
+	//$('#ip' + ips[j]).attr('fill', colormap(l0_total[j], l0_max));
+	d3.select('#ip' + ips[j]).style('background-color', colormap(l0_total[j], l0_max));
+    }
+}
+
+function colormap(rate, maxrate) {
+    var frac = rate / maxrate;
+    //var blue = 128 + Math.round(127 * frac);
+    //return 'rgb(128,128,' + blue + ')';
+    var x = 128 + Math.round(127 * (1 - frac));
+    return 'rgb('+x+','+x+',255)';
+}
+
+//$('#10.1.0.10').attr('fill', colormap(1, 2));
+//$('#10.1.0.10').attr('style', 'background-color=' + colormap(1, 2));
+//d3.select('#10.1.0.10').style('fill', colormap(1,2));
+//d3.select('#ip10_1_0_10').style('fill', colormap(1,2));
+//d3.select('#ip10_1_0_10').style('background-color', colormap(0,2));
+d3.select('#r0').style('background-color', colormap(0,4));
+d3.select('#r25').style('background-color', colormap(1,4));
+d3.select('#r50').style('background-color', colormap(2,4));
+d3.select('#r75').style('background-color', colormap(3,4));
+d3.select('#r100').style('background-color', colormap(4,4));
+
+// Make a JSON request for the packet matrix; call "json_callback"
+function json_update() {
+    d3.request('{{ packet_matrix_json_url }}?group_l0=node')
+        .mimeType("application/json")
+        .response(function(xhr) { return JSON.parse(xhr.responseText); })
+        .get(json_callback);
+}
+
+// Fetch first data set!
+json_update();
+
+function startUpdating() {
+    do_update = true;
+    json_update();
+}
+function stopUpdating() {
+    do_update = false;
+}
+
+</script>
+
+
+</html>
