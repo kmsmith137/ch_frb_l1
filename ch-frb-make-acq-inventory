@@ -1,0 +1,212 @@
+#!/usr/bin/env python
+
+import os
+import re
+import sys
+import time
+import json
+import errno
+import rf_pipelines
+
+
+input_acqdir = '/local/acq_data'
+output_json_dir = '/local/acq_json'   # note: must not end in trailing slash, for next line of code to work...
+backup_json_dir = '%s_deleteme_%s' % (output_json_dir, time.strftime('%y-%m-%d-%X'))
+
+
+####################################################################################################
+
+
+def xmakedirs(name):
+    """A version of os.makedirs() which does not raise an exception if the directory already exists."""
+
+    # Ensures correct handling of
+    #   makedirs(os.path.dirname(f))
+    # in the case where f is just an ordinary filename with no slashes
+
+    if name == '':
+        return
+
+    try:
+        os.makedirs(name)
+    except OSError, exc:
+        if (exc.errno != errno.EEXIST) or not os.path.isdir(name):
+            raise
+
+
+def write_runlist(json_filename, run_list):
+    f = open(json_filename, 'w')
+    json.dump(run_list, f, indent=4)
+    print >>f, ''  # extra newline
+    f.close()
+    print 'wrote %s' % json_filename
+
+
+####################################################################################################
+
+
+class beamdir:
+    def __init__(self, parent_abspath, beamdir_basename):
+        self.parent_abspath = parent_abspath
+        self.beamdir_basename = beamdir_basename
+        self.beamdir_abspath = os.path.join(parent_abspath, beamdir_basename)
+        self.data_file_list = [ ]    # list of basenames (not abspaths)
+
+        h = { }
+
+        for f in os.listdir(self.beamdir_abspath):
+            m = re.match(r'chunk_(\d+).msg', f)
+
+            if not m:
+                f = os.path.join(self.beamdir_abspath, f)
+                print >>sys.stderr, 'warning: stray file %s in acquisition directory' % f
+                continue
+
+            n = int(m.group(1))
+
+            if h.has_key(n):
+                f1 = os.path.join(self.beamdir_abspath, f)
+                f2 = os.path.join(self.beamdir_abspath, h[n])
+                raise RuntimeError('ambiguous file pair (%s, %s)' % (f1,f2))
+
+            h[n] = f
+
+        nlist = sorted(h.keys())
+
+        if len(nlist) == 0:
+            return
+
+        if nlist != range(min(nlist), max(nlist)+1):
+            raise RuntimeError('non-contiguous time indices in acquisition directory %s' % self.beamdir_abspath)
+
+        self.data_file_list = [ h[n] for n in nlist ]
+
+
+    def __len__(self):
+        return len(self.data_file_list)
+
+    def __repr__(self):
+        return "beamdir('%s', files=[%s .. %s])" % (self.beamdir_abspath, self.data_file_list[0], self.data_file_list[-1])
+
+    def write_json_file(self, json_filename):
+        fl = [ os.path.join(self.beamdir_abspath, f) for f in self.data_file_list ]
+        stream = rf_pipelines.chime_frb_stream_from_filename_list(fl)  # rf_pipelines stream object
+        rf_pipelines.utils.json_write(json_filename, stream, clobber=True, verbose=True)
+
+
+class acqdir:
+    def __init__(self, parent_abspath, acqdir_basename):
+        self.parent_abspath = parent_abspath
+        self.acqdir_basename = acqdir_basename
+        self.acqdir_abspath = os.path.join(parent_abspath, acqdir_basename)
+        self.beamdir_hash = { }   # hash (integer beam_id) -> (beamdir object)
+
+        for beamdir_basename in os.listdir(self.acqdir_abspath):
+            beamdir_abspath = os.path.join(self.acqdir_abspath, beamdir_basename)
+
+            m = re.match(r'beam_(\d+)$', beamdir_basename)
+            if not m:
+                continue
+            if not os.path.isdir(beamdir_abspath):
+                continue
+
+            n = int(m.group(1))
+            if (n < 0) or (n >= 10000):
+                raise RuntimeError('bad beam id %d (appearing in filename %s)' % (n, beamdir_abspath))
+
+            if self.beamdir_hash.has_key(n):
+                d1 = self.beamdir_hash[n].beamdir_abspath
+                d2 = beamdir_abspath
+                raise RuntimeError('ambiguous directory pair (%s, %s)' % (d1,d2))
+
+            bd = beamdir(self.acqdir_abspath, beamdir_basename)
+            if len(bd) == 0:
+                continue
+
+            self.beamdir_hash[n] = bd
+
+
+    def __len__(self):
+        return len(self.beamdir_hash)
+
+    def __repr__(self):
+        return "acqdir('%s', %s)" % (self.parent_abspath, self.beamdir_hash)
+
+    def write_json_files(self, json_dir):
+        """Returns runlist, i.e. list of (run_name, json_relpath) pairs."""
+
+        xmakedirs(json_dir)
+        ret = [ ]
+
+        for (beam_id, bd) in sorted(self.beamdir_hash.iteritems()):
+            run_name = '%s_beam%d' % (self.acqdir_basename, beam_id)
+            json_relpath = ('beam%d.json' % beam_id)
+            json_abspath = os.path.join(json_dir, json_relpath)
+
+            bd.write_json_file(json_abspath)
+            ret.append((run_name, json_relpath))
+
+        runlist_filename = os.path.join(json_dir, ('%s_runlist.json' % self.acqdir_basename))
+        write_runlist(runlist_filename, ret)
+
+        return ret
+
+
+class toplevel_dir:
+    def __init__(self, toplevel_abspath):
+        self.toplevel_abspath = toplevel_abspath
+        self.acqdir_hash = { }   # hash (acq_name) -> (acqdir object)
+
+        for acqdir_basename in os.listdir(toplevel_abspath):
+            acqdir_abspath = os.path.join(toplevel_abspath, acqdir_basename)
+            if not os.path.isdir(acqdir_abspath):
+                continue
+
+            ad = acqdir(toplevel_abspath, acqdir_basename)
+            if len(ad) > 0:
+                self.acqdir_hash[acqdir_basename] = ad
+
+    def __len__(self):
+        return len(self.acqdir_hash)
+
+    def __repr__(self):
+        return "toplevel_dir('%s', %s)" % (self.toplevel_abspath, self.acqdir_hash)
+    
+    def write_json_files(self, json_dir):
+        master_run_list = [ ]
+
+        for (acq_name, ad) in sorted(self.acqdir_hash.iteritems()):
+            run_list = ad.write_json_files(os.path.join(json_dir, acq_name))
+            run_list = [ (run_name, os.path.join(ad.acqdir_basename,f)) for (run_name,f) in run_list ]
+            master_run_list.extend(run_list)
+
+        runlist_filename = os.path.join(json_dir, 'master_runlist.json')
+        write_runlist(runlist_filename, master_run_list)
+
+
+####################################################################################################
+
+
+print >>sys.stdout, 'Inspecting %s, this may take a minute...' % input_acqdir
+sys.stdout.flush()
+
+a = toplevel_dir(input_acqdir)
+backup_flag = False
+
+if len(a) == 0:
+    print 'No acq files found!'
+    sys.exit(0)
+
+if os.path.exists(output_json_dir):
+    assert not os.path.exists(backup_json_dir)
+    os.rename(output_json_dir, backup_json_dir)
+    
+    assert not os.path.exists(output_json_dir)
+    backup_flag = True
+
+try:
+    a.write_json_files('/local/acq_json')
+finally:
+    if backup_flag:
+        print "Note: old version of '%s' has been backed up as '%s', and you'll need to delete this latter directory by hand (this will be fixed eventually)" % (output_json_dir, backup_json_dir)
+

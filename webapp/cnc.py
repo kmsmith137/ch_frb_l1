@@ -1,33 +1,38 @@
 from __future__ import print_function
 import zmq
 import msgpack
-
-# try:
-#     # python2
-#     import subprocess32 as subprocess
-# except:
-#     import subprocess
 import subprocess
+from threading  import Thread
+import sys
 
-if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--address', default='tcp://*:9999')
-    parser.add_argument('--port', default=0)
-    opt = parser.parse_args()
+try:
+    # py2
+    from Queue import Queue, Empty
+except ImportError:
+    # py3
+    from queue import Queue, Empty
 
-    if opt.port:
-        addr = 'tcp://*:' + str(opt.port)
-    else:
-        addr = opt.address
-    
+# Apparently, there's not a really simple clean way of doing
+# non-blocking reads from subprocess PIPEs, so we launch a thread for
+# each pipe and jam lines into a queue.
+def enqueue_output(out, queue):
+    for line in iter(out.readline, b''):
+        #print('Read from pipe:', line)
+        queue.put(line)
+    out.close()
+
+
+def main(addr):
     context = zmq.Context()
     socket = context.socket(zmq.REP)
     print('Binding', addr)
     socket.bind(addr)
 
-    # don't know if this is necessary... launched process handles
+    # processes we have launched
     launched_procs = []
+
+    # pid -> (proc, stdoutq, stderrq)
+    captive_procs = {}
 
     # use a poller with timeout to periodically check whether
     # launched_procs have terminated...
@@ -35,7 +40,7 @@ if __name__ == '__main__':
     poll.register(socket, zmq.POLLIN)
 
     while True:
-        print('Waiting for request...')
+        #print('Waiting for request...')
         events = poll.poll(timeout=5000)
         if len(events) == 0:
             # timed out
@@ -62,18 +67,84 @@ if __name__ == '__main__':
                 #res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
                 # timeout=?
                 #reply = (res.returncode, res.stdout, res.stderr)
-                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, close_fds=True)
+                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, executable='/bin/bash', close_fds=True)
                 (stdout,stderr) = proc.communicate()
                 reply = (proc.returncode, stdout, stderr)
                 print('Got result:', reply)
             elif func == 'launch':
                 cmd = msg[1]
-                print('Launching command:', cmd)
+                captive = False
+                if len(msg) > 2:
+                    captive = msg[2]
+                print('Launching command:', cmd, 'captive?', captive)
                 #p = subprocess.Popen(cmd, shell=True, stdin=subprocess.DEVNULL)
-                p = subprocess.Popen(cmd, shell=True, close_fds=True)
-                launched_procs.append(p)
-                reply = (0, 'Started pid %i' % p.pid, '')
+                if not captive:
+                    p = subprocess.Popen(cmd, shell=True, executable='/bin/bash', close_fds=True)
+                    launched_procs.append(p)
+                else:
+                    print('Running command:', cmd)
+                    p = subprocess.Popen(cmd, shell=True, executable='/bin/bash', close_fds=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    qout = Queue()
+                    t = Thread(target=enqueue_output, args=(p.stdout, qout))
+                    t.daemon = True
+                    t.start()
+                    qerr = Queue()
+                    t = Thread(target=enqueue_output, args=(p.stderr, qerr))
+                    t.daemon = True
+                    t.start()
+                    captive_procs[p.pid] = (p, qout, qerr)
+                    
+                reply = (0, p.pid, '')
                 print('Got result:', reply)
+
+            elif func == 'read_proc':
+                pid = msg[1]
+                if not pid in captive_procs:
+                    print('PID', pid, 'not in captive processes')
+                    print('keys:', captive_procs.keys())
+                    reply = (None, None, None)
+                else:
+                    (proc, qout, qerr) = captive_procs[pid]
+                    # done yet?  set returncode
+                    proc.poll()
+                    out = []
+                    try:
+                        while True:
+                            s = qout.get_nowait()
+                            out.append(s)
+                    except Empty:
+                        pass
+                    #print('Got from queue:', out)
+                    #out = '\n'.join(out)
+                    out = ''.join(out)
+                    err = []
+                    try:
+                        while True:
+                            s = qout.get_nowait()
+                            err.append(s)
+                    except Empty:
+                        pass
+                    #print('Got from err queue:', err)
+                    #err = '\n'.join(err)
+                    err = ''.join(err)
+                    reply = (proc.returncode, out, err)
+
+            elif func == 'kill':
+                pid = msg[1]
+                if not pid in captive_procs:
+                    print('Request to kill PID', pid, 'not in captive procs; ignore')
+                    reply = None
+                else:
+                    proc = captive_procs[pid]
+                    proc.terminate()
+                    reply = True
+
+            elif func == 'quit':
+                print('Quitting!')
+                return 0
+
+            else:
+                print('Unknown function "%s"' % func)
 
         except:
             import traceback
@@ -81,3 +152,19 @@ if __name__ == '__main__':
         # Send reply
         msg = msgpack.packb(reply)
         socket.send(msg)
+
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--address', default='tcp://*:9999')
+    parser.add_argument('--port', default=0)
+    opt = parser.parse_args()
+
+    if opt.port:
+        addr = 'tcp://*:' + str(opt.port)
+    else:
+        addr = opt.address
+
+    sys.exit(main(addr))
+
