@@ -637,7 +637,7 @@ void dedispersion_thread_context::_thread_main() const
     shared_ptr<bonsai::global_max_tracker> max_tracker;
 
     if (config.track_global_trigger_max) {
-	max_tracker = make_shared<bonsai::global_max_tracker> ();
+	max_tracker = make_shared<bonsai::global_max_tracker> (0.0, 0.0, true);  // noisy=true
 	dedisperser->add_processor(max_tracker);
     }
 
