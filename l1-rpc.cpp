@@ -4,12 +4,13 @@
 #include <stdio.h>
 #include <thread>
 #include <queue>
+#include <cstdio>
 
 #include <zmq.hpp>
 #include <msgpack.hpp>
 
 #include "ch_frb_io.hpp"
-
+#include "ch_frb_l1.hpp"
 #include "l1-rpc.hpp"
 #include "rpc.hpp"
 #include "chlog.hpp"
@@ -408,6 +409,105 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             chime_log_remove_server(addr);
         }
         return 0;
+
+    } else if (funcname == "stream") {
+        // grab arguments: [ "acq_name", "acqdir_base", "acq_meta.json",
+        //                   [ beam ids ] ]
+        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
+        if (oh.get().via.array.size != 4) {
+            chlog("stream RPC: failed to parse input arguments: expected array of size 4");
+            return -1;
+        }
+        string acq_name = oh.get().via.array.ptr[0].as<string>();
+        string acq_base = oh.get().via.array.ptr[1].as<string>();
+        string acq_meta = oh.get().via.array.ptr[2].as<string>();
+        // grab beam_ids
+        vector<int> beam_ids;
+        for (size_t i=0; i<oh.get().via.array.ptr[3].via.array.size; i++) {
+            int beam = oh.get().via.array.ptr[3].via.array.ptr[i].as<int>();
+            beam_ids.push_back(beam);
+        }
+
+        chlog("Stream request: \"" << acq_name << "\", base dir \"" << acq_base << "\", " << beam_ids.size() << " beams.");
+        if (beam_ids.size()) {
+            for (size_t i=0; i<beam_ids.size(); i++)
+                chlog("  beam " << beam_ids[i]);
+        }
+        // Default to all beams
+        if (beam_ids.size() == 0)
+            beam_ids = _stream->ini_params.beam_ids;
+        pair<bool, string> result;
+        string pattern;
+        if (acq_name.size() == 0) {
+            // Turn off streaming
+            pattern = "";
+            chlog("Turning off streaming");
+            _stream->stream_to_files(pattern, 0);
+            _last_stream_to_files = pattern;
+            result.first = true;
+            result.second = pattern;
+        } else {
+            try {
+                pattern = ch_frb_l1::acqname_to_filename_pattern(acq_name, _stream->ini_params.beam_ids, acq_base);
+                chlog("Streaming to filename pattern: " << pattern);
+                if (acq_meta.size()) {
+                    // write metadata file in acquisition dir.
+                    // HACK -- assume the pattern is like '/local/acq_data/mine/beam_(BEAM)/chunk_(CHUNK).msg'
+                    // and drop two path components.
+                    //string basedir =
+                    size_t ind1 = pattern.rfind("/");
+                    if (ind1 == std::string::npos || ind1 == 0) {
+                        chlog("Failed to find '/' in pattern " << pattern << "!");
+                    } else {
+                        size_t ind2 = pattern.rfind("/", ind1-1);
+                        if (ind2 == std::string::npos || ind2 == 0) {
+                            chlog("Failed to find second-last '/' in pattern " << pattern << "!");
+                        } else {
+                            string fn = pattern.substr(0, ind2+1) + "metadata.json";
+                            chlog("Writing acquisition metadata to " << fn);
+                            FILE* fout = std::fopen(fn.c_str(), "w");
+                            if (!fout) {
+                                chlog("Failed to open metadata file for writing: " << fn << ": " << strerror(errno));
+                            } else {
+                                if (std::fwrite(acq_meta.c_str(), 1, acq_meta.size(), fout) != acq_meta.size()) {
+                                    chlog("Failed to write " << acq_meta.size() << " bytes of metadata to " << fn << ": " << strerror(errno));
+                                }
+                                if (std::fclose(fout)) {
+                                    chlog("Failed to close metadata file: " << fn << ": " << strerror(errno));
+                                }
+                            }
+                        }
+                    }
+                }
+                _stream->stream_to_files(pattern, 0);
+                _last_stream_to_files = pattern;
+                result.first = true;
+                result.second = pattern;
+            } catch (const std::exception& e) {
+                chlog("Exception!");
+                result.first = false;
+                result.second = e.what();
+                chlog("Failed to set streaming: " << e.what());
+            }
+        }
+        // Pack return value into msgpack buffer
+        msgpack::sbuffer buffer;
+        msgpack::pack(buffer, result);
+        //  Send reply back to client.
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(*client, *token_to_message(token), *reply);
+
+    } else if (funcname == "stream_status") {
+
+        unordered_map<string, string> dict;
+        dict["stream_filename"] = _last_stream_to_files;
+
+        // Pack return value into msgpack buffer
+        msgpack::sbuffer buffer;
+        msgpack::pack(buffer, dict);
+        //  Send reply back to client.
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(*client, *token_to_message(token), *reply);
 
     } else if (funcname == "get_packet_rate") {
         // grab *start* and *period* arguments

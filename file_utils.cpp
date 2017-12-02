@@ -1,4 +1,5 @@
 #include <dirent.h>
+#include <iomanip>
 #include "ch_frb_l1.hpp"
 
 #include <sys/stat.h>
@@ -9,6 +10,78 @@ namespace ch_frb_l1 {
 #if 0
 }   // compiler pacifier
 #endif
+
+
+// The L1 server defines a parameter 'stream_acqname'.  If this is a nonempty string,
+// then the L1 server will stream all of its incoming data to filenames of the form
+//
+//   /local/acq_data/(ACQNAME)/beam_(BEAM)/chunk_(CHUNK).msg      (*)
+//
+// This filename pattern is expected by the script 'ch-frb-make-acq-inventory', which
+// is the first step in postprocessing the captured data with our "offline" pipeline.
+//
+// The stream_acqname is implemented using a more general feature of ch_frb_io, which
+// allows a general stream_filename_pattern of the form (*) to be specified.
+//
+// The helper function acqname_to_filename_pattern() does three things:
+//
+//   - does some sanity checks on the acqname and throws an exception if anything goes wrong
+//     (most importantly, checking that an acquisition by the same name doesn't already
+//     exist, and that the proper filesystem is mounted)
+// 
+//   - creates acqdir if it doesn't already exist, and beam subdirs corresponding
+//     to the server's beam ids
+//
+//   - returns the ch_frb_io 'stream_filename_pattern' corresponding to the given
+//     ch_frb_l1 acqname.
+
+string acqname_to_filename_pattern(const string &acqname, const vector<int> &beam_ids, const string &the_acqdir_base)
+{
+    string acqdir_base = the_acqdir_base;
+    // FIXME currently hardcoded, should be a config parameter 'stream_acqdir_base'.
+    if (acqdir_base.size() == 0)
+        acqdir_base = "/local/acq_data";
+
+    if (acqname.size() == 0)
+	return string();  // no acqname specified, map empty string to empty string
+
+    if (!file_exists(acqdir_base))
+	throw runtime_error("ch-frb-l1: acqdir_base " + acqdir_base + " does not exist (probably need to mount device)");
+    if (!is_directory(acqdir_base))
+	throw runtime_error("ch-frb-l1: acqdir_base " + acqdir_base + " exists but is not a directory?!");
+
+    string acqdir = acqdir_base + "/" + acqname;
+    makedir(acqdir, false);  // throw_exception_if_directory_exists=false
+    
+    if (!is_empty_directory(acqdir)) {
+	// We throw an exception if acqdir exists and is a nonempty directory,
+	// unless it just contains some empty directories.
+
+	for (const auto &d: listdir(acqdir)) {
+	    if ((d == ".") || (d == ".."))
+		continue;
+	    
+	    string subdir = acqdir + "/" + d;
+
+	    if (!is_directory(subdir) || !is_empty_directory(subdir))
+		throw runtime_error("ch-frb-l1: acqdir " + acqdir + " already exists and is nonempty");
+	}
+    }
+
+    for (int beam_id: beam_ids) {
+	// FIXME it would be better to do directory creation on-the-fly in ch_frb_io.
+	// (At some point this will be necessary, to implement on-the-fly beam_ids.)
+
+	stringstream beamdir_s;
+	beamdir_s << acqdir << "/beam_" << setfill('0') << setw(4) << beam_id;
+	
+	string beamdir = beamdir_s.str();
+	makedir(beamdir, false);   // throw_exception_if_directory_exists=false
+    }
+
+    // ch_frb_io 'stream_filename_pattern' corresponding to the given ch_frb_l1 acqname
+    return acqdir + "/beam_(BEAM)/chunk_(CHUNK).msg";
+}
 
 
 bool file_exists(const string &filename)
