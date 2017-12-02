@@ -414,14 +414,36 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
         string acq_name = oh.get().as<string>();
         chlog("Stream to: \"" << acq_name << "\"");
+        pair<bool, string> result;
+        string pattern;
         if (acq_name.size() == 0) {
             // Turn off streaming
-            _stream->stream_to_files("", 0);
-        } else {
-            string pattern = ch_frb_l1::acqname_to_filename_pattern(acq_name, _stream->ini_params.beam_ids);
+            pattern = "";
+            chlog("Turning off streaming");
             _stream->stream_to_files(pattern, 0);
+            result.first = true;
+            result.second = pattern;
+        } else {
+            try {
+                pattern = ch_frb_l1::acqname_to_filename_pattern(acq_name, _stream->ini_params.beam_ids);
+                chlog("Streaming to filename pattern: " << pattern);
+                _stream->stream_to_files(pattern, 0);
+                result.first = true;
+                result.second = pattern;
+            } catch (const std::exception& e) {
+                chlog("Exception!");
+                result.first = false;
+                result.second = e.what();
+                chlog("Failed to set streaming: " << e.what());
+            }
         }
-        
+        // Pack return value into msgpack buffer
+        msgpack::sbuffer buffer;
+        msgpack::pack(buffer, result);
+        //  Send reply back to client.
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(*client, *token_to_message(token), *reply);
+
     } else if (funcname == "get_packet_rate") {
         // grab *start* and *period* arguments
         msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);

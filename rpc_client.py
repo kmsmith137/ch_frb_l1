@@ -225,6 +225,23 @@ class RpcClient(object):
         # We expect one message part for each token.
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
+
+    def stream(self, acq_name, servers=None, wait=True, timeout=-1):
+        if servers is None:
+            servers = self.servers.keys()
+        tokens = []
+        for k in servers:
+            self.token += 1
+            req = msgpack.packb(['stream', self.token])
+            args = msgpack.packb(acq_name);
+            tokens.append(self.token)
+            self.sockets[k].send(req + args)
+        if not wait:
+            return tokens
+        parts = self.wait_for_tokens(tokens, timeout=timeout)
+        # We expect one message part for each token.
+        return [msgpack.unpackb(p[0]) if p is not None else None
+                for p in parts]
     
     def list_chunks(self, servers=None, wait=True, timeout=-1):
         '''
@@ -587,6 +604,7 @@ if __name__ == '__main__':
         default=[])
     parser.add_argument('--list', action='store_true', default=False,
                         help='Just send list_chunks command and exit.')
+    parser.add_argument('--stream', help='Stream to files')
     parser.add_argument('--rate', action='store_true', default=False,
                         help='Send packet rate matrix request')
     parser.add_argument('--rate-history', action='store_true', default=False,
@@ -631,6 +649,11 @@ if __name__ == '__main__':
         for chunklist in chunks:
             for beam,f0,f1,where in chunklist:
                 print('  beam %4i, FPGA range %i to %i' % (beam, f0, f1))
+        doexit = True
+
+    if opt.stream:
+        patterns = client.stream(opt.stream)
+        print('Streaming to:', patterns)
         doexit = True
 
     if opt.rate:
