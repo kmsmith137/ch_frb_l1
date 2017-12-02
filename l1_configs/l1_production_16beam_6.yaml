@@ -80,11 +80,34 @@ l1b_buffer_nsamples: 4000
 l1b_pipe_timeout: 0
 
 
-# stream_acqname.
+# If "streaming" is enabled, the node will continuously stream all incoming data
+# to either its local SSD or NFS.
 #
-# If the line below is uncommented, the node will continuously stream all incoming data
-# to its local SSD.  The stream_acqname should be a unique identifying string which is
-# not the same as any existing acquisition on the node.  The data will be written to
-# /local/acq_data/$(stream_acqname).
+# 'stream_devname': Either "ssd" (the default) or "nfs".
+#
+#     NFS bandwidth is limited, so if you're writing to NFS then you probably want to reduce the
+#     number of beam_ids, by assigning a value to 'stream_beam_ids'.
+#
+# 'stream_acqname': Unique identifying directory names for the acqisition
+#
+#     If the given acquisition already exists (probably from a previous run)
+#     the L1 server will abort.
+#
+# 'stream_beam_ids': A list of beam_ids to stream to disk.
+#
+#     Must be a subset of 'beam_ids', the set of all beam_ids processed by the server.
+#     If unspecified, every beam_id processed by the server will be streamed.
+#
+# Example 1: to stream all beams to SSD, just do
+#   stream_acqname: ACQNAME
+#
+# Example 2: to stream beam 0 to NFS, do
+#   stream_devname: "nfs"
+#   stream_acqname: ACQNAME
+#   stream_bema_ids: [ 0 ] 
 
+
+# stream_devname: "ssd"
 # stream_acqname: "test_acq"
+# stream_beam_ids: [ 0 ]
+
