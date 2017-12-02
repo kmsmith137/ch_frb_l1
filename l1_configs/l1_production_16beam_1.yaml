@@ -87,4 +87,4 @@ l1b_pipe_timeout: 0
 # not the same as any existing acquisition on the node.  The data will be written to
 # /local/acq_data/$(stream_acqname).
 
-# stream_acqname: "test_acq"
+stream_acqname: "deleteme"

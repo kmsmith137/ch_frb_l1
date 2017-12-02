@@ -492,7 +492,7 @@ l1_config::l1_config(int argc, char **argv)
 	_have_warnings();
 
     // I put this last, since it creates directories.
-    this->stream_filename_pattern = ch_frb_l1::acqname_to_filename_pattern(stream_acqname, beam_ids);
+    this->stream_filename_pattern = ch_frb_l1::acqname_to_filename_pattern(stream_acqname, beam_ids, "/local/acq_data");
     cout << "XXX stream_filename_pattern = " << stream_filename_pattern << endl;
 }
 
