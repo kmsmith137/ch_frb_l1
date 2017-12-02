@@ -35,10 +35,12 @@ namespace ch_frb_l1 {
 //   - returns the ch_frb_io 'stream_filename_pattern' corresponding to the given
 //     ch_frb_l1 acqname.
 
-string acqname_to_filename_pattern(const string &acqname, const vector<int> &beam_ids)
+string acqname_to_filename_pattern(const string &acqname, const vector<int> &beam_ids, const string &the_acqdir_base)
 {
+    string acqdir_base = the_acqdir_base;
     // FIXME currently hardcoded, should be a config parameter 'stream_acqdir_base'.
-    static const string acqdir_base = "/local/acq_data";
+    if (acqdir_base.size() == 0)
+        acqdir_base = "/local/acq_data";
 
     if (acqname.size() == 0)
 	return string();  // no acqname specified, map empty string to empty string
