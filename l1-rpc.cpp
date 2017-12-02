@@ -419,7 +419,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             return -1;
         }
         string acq_name = oh.get().via.array.ptr[0].as<string>();
-        string acq_base = oh.get().via.array.ptr[1].as<string>();
+        string acq_dev = oh.get().via.array.ptr[1].as<string>();
         string acq_meta = oh.get().via.array.ptr[2].as<string>();
         // grab beam_ids
         vector<int> beam_ids;
@@ -428,7 +428,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             beam_ids.push_back(beam);
         }
 
-        chlog("Stream request: \"" << acq_name << "\", base dir \"" << acq_base << "\", " << beam_ids.size() << " beams.");
+        chlog("Stream request: \"" << acq_name << "\", device=\"" << acq_dev << "\", " << beam_ids.size() << " beams.");
         if (beam_ids.size()) {
             for (size_t i=0; i<beam_ids.size(); i++)
                 chlog("  beam " << beam_ids[i]);
@@ -442,13 +442,13 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             // Turn off streaming
             pattern = "";
             chlog("Turning off streaming");
-            _stream->stream_to_files(pattern, 0);
+            _stream->stream_to_files(pattern, { }, 0);
             _last_stream_to_files = pattern;
             result.first = true;
             result.second = pattern;
         } else {
             try {
-                pattern = ch_frb_l1::acqname_to_filename_pattern(acq_name, _stream->ini_params.beam_ids, acq_base);
+                pattern = ch_frb_l1::acqname_to_filename_pattern(acq_dev, acq_name, _stream->ini_params.beam_ids);
                 chlog("Streaming to filename pattern: " << pattern);
                 if (acq_meta.size()) {
                     // write metadata file in acquisition dir.
@@ -479,7 +479,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
                         }
                     }
                 }
-                _stream->stream_to_files(pattern, 0);
+                _stream->stream_to_files(pattern, beam_ids, 0);
                 _last_stream_to_files = pattern;
                 result.first = true;
                 result.second = pattern;

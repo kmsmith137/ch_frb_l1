@@ -29,10 +29,17 @@ extern std::vector<std::string> listdir(const std::string &dirname);
 // Note: umask will be applied to 'mode'
 extern void makedir(const std::string &filename, bool throw_exception_if_directory_exists=true, mode_t mode=0777);
 
-// If acqdir_base is empty, defaults to "/local/acq_data".
-extern std::string acqname_to_filename_pattern(const std::string &acqname,
-                                               const std::vector<int> &beam_ids,
-                                               const std::string &acqdir_base="");
+// "devname" should be either "ssd" or "nfs".
+//
+// There used to be an arbitrary string 'acqdir_base' here, but I got nervous since if someone accidentally specified
+// a directory in the node's root filesystem (as opposed to local SSD or "large" NFS server), it would blow up the
+// poor head node with more NFS traffic than it can handle!
+
+extern std::string acqname_to_filename_pattern(const std::string &devname,
+					       const std::string &acqname,
+                                               const std::vector<int> &beam_ids);
+
+
 // -------------------------------------------------------------------------------------------------
 //
 // Inlines

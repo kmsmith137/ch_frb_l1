@@ -166,9 +166,11 @@ struct l1_config
     // Also intended for debugging.  If the optional parameter 'stream_acqname' is
     // specified, then the L1 server will auto-stream all chunks to disk.  Warning:
     // it's very easy to use a lot of disk space this way!
-
-    string stream_acqname;            // specified in config file
-    string stream_filename_pattern;   // derived from 'stream_acqname'
+    
+    string stream_devname;            // specified in config file, options are "ssd" or "nfs", defaults to "ssd"
+    string stream_acqname;            // specified in config file, defaults to "", which results in no streaming acquisition
+    vector<int> stream_beam_ids;      // specified in config file, defaults to all beam ID's on node
+    string stream_filename_pattern;   // derived from 'stream_devname' and 'stream_acqname'
 
     void _have_warnings() const;
 };
@@ -295,7 +297,6 @@ l1_config::l1_config(int argc, char **argv)
     this->l1b_pipe_blocking = p.read_scalar<bool> ("l1b_pipe_blocking", false);
     this->force_asynchronous_dedispersion = p.read_scalar<bool> ("force_asynchronous_dedispersion", false);
     this->track_global_trigger_max = p.read_scalar<bool> ("track_global_trigger_max", false);
-    this->stream_acqname = p.read_scalar<string> ("stream_acqname", "");
 
     // Lots of sanity checks.
     // First check that we have a consistent 'nstreams'.
@@ -365,6 +366,12 @@ l1_config::l1_config(int argc, char **argv)
 
     if (beam_ids.size() != (unsigned)nbeams)
 	throw runtime_error(l1_config_filename + ": 'beam_ids' must have length 'nbeams'");
+
+    // Read stream params (postponed to here, so we get 'beam_ids' first).
+
+    this->stream_devname = p.read_scalar<string> ("stream_devname", "ssd");
+    this->stream_acqname = p.read_scalar<string> ("stream_acqname", "");
+    this->stream_beam_ids = p.read_vector<int> ("stream_beam_ids", this->beam_ids);
 
     // "Derived" unassembled ringbuf params.
 
@@ -492,7 +499,7 @@ l1_config::l1_config(int argc, char **argv)
 	_have_warnings();
 
     // I put this last, since it creates directories.
-    this->stream_filename_pattern = ch_frb_l1::acqname_to_filename_pattern(stream_acqname, beam_ids, "/local/acq_data");
+    this->stream_filename_pattern = ch_frb_l1::acqname_to_filename_pattern(stream_devname, stream_acqname, beam_ids);
     cout << "XXX stream_filename_pattern = " << stream_filename_pattern << endl;
 }
 
@@ -988,7 +995,7 @@ void l1_server::make_input_streams()
 	input_streams[istream] = ch_frb_io::intensity_network_stream::make(ini_params);
 	
 	// If config.stream_filename_pattern is an empty string, then stream_to_files() doesn't do anything.
-	input_streams[istream]->stream_to_files(config.stream_filename_pattern, 0);   // (pattern, priority)
+	input_streams[istream]->stream_to_files(config.stream_filename_pattern, config.stream_beam_ids, 0);   // (pattern, priority)
     }
 }
 
