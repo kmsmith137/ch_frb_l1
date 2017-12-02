@@ -443,6 +443,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             pattern = "";
             chlog("Turning off streaming");
             _stream->stream_to_files(pattern, 0);
+            _last_stream_to_files = pattern;
             result.first = true;
             result.second = pattern;
         } else {
@@ -479,6 +480,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
                     }
                 }
                 _stream->stream_to_files(pattern, 0);
+                _last_stream_to_files = pattern;
                 result.first = true;
                 result.second = pattern;
             } catch (const std::exception& e) {
@@ -491,6 +493,18 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         // Pack return value into msgpack buffer
         msgpack::sbuffer buffer;
         msgpack::pack(buffer, result);
+        //  Send reply back to client.
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(*client, *token_to_message(token), *reply);
+
+    } else if (funcname == "stream_status") {
+
+        unordered_map<string, string> dict;
+        dict["stream_filename"] = _last_stream_to_files;
+
+        // Pack return value into msgpack buffer
+        msgpack::sbuffer buffer;
+        msgpack::pack(buffer, dict);
         //  Send reply back to client.
         zmq::message_t* reply = sbuffer_to_message(buffer);
         return _send_frontend_message(*client, *token_to_message(token), *reply);

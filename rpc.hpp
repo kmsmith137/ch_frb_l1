@@ -84,6 +84,12 @@
      Starts streaming data to the given acquisition name *acq_name*.
      An empty string halts streaming.
 
+ * stream_status
+
+     Returns current streaming-to-disk status as a dictionary, eg
+     { "stream_filename": "/local/acq_dir/myacq/...", }
+     and we'll add probably lots more here!
+
  * list_chunks(void)
 
      Retrieves the list of chunks in the ring buffers of this L1 node.

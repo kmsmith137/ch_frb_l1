@@ -243,6 +243,22 @@ class RpcClient(object):
         # We expect one message part for each token.
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
+
+    def stream_status(self, servers=None, wait=True, timeout=-1):
+        if servers is None:
+            servers = self.servers.keys()
+        tokens = []
+        for k in servers:
+            self.token += 1
+            req = msgpack.packb(['stream_status', self.token])
+            tokens.append(self.token)
+            self.sockets[k].send(req)
+        if not wait:
+            return tokens
+        parts = self.wait_for_tokens(tokens, timeout=timeout)
+        # We expect one message part for each token.
+        return [msgpack.unpackb(p[0]) if p is not None else None
+                for p in parts]
     
     def list_chunks(self, servers=None, wait=True, timeout=-1):
         '''
