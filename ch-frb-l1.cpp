@@ -373,6 +373,10 @@ l1_config::l1_config(int argc, char **argv)
     this->stream_acqname = p.read_scalar<string> ("stream_acqname", "");
     this->stream_beam_ids = p.read_vector<int> ("stream_beam_ids", this->beam_ids);
 
+    for (int b: stream_beam_ids)
+	if (!vcontains(beam_ids, b))
+	    throw runtime_error(l1_config_filename + ": 'stream_beam_ids' must be a subset of 'beam_ids' (which defaults to [0,...,nbeams-1] if unspecified)");
+
     // "Derived" unassembled ringbuf params.
 
     int fp = nt_per_packet * fpga_counts_per_sample;   // FPGA counts per packet
@@ -499,7 +503,7 @@ l1_config::l1_config(int argc, char **argv)
 	_have_warnings();
 
     // I put this last, since it creates directories.
-    this->stream_filename_pattern = ch_frb_l1::acqname_to_filename_pattern(stream_devname, stream_acqname, beam_ids);
+    this->stream_filename_pattern = ch_frb_l1::acqname_to_filename_pattern(stream_devname, stream_acqname, stream_beam_ids);
     cout << "XXX stream_filename_pattern = " << stream_filename_pattern << endl;
 }
 
@@ -994,8 +998,14 @@ void l1_server::make_input_streams()
 
 	input_streams[istream] = ch_frb_io::intensity_network_stream::make(ini_params);
 	
+	// This is the subset of 'stream_beam_ids' which is processed by stream 'istream'.
+	vector<int> sf_beam_ids;
+	for (int b: config.stream_beam_ids)
+	    if (vcontains(ini_params.beam_ids, b))
+		sf_beam_ids.push_back(b);
+
 	// If config.stream_filename_pattern is an empty string, then stream_to_files() doesn't do anything.
-	input_streams[istream]->stream_to_files(config.stream_filename_pattern, config.stream_beam_ids, 0);   // (pattern, priority)
+	input_streams[istream]->stream_to_files(config.stream_filename_pattern, sf_beam_ids, 0);   // (pattern, priority)
     }
 }
 

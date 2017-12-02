@@ -98,6 +98,18 @@ inline std::vector<T> vconcat(const std::vector<T> &v1, const std::vector<T> &v2
 }
 
 
+template<typename T>
+inline bool vcontains(const std::vector<T> &v, T x)
+{
+    for (size_t i = 0; i < v.size(); i++) {
+	if (v[i] == x)
+	    return true;
+    }
+
+    return false;
+}
+
+
 // -------------------------------------------------------------------------------------------------
 //
 // yaml_paramfile
