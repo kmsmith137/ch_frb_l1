@@ -1,6 +1,7 @@
 #include <fstream>
 #include <unistd.h>
 #include <sys/time.h>
+#include <sys/statvfs.h>
 #include <stdio.h>
 #include <thread>
 #include <queue>
@@ -455,30 +456,18 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
                 chlog("Streaming to filename pattern: " << pattern);
                 if (acq_meta.size()) {
                     // write metadata file in acquisition dir.
-                    // HACK -- assume the pattern is like '/local/acq_data/mine/beam_(BEAM)/chunk_(CHUNK).msg'
-                    // and drop two path components.
-                    //string basedir =
-                    size_t ind1 = pattern.rfind("/");
-                    if (ind1 == std::string::npos || ind1 == 0) {
-                        chlog("Failed to find '/' in pattern " << pattern << "!");
+                    string acqdir = ch_frb_l1::acq_pattern_to_dir(pattern);
+                    string fn = acqdir + "/metadata.json";
+                    chlog("Writing acquisition metadata to " << fn);
+                    FILE* fout = std::fopen(fn.c_str(), "w");
+                    if (!fout) {
+                        chlog("Failed to open metadata file for writing: " << fn << ": " << strerror(errno));
                     } else {
-                        size_t ind2 = pattern.rfind("/", ind1-1);
-                        if (ind2 == std::string::npos || ind2 == 0) {
-                            chlog("Failed to find second-last '/' in pattern " << pattern << "!");
-                        } else {
-                            string fn = pattern.substr(0, ind2+1) + "metadata.json";
-                            chlog("Writing acquisition metadata to " << fn);
-                            FILE* fout = std::fopen(fn.c_str(), "w");
-                            if (!fout) {
-                                chlog("Failed to open metadata file for writing: " << fn << ": " << strerror(errno));
-                            } else {
-                                if (std::fwrite(acq_meta.c_str(), 1, acq_meta.size(), fout) != acq_meta.size()) {
-                                    chlog("Failed to write " << acq_meta.size() << " bytes of metadata to " << fn << ": " << strerror(errno));
-                                }
-                                if (std::fclose(fout)) {
-                                    chlog("Failed to close metadata file: " << fn << ": " << strerror(errno));
-                                }
-                            }
+                        if (std::fwrite(acq_meta.c_str(), 1, acq_meta.size(), fout) != acq_meta.size()) {
+                            chlog("Failed to write " << acq_meta.size() << " bytes of metadata to " << fn << ": " << strerror(errno));
+                        }
+                        if (std::fclose(fout)) {
+                            chlog("Failed to close metadata file: " << fn << ": " << strerror(errno));
                         }
                     }
                 }
@@ -504,6 +493,31 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
         unordered_map<string, string> dict;
         dict["stream_filename"] = _last_stream_to_files;
+
+        // df for "ssd" and "nfs"
+        struct statvfs vfs;
+        if (statvfs("/frb-archiver-1", &vfs) == 0) {
+            size_t gb = vfs.f_bsize * vfs.f_bavail / (1024 * 1024 * 1024);
+            dict["nfs_gb_free"] = std::to_string((int)gb);
+        }
+        if (statvfs("/local", &vfs) == 0) {
+            chlog("block size " << vfs.f_frsize);
+            chlog("blocks avail " << vfs.f_bavail);
+            size_t gb = ((size_t)vfs.f_frsize * (size_t)vfs.f_bavail) / (size_t)(1024 * 1024 * 1024);
+            dict["ssd_gb_free"] = std::to_string((int)gb);
+        }
+
+        // du in _last_stream_to_files
+        if (_last_stream_to_files.size()) {
+            // drop two directory components
+            string acqdir = ch_frb_l1::acq_pattern_to_dir(_last_stream_to_files);
+            try {
+                size_t gb = ch_frb_l1::disk_space_used(acqdir) / (1024 * 1024 * 1024);
+                dict["stream_gb_used"] = std::to_string((int)gb);
+            } catch (const std::exception& e) {
+                chlog("disk_space_used " << _last_stream_to_files << ": " << e.what());
+            }
+        }
 
         // Pack return value into msgpack buffer
         msgpack::sbuffer buffer;

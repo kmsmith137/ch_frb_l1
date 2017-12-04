@@ -1,8 +1,11 @@
-#include <dirent.h>
+#include <iostream>
 #include <iomanip>
-#include "ch_frb_l1.hpp"
-
+#include <dirent.h>
+#include <sys/types.h>
 #include <sys/stat.h>
+#include <fts.h>
+
+#include "ch_frb_l1.hpp"
 
 using namespace std;
 
@@ -101,6 +104,20 @@ string acqname_to_filename_pattern(const string &devname, const string &acqname,
 	throw runtime_error("ch-frb-l1::acqname_to_filename_pattern(): 'devname' must be either 'ssd' or 'nfs'");
 }
 
+// Converts "/local/acq_data/(ACQNAME)/beam_(BEAM)/chunk_(CHUNK).msg"
+// to "/local/acq_data/(ACQNAME)"
+string acq_pattern_to_dir(const string &pattern) {
+    // and drop two path components
+    size_t ind1 = pattern.rfind("/");
+    if (ind1 == std::string::npos || ind1 == 0) {
+        throw runtime_error("ch-frb-l1::acq_pattern_to_dir: last '/' not found in \"" + pattern + "\"");
+    }
+    size_t ind2 = pattern.rfind("/", ind1-1);
+    if (ind2 == std::string::npos || ind2 == 0) {
+        throw runtime_error("ch-frb-l1::acq_pattern_to_dir: second-last '/' not found in \"" + pattern + "\"");
+    }
+    return pattern.substr(0, ind2);
+}
 
 bool file_exists(const string &filename)
 {
@@ -209,6 +226,37 @@ vector<string> listdir(const string &dirname)
     }
 
     return filenames;
+}
+
+
+size_t disk_space_used(const string &dirname) {
+    FTS* hierarchy;
+    char** paths;
+    size_t totalsize = 0;
+
+    paths = (char**)alloca(2 * sizeof(char*));
+    paths[0] = (char*)dirname.c_str();
+    paths[1] = NULL;
+    hierarchy = fts_open(paths, FTS_LOGICAL, NULL);
+    if (!hierarchy) {
+        throw runtime_error(dirname + ": fts_open() failed: " + strerror(errno));
+    }
+    while (1) {
+        FTSENT *entry = fts_read(hierarchy);
+        if (!entry && (errno == 0))
+            break;
+        if (!entry)
+            throw runtime_error(dirname + ": fts_read() failed: " + strerror(errno));
+        if (entry->fts_info & FTS_F) {
+            // The entry is a file.
+            struct stat *st = entry->fts_statp;
+            totalsize += st->st_size;
+            cout << "path " << entry->fts_path << " size " << st->st_size << endl;
+        }
+        
+    }
+    fts_close(hierarchy);
+    return totalsize;
 }
 
 

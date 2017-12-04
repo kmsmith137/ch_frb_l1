@@ -26,6 +26,8 @@ extern bool is_empty_directory(const std::string &dirname);
 
 extern std::vector<std::string> listdir(const std::string &dirname);
 
+extern size_t disk_space_used(const std::string &dirname);
+
 // Note: umask will be applied to 'mode'
 extern void makedir(const std::string &filename, bool throw_exception_if_directory_exists=true, mode_t mode=0777);
 
@@ -38,6 +40,10 @@ extern void makedir(const std::string &filename, bool throw_exception_if_directo
 extern std::string acqname_to_filename_pattern(const std::string &devname,
 					       const std::string &acqname,
                                                const std::vector<int> &beam_ids);
+
+// Converts "/local/acq_data/(ACQNAME)/beam_(BEAM)/chunk_(CHUNK).msg"
+// to "/local/acq_data/(ACQNAME)"
+extern std::string acq_pattern_to_dir(const std::string &pattern);
 
 
 // -------------------------------------------------------------------------------------------------

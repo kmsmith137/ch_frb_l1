@@ -54,11 +54,14 @@ onClick="stopAcq();" style="font-size:125%;">
     
 <table border="1">
   <tr>
-    <th>Node</th><th>Current Acq Name</th><th>Size</th><th>Status</th>
+    <th>Node</th><th>Current Acq Name</th><th>Size</th><th>SSD free GB</th><th>Status</th>
   </tr>
   {% for i,node in enodes %}
   <tr>
-    <td>{{node}}</td><td id="node_acq_{{i}}">---</td><td id="node_acqsize_{{i}}">---</td><td id="node_status_{{i}}">---</td>
+    <td>{{node}}</td><td id="node_acq_{{i}}">---</td>
+    <td id="node_acqsize_{{i}}">---</td>
+    <td id="node_ssd_free_{{i}}">---</td>
+    <td id="node_status_{{i}}">---</td>
   </tr>
 {% endfor %}
 </table>
@@ -73,7 +76,7 @@ var do_update = true;
 var update_period = 10000;
 
 
-function json_callback(X) {
+function json_callback(X, repeat) {
     //console.log('JSON callback: ' + X);
 
     if (!do_update) {
@@ -83,7 +86,8 @@ function json_callback(X) {
     
     if (X == null) {
         $('#json-status').html('Empty reply');
-        setTimeout('json_update()', update_period);
+        if (repeat)
+            setTimeout('json_update(true)', update_period);
         return;
     }
     $('#last-update').html(new Date());
@@ -107,24 +111,32 @@ function json_callback(X) {
             fn = '(none)';
         }
         $(sel).html(fn);
+
+        var val = status[i]['stream_gb_used'];
+        var sel = '#node_acqsize_'+i;
+        $(sel).html(val);
+
+        var val = status[i]['ssd_gb_free'];
+        var sel = '#node_ssd_free_'+i;
+        $(sel).html(val);
     }
 
-    
-    setTimeout('json_update()', update_period);
+    if (repeat)
+        setTimeout('json_update(true)', update_period);
 }
 
 // Make a JSON request for the packet matrix; call "json_callback"
-function json_update() {
+function json_update(repeat) {
     $('#json-status').html('Sending...');
     d3.request('/acq-status-json')
         .mimeType("application/json")
         .response(function(xhr) { return JSON.parse(xhr.responseText); })
-        .get(json_callback);
+        .get(function(X) { json_callback(X, repeat); });
 }
 
 function startUpdating() {
     do_update = true;
-    json_update();
+    json_update(true);
 }
 function stopUpdating() {
     do_update = false;
@@ -191,12 +203,12 @@ function acq_callback(err, X, oktxt) {
             }
         }
     }
-    json_update();
+    json_update(false);
 }
 
 $(document).ready(function() {
     // Fetch first data set!
-    setTimeout('json_update()', 1000);
+    setTimeout('json_update(true)', 1000);
 });
 
 </script>
