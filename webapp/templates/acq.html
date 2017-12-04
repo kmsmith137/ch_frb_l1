@@ -184,7 +184,11 @@ function stopAcq() {
 
 function acq_callback(err, X, oktxt) {
     if (X == null) {
-        $('#acq_status').html('Request failed: ' + err);
+        $('#acq_status').html('Request failed'); // + err);
+        //console.log('error: ' + err);
+        //for (k in err) {
+        //console.log(' k ' + k);
+        //}
         return;
     } else {
         $('#acq_status').html('Request finished');
