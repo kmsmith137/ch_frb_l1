@@ -370,41 +370,69 @@ l1_config::l1_config(int argc, char **argv)
     this->track_global_trigger_max = p.read_scalar<bool> ("track_global_trigger_max", false);
     this->stream_acqname = p.read_scalar<string> ("stream_acqname", "");
 
-    // Convert network interface names in "ipaddr", eg, "eno2", into the interface's IP address.
-    for (int i=0; i<ipaddr.size(); i++) {
-        chlog("IP addr: " << ipaddr[i]);
-
-        struct in_addr inaddr;
-        if (inet_aton(ipaddr[i].c_str(), &inaddr) == 1) {
-            // Correctly parsed as dotted-decimal IP address.
-            continue;
+    // Create the map from network interface names ("eno2") to IP address.
+    unordered_map<string, string> interfaces;
+    // Get list of network interfaces...
+    {
+        struct ifaddrs *ifaces, *iface;
+        if (getifaddrs(&ifaces)) {
+            throw runtime_error("Failed to get network interfaces -- getifaddrs()\n");
         }
-        chlog("YAML ipaddr entry \"" << ipaddr[i] << "\" not dotted IP address; looking up network interfaces");
-        
-        // Get list of network interfaces...
-        struct ifaddrs *interfaces, *iface;
-        if (getifaddrs(&interfaces)) {
-            chlog("Failed to getipaddrs\n");
-            exit(-1);
-        }
-        for (iface = interfaces; iface; iface = iface->ifa_next) {
-            chlog("Checking interface: " << iface->ifa_name);
-            if (string(iface->ifa_name) != ipaddr[i]) {
-                continue;
-            }
+        for (iface = ifaces; iface; iface = iface->ifa_next) {
+            //chlog("Network interface: " << iface->ifa_name);
+            //if (string(iface->ifa_name) != ipaddr[i]) {
+            //continue;
+            //}
             struct sockaddr* address = iface->ifa_addr;
             if (address->sa_family != AF_INET) {
-                chlog("not INET");
+                //chlog("not INET");
                 continue;
             }
             struct sockaddr_in* inaddress = reinterpret_cast<struct sockaddr_in*>(address);
             struct in_addr addr = inaddress->sin_addr;
             char* addrstring = inet_ntoa(addr);
-            chlog("Found match with IP address: " << addrstring);
-            ipaddr[i] = string(addrstring);
-            break;
+            chlog("Network interface: " << iface->ifa_name << " has IP " << addrstring);
+            //chlog("Found match with IP address: " << addrstring);
+            interfaces[string(iface->ifa_name)] = string(addrstring);
+            //ipaddr[i] = string(addrstring);
+            //break;
         }
-        freeifaddrs(interfaces);
+        freeifaddrs(ifaces);
+    }
+
+    // Convert network interface names in "ipaddr", eg, "eno2", into the interface's IP address.
+    for (int i=0; i<ipaddr.size(); i++) {
+        chlog("IP addr: " << ipaddr[i]);
+        // Try to parse as dotted-decimal IP address
+        struct in_addr inaddr;
+        if (inet_aton(ipaddr[i].c_str(), &inaddr) == 1) {
+            // Correctly parsed as dotted-decimal IP address.
+            continue;
+        }
+        //
+        auto val = interfaces.find(ipaddr[i]);
+        if (val == interfaces.end()) {
+            throw runtime_error("Config file ipaddr entry \"" << ipaddr[i] << "\" was not dotted IP address and was not one of the known network interfaces");
+        }
+        ipaddr[i] = val->second;
+    }
+
+    // Convert network interface names in "rpc_address" entries.
+    for (int i=0; i<rpc_address.size(); i++) {
+        // "tcp://eno2:5555" -> "tcp://10.7.100.15:5555"
+        size_t proto = rpc_address[i].find("//");
+        if (proto == std::string::npos)
+            continue;
+        size_t port = rpc_address[i].rfind(":");
+        if (port == std::string::npos)
+            continue;
+        string host = rpc_address[i].substr(proto + 2, port);
+        chlog("RPC address host: \"" << host << "\"");
+        auto val = interfaces.find(ipaddr[i]);
+        if (val != interfaces.end()) {
+            rpc_address[i] = rpc_address[i].substr(0, proto+2) + val->second + rpc_address[i].substr(port);
+            chlog("Swapped in address " << rpc_address[i]);
+        }
     }
 
     // Lots of sanity checks.
