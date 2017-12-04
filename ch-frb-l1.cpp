@@ -308,7 +308,7 @@ l1_config::l1_config(int argc, char **argv)
     {
         struct ifaddrs *ifaces, *iface;
         if (getifaddrs(&ifaces)) {
-            throw runtime_error("Failed to get network interfaces -- getifaddrs()\n");
+            throw runtime_error("Failed to get network interfaces -- getifaddrs(): " + string(strerror(errno)));
         }
         for (iface = ifaces; iface; iface = iface->ifa_next) {
             //chlog("Network interface: " << iface->ifa_name);
@@ -334,18 +334,18 @@ l1_config::l1_config(int argc, char **argv)
 
     // Convert network interface names in "ipaddr", eg, "eno2", into the interface's IP address.
     for (int i=0; i<ipaddr.size(); i++) {
-        chlog("IP addr: " << ipaddr[i]);
         // Try to parse as dotted-decimal IP address
         struct in_addr inaddr;
         if (inet_aton(ipaddr[i].c_str(), &inaddr) == 1) {
             // Correctly parsed as dotted-decimal IP address.
             continue;
         }
-        //
+        // If doesn't parse as dotted-decimal, lookup in interfaces mapping.
         auto val = interfaces.find(ipaddr[i]);
         if (val == interfaces.end()) {
-            throw runtime_error("Config file ipaddr entry \"" << ipaddr[i] << "\" was not dotted IP address and was not one of the known network interfaces");
+            throw runtime_error("Config file ipaddr entry \"" + ipaddr[i] + "\" was not dotted IP address and was not one of the known network interfaces");
         }
+        chlog("Mapped IP addr " << ipaddr[i] << " to " << val->second);
         ipaddr[i] = val->second;
     }
 
@@ -358,12 +358,13 @@ l1_config::l1_config(int argc, char **argv)
         size_t port = rpc_address[i].rfind(":");
         if (port == std::string::npos)
             continue;
-        string host = rpc_address[i].substr(proto + 2, port);
-        chlog("RPC address host: \"" << host << "\"");
-        auto val = interfaces.find(ipaddr[i]);
+        string host = rpc_address[i].substr(proto + 2, port - (proto+2));
+        //chlog("RPC address host: \"" << host << "\"");
+        auto val = interfaces.find(host);
         if (val != interfaces.end()) {
-            rpc_address[i] = rpc_address[i].substr(0, proto+2) + val->second + rpc_address[i].substr(port);
-            chlog("Swapped in address " << rpc_address[i]);
+            string new_addr = rpc_address[i].substr(0, proto+2) + val->second + rpc_address[i].substr(port);
+            chlog("Mapping RPC address " << rpc_address[i] << " to " << new_addr);
+            rpc_address[i] = new_addr;
         }
     }
 

@@ -25,7 +25,8 @@ def get_rpc_client():
     global _rpc_client
     if _rpc_client is None:
         from rpc_client import RpcClient
-        _rpc_client = RpcClient(dict([(''+str(i), k) for i,k in enumerate(app.nodes)]))
+        _rpc_client = RpcClient(dict([(''+str(i), k) for i,k in enumerate(app.nodes)]),
+                                identity='webapp.py')
     return _rpc_client
 
 def parse_config():
