@@ -132,6 +132,7 @@ def acq_start():
     timeout = 5000.
     args = request.get_json()
     acqname = args['acqname']
+    acqdev = args['acqdev']
     acqmeta = args['acqmeta']
     stat = client.stream(acqname, acq_meta=acqmeta, timeout=timeout)
     print('Start stream status:', stat)
@@ -146,8 +147,8 @@ def l0_node_map():
 
 @app.route('/cnc-kill', methods=['POST'])
 def cnc_kill():
-    if request.method != 'POST':
-        return 'POST only'
+    #if request.method != 'POST':
+    #    return 'POST only'
     pids = request.get_json()
     print('CNC_kill:', pids)
     pids = dict(pids)

@@ -31,13 +31,21 @@ Last update: <span id="last-update">--</span>
 
 <table border="1">
 <tr><td>
-Acquisition name: <input type="text" size="20" id="start_acq_name"><br />
+Acquisition name: <input type="text" size="20" id="acq_name">
+    Device: <select id="acq_dev">
+    <option value="ssd">SSD</option>
+    <option value="nfs">NFS</option>
+    </select><br />
 Notes about this acquisition:<br />
-<textarea cols="50" rows="5" id="start_acq_meta"></textarea>
+<textarea cols="50" rows="5" id="acq_meta"></textarea>
     <br />
     <br />
 <input type="button" value="Start Acquisition on all nodes"
- onClick="startAcq();" style="font-size:125%;">
+onClick="startAcq();" style="font-size:125%;">
+<input type="button" value="Stop Acquisition on all nodes"
+onClick="stopAcq();" style="font-size:125%;">
+    <br />
+<span id="acq_status"></span>
 </td></tr>
 </table>
 
@@ -114,9 +122,6 @@ function json_update() {
         .get(json_callback);
 }
 
-// Fetch first data set!
-json_update();
-
 function startUpdating() {
     do_update = true;
     json_update();
@@ -127,37 +132,72 @@ function stopUpdating() {
 
 function startAcq() {
     meta = {};
-    meta['notes'] = $('#start_acq_meta').val();
+    meta['notes'] = $('#acq_meta').val();
     jmeta = JSON.stringify(meta);
     console.log('JSON metadata:', jmeta);
 
-    acqname = $('#start_acq_name').val();
+    acqname = $('#acq_name').val();
     console.log('Acq name:', acqname);
+    acqdev = $('#acq_dev').val();
+    console.log('Acq device:', acqdev);
 
     args = {};
     args['acqname'] = acqname;
+    args['acqdev'] = acqdev;
     args['acqmeta'] = jmeta;
     jargs = JSON.stringify(args);
+
+    $('#acq_status').html('Sending request...');
     
     d3.request('/acq-start')
         .mimeType("application/json")
     	.header('Content-Type', 'application/json')
         .response(function(xhr) { return JSON.parse(xhr.responseText); })
-        .post(jargs, start_acq_callback);
+        .post(jargs, function(err,X) { acq_callback(err, X, 'Started'); });
 }
 
-function start_acq_callback(err, X) {
+function stopAcq() {
+    args = {};
+    args['acqname'] = '';
+    args['acqdev'] = '';
+    args['acqmeta'] = '';
+    jargs = JSON.stringify(args);
+    $('#acq_status').html('Sending request...');
+    d3.request('/acq-start')
+        .mimeType("application/json")
+    	.header('Content-Type', 'application/json')
+        .response(function(xhr) { return JSON.parse(xhr.responseText); })
+        .post(jargs, function(err,X) { acq_callback(err, X, 'Stopped'); });
+}
+
+function acq_callback(err, X, oktxt) {
+    if (X == null) {
+        $('#acq_status').html('Request failed: ' + err);
+        return;
+    } else {
+        $('#acq_status').html('Request finished');
+    }
     for (var i=0; i<X.length; i++) {
-        var ok = X[i][0];
+        var ok = (X[i] != null) && X[i][0];
+        console.log('ok: ' + ok);
         var sel = '#node_status_' + i;
         if (ok) {
-            $(sel).html('Started');
+            $(sel).html(oktxt);
         } else {
-            $(sel).html(X[i][1]);
+            if (X[i] != null) {
+                $(sel).html(X[i][1]);
+            } else {
+                $(sel).html('Timed out');
+            }
         }
     }
     json_update();
 }
+
+$(document).ready(function() {
+    // Fetch first data set!
+    setTimeout('json_update()', 1000);
+});
 
 </script>
 

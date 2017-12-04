@@ -226,7 +226,7 @@ class RpcClient(object):
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
 
-    def stream(self, acq_name, acq_base='', acq_meta='', acq_beams=[],
+    def stream(self, acq_name, acq_dev='', acq_meta='', acq_beams=[],
                servers=None, wait=True, timeout=-1):
         if servers is None:
             servers = self.servers.keys()
@@ -234,7 +234,7 @@ class RpcClient(object):
         for k in servers:
             self.token += 1
             req = msgpack.packb(['stream', self.token])
-            args = msgpack.packb([acq_name, acq_base, acq_meta, acq_beams]);
+            args = msgpack.packb([acq_name, acq_dev, acq_meta, acq_beams]);
             tokens.append(self.token)
             self.sockets[k].send(req + args)
         if not wait:

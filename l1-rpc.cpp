@@ -411,7 +411,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         return 0;
 
     } else if (funcname == "stream") {
-        // grab arguments: [ "acq_name", "acqdir_base", "acq_meta.json",
+        // grab arguments: [ "acq_name", "acq_dev", "acq_meta.json",
         //                   [ beam ids ] ]
         msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
         if (oh.get().via.array.size != 4) {
@@ -436,6 +436,9 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         // Default to all beams
         if (beam_ids.size() == 0)
             beam_ids = _stream->ini_params.beam_ids;
+        // Default to acq_dev = "ssd"
+        if (acq_dev.size() == 0)
+            acq_dev = "ssd";
         pair<bool, string> result;
         string pattern;
         if (acq_name.size() == 0) {
