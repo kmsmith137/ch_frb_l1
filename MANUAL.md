@@ -795,12 +795,26 @@ There are some examples of the L1 server config file in the `ch_frb_l1/l1_config
     Note that `output_devices: [ ]` (an empty list) means that the server spawns no I/O threads and all write_requests
     fail, whereas `output_devices: [""]` means that the server spawns one I/O thread which matches every write request.
 
-  - `stream_filename_pattern` (currently a string, but a per-L1-stream list of strings should also be allowed!  Default is an empty string)
 
-    If a nonempty string is specified, it should be a "filename pattern" such as `"chunk_(BEAM)_(CHUNK)_(NCHUNK).msg"`.  The
-    L1 server will write every assembled_chunk to disk when it is created.
+If "streaming" is enabled, the node will continuously stream all incoming data
+to either its local SSD or NFS.
 
-    Warning: this is intended for debugging, and can generate a lot of output very quickly!
+  - `stream_devname` (string).
+
+    Either "ssd" (the default) or "nfs".
+
+    NFS bandwidth is limited, so if you're writing to NFS then you probably want to reduce the
+    number of beam_ids, by assigning a value to 'stream_beam_ids'.
+
+  - `stream_acqname`: Unique identifying directory name for the acqisition
+
+    If the given acquisition already exists (probably from a previous run)
+    the L1 server will abort.
+
+  - `stream_beam_ids`: A list of beam_ids to stream to disk.
+
+    Must be a subset of 'beam_ids', the set of all beam_ids processed by the server.
+    If unspecified, every beam_id processed by the server will be streamed.
 
 
 <a name="l1-config-l1b"></a>

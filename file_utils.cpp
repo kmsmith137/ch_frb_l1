@@ -1,4 +1,5 @@
 #include <dirent.h>
+#include <iomanip>
 #include "ch_frb_l1.hpp"
 
 #include <sys/stat.h>
@@ -9,6 +10,96 @@ namespace ch_frb_l1 {
 #if 0
 }   // compiler pacifier
 #endif
+
+
+// acqname_to_filename_pattern(devname, acqname, beam_ids)
+//
+// The L1 server defines a parameter 'stream_acqname'.  If this is a nonempty string,
+// then the L1 server will stream all of its incoming data to filenames of the form
+//
+//   /local/acq_data/(ACQNAME)/beam_(BEAM)/chunk_(CHUNK).msg            (*)
+//   /frb-archiver-(STREAM)/(ACQNAME)/beam_(BEAM)/chunk_(CHUNK).msg     (**)
+//
+// This filename pattern is expected by the script 'ch-frb-make-acq-inventory', which
+// is the first step in postprocessing the captured data with our "offline" pipeline.
+//
+// The stream_acqname is implemented using a more general feature of ch_frb_io, which
+// allows a general stream_filename_pattern of the form (*) or (**) to be specified.
+//
+// The helper function acqname_to_filename_pattern() does three things:
+//
+//   - does some sanity checks on the acqname and throws an exception if anything goes wrong
+//     (most importantly, checking that an acquisition by the same name doesn't already
+//     exist, and that the proper filesystem is mounted)
+// 
+//   - creates acqdir if it doesn't already exist, and beam subdirs corresponding
+//     to the server's beam ids
+//
+//   - returns the ch_frb_io 'stream_filename_pattern' corresponding to the given
+//     ch_frb_l1 acqname.
+
+
+// Helper for acqname_to_filename_pattern()
+static void check_acqdir_base(const string &acqdir_base)
+{
+    if (!file_exists(acqdir_base))
+	throw runtime_error("ch-frb-l1: acqdir_base " + acqdir_base + " does not exist (probably need to mount device)");
+    if (!is_directory(acqdir_base))
+	throw runtime_error("ch-frb-l1: acqdir_base " + acqdir_base + " exists but is not a directory?!");
+}
+	
+
+// Helper for acqname_to_filename_pattern()
+static void check_acqdir(const string &acqdir_base, const string &acqname, const vector<int> &beam_ids)
+{
+    string acqdir = acqdir_base + "/" + acqname;
+    makedir(acqdir, false);  // throw_exception_if_directory_exists=false
+
+    for (int beam_id: beam_ids) {
+	// Create per-beam directory.
+	// FIXME it would be better to do directory creation on-the-fly in ch_frb_io.
+	// (At some point this will be necessary, to implement on-the-fly beam_ids.)
+
+	stringstream beamdir_s;
+	beamdir_s << acqdir << "/beam_" << setfill('0') << setw(4) << beam_id;
+	
+	string beamdir = beamdir_s.str();
+
+	if (!file_exists(beamdir))
+	    makedir(beamdir, false);   // throw_exception_if_directory_exists=false
+	else if (!is_directory(beamdir))
+	    throw runtime_error("ch-frb-l1: acqdir " + acqdir + " exists, but is not a directory?!");
+	else if (!is_empty_directory(beamdir)) 
+	    // This is the important case to check, to avoid overwriting a previous acquisition with the same name.
+	    throw runtime_error("ch-frb-l1: acqdir " + acqdir + " already exists and is nonempty");
+	
+	// If we get here, then the per-beam directory exists and is empty.  
+	// This is OK, so just fall through.
+    }
+}
+
+
+string acqname_to_filename_pattern(const string &devname, const string &acqname, const vector<int> &beam_ids)
+{
+    if ((acqname.size() == 0) || (beam_ids.size() == 0))
+	return string();  // no acquisition requested
+
+    if (!strcasecmp(devname.c_str(), "ssd")) {
+	check_acqdir_base("/local/acq_data");
+	check_acqdir("/local/acq_data", acqname, beam_ids);
+	return "/local/acq_data/" + acqname + "/beam_(BEAM)/chunk_(CHUNK).msg";
+    }
+    else if (!strcasecmp(devname.c_str(), "nfs")) {
+	check_acqdir_base("/frb-archiver-1/acq_data");	
+	check_acqdir_base("/frb-archiver-2/acq_data");	
+	check_acqdir_base("/frb-archiver-3/acq_data");	
+	check_acqdir_base("/frb-archiver-4/acq_data");
+	check_acqdir("/frb-archiver-1/acq_data", acqname, beam_ids);
+	return "/frb-archiver-(STREAM)/acq_data/" + string(acqname) + "/beam_(BEAM)/chunk_(CHUNK).msg";
+    }
+    else
+	throw runtime_error("ch-frb-l1::acqname_to_filename_pattern(): 'devname' must be either 'ssd' or 'nfs'");
+}
 
 
 bool file_exists(const string &filename)

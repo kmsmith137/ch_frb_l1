@@ -85,18 +85,12 @@ and installation instructions.
 - **Example 1b**: Same as example 1, but streaming incoming data to the node's local SSD.
 
   To enable streaming, you need to hand-edit all the l1 yaml files.
-  At the bottom of the file, you'll see this text:
+  At the bottom of the file, you'll see some streaming-related fields.
+  You should uncomment the line:
   ```
-  # stream_acqname.
-  #
-  # If the line below is uncommented, the node will continuously stream all incoming data
-  # to its local SSD.  The stream_acqname should be a unique identifying string which is
-  # not the same as any existing acquisition on the node.  The data will be written to
-  # /local/acq_data/$(stream_acqname).
-  
-  # stream_acqname: "test_acq"
+  stream_acqname: "test_acq"
   ```
-  You should uncomment the last line, possibly replacing `test_acq` by a different acqname.
+  possibly replacing `test_acq` by a different acqname.
   (Unfortunately you need to hand-edit all 8 configuration files!  We'll improve this soon.)
 
   After making this change, you need to restart the L1 server.  It should start streaming
