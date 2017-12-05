@@ -1,3 +1,6 @@
+- v9
+  - Add new params 'stream_devname', 'stream_beam_ids'
+
 - v8
   - Replace 'stream_filename_pattern' config_param by 'stream_acqname'
   - Scripting framework for postprocessing real-time server with offline analysis pipeline

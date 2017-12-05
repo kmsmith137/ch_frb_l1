@@ -52,75 +52,6 @@ static void usage()
 }
 
 
-// The L1 server defines a parameter 'stream_acqname'.  If this is a nonempty string,
-// then the L1 server will stream all of its incoming data to filenames of the form
-//
-//   /local/acq_data/(ACQNAME)/beam_(BEAM)/chunk_(CHUNK).msg      (*)
-//
-// This filename pattern is expected by the script 'ch-frb-make-acq-inventory', which
-// is the first step in postprocessing the captured data with our "offline" pipeline.
-//
-// The stream_acqname is implemented using a more general feature of ch_frb_io, which
-// allows a general stream_filename_pattern of the form (*) to be specified.
-//
-// The helper function acqname_to_filename_pattern() does three things:
-//
-//   - does some sanity checks on the acqname and throws an exception if anything goes wrong
-//     (most importantly, checking that an acquisition by the same name doesn't already
-//     exist, and that the proper filesystem is mounted)
-// 
-//   - creates acqdir if it doesn't already exist, and beam subdirs corresponding
-//     to the server's beam ids
-//
-//   - returns the ch_frb_io 'stream_filename_pattern' corresponding to the given
-//     ch_frb_l1 acqname.
-
-static string acqname_to_filename_pattern(const string &acqname, const vector<int> &beam_ids)
-{
-    // FIXME currently hardcoded, should be a config parameter 'stream_acqdir_base'.
-    static const string acqdir_base = "/local/acq_data";
-
-    if (acqname.size() == 0)
-	return string();  // no acqname specified, map empty string to empty string
-
-    if (!file_exists(acqdir_base))
-	throw runtime_error("ch-frb-l1: acqdir_base " + acqdir_base + " does not exist (probably need to mount device)");
-    if (!is_directory(acqdir_base))
-	throw runtime_error("ch-frb-l1: acqdir_base " + acqdir_base + " exists but is not a directory?!");
-
-    string acqdir = acqdir_base + "/" + acqname;
-    makedir(acqdir, false);  // throw_exception_if_directory_exists=false
-    
-    if (!is_empty_directory(acqdir)) {
-	// We throw an exception if acqdir exists and is a nonempty directory,
-	// unless it just contains some empty directories.
-
-	for (const auto &d: listdir(acqdir)) {
-	    if ((d == ".") || (d == ".."))
-		continue;
-	    
-	    string subdir = acqdir + "/" + d;
-
-	    if (!is_directory(subdir) || !is_empty_directory(subdir))
-		throw runtime_error("ch-frb-l1: acqdir " + acqdir + " already exists and is nonempty");
-	}
-    }
-
-    for (int beam_id: beam_ids) {
-	// FIXME it would be better to do directory creation on-the-fly in ch_frb_io.
-	// (At some point this will be necessary, to implement on-the-fly beam_ids.)
-
-	stringstream beamdir_s;
-	beamdir_s << acqdir << "/beam_" << setfill('0') << setw(4) << beam_id;
-	
-	string beamdir = beamdir_s.str();
-	makedir(beamdir, false);   // throw_exception_if_directory_exists=false
-    }
-
-    // ch_frb_io 'stream_filename_pattern' corresponding to the given ch_frb_l1 acqname
-    return acqdir + "/beam_(BEAM)/chunk_(CHUNK).msg";
-}
-
 
 // -------------------------------------------------------------------------------------------------
 //
@@ -235,9 +166,11 @@ struct l1_config
     // Also intended for debugging.  If the optional parameter 'stream_acqname' is
     // specified, then the L1 server will auto-stream all chunks to disk.  Warning:
     // it's very easy to use a lot of disk space this way!
-
-    string stream_acqname;            // specified in config file
-    string stream_filename_pattern;   // derived from 'stream_acqname'
+    
+    string stream_devname;            // specified in config file, options are "ssd" or "nfs", defaults to "ssd"
+    string stream_acqname;            // specified in config file, defaults to "", which results in no streaming acquisition
+    vector<int> stream_beam_ids;      // specified in config file, defaults to all beam ID's on node
+    string stream_filename_pattern;   // derived from 'stream_devname' and 'stream_acqname'
 
     void _have_warnings() const;
 };
@@ -364,7 +297,6 @@ l1_config::l1_config(int argc, char **argv)
     this->l1b_pipe_blocking = p.read_scalar<bool> ("l1b_pipe_blocking", false);
     this->force_asynchronous_dedispersion = p.read_scalar<bool> ("force_asynchronous_dedispersion", false);
     this->track_global_trigger_max = p.read_scalar<bool> ("track_global_trigger_max", false);
-    this->stream_acqname = p.read_scalar<string> ("stream_acqname", "");
 
     // Lots of sanity checks.
     // First check that we have a consistent 'nstreams'.
@@ -434,6 +366,16 @@ l1_config::l1_config(int argc, char **argv)
 
     if (beam_ids.size() != (unsigned)nbeams)
 	throw runtime_error(l1_config_filename + ": 'beam_ids' must have length 'nbeams'");
+
+    // Read stream params (postponed to here, so we get 'beam_ids' first).
+
+    this->stream_devname = p.read_scalar<string> ("stream_devname", "ssd");
+    this->stream_acqname = p.read_scalar<string> ("stream_acqname", "");
+    this->stream_beam_ids = p.read_vector<int> ("stream_beam_ids", this->beam_ids);
+
+    for (int b: stream_beam_ids)
+	if (!vcontains(beam_ids, b))
+	    throw runtime_error(l1_config_filename + ": 'stream_beam_ids' must be a subset of 'beam_ids' (which defaults to [0,...,nbeams-1] if unspecified)");
 
     // "Derived" unassembled ringbuf params.
 
@@ -561,7 +503,7 @@ l1_config::l1_config(int argc, char **argv)
 	_have_warnings();
 
     // I put this last, since it creates directories.
-    this->stream_filename_pattern = acqname_to_filename_pattern(stream_acqname, beam_ids);
+    this->stream_filename_pattern = ch_frb_l1::acqname_to_filename_pattern(stream_devname, stream_acqname, stream_beam_ids);
     cout << "XXX stream_filename_pattern = " << stream_filename_pattern << endl;
 }
 
@@ -1056,8 +998,14 @@ void l1_server::make_input_streams()
 
 	input_streams[istream] = ch_frb_io::intensity_network_stream::make(ini_params);
 	
+	// This is the subset of 'stream_beam_ids' which is processed by stream 'istream'.
+	vector<int> sf_beam_ids;
+	for (int b: config.stream_beam_ids)
+	    if (vcontains(ini_params.beam_ids, b))
+		sf_beam_ids.push_back(b);
+
 	// If config.stream_filename_pattern is an empty string, then stream_to_files() doesn't do anything.
-	input_streams[istream]->stream_to_files(config.stream_filename_pattern, 0);   // (pattern, priority)
+	input_streams[istream]->stream_to_files(config.stream_filename_pattern, sf_beam_ids, 0);   // (pattern, priority)
     }
 }
 

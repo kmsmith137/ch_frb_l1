@@ -3,6 +3,7 @@ import zmq
 import msgpack
 import subprocess
 from threading  import Thread
+import sys
 
 try:
     # py2
@@ -20,18 +21,8 @@ def enqueue_output(out, queue):
         queue.put(line)
     out.close()
 
-if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--address', default='tcp://*:9999')
-    parser.add_argument('--port', default=0)
-    opt = parser.parse_args()
 
-    if opt.port:
-        addr = 'tcp://*:' + str(opt.port)
-    else:
-        addr = opt.address
-    
+def main(addr):
     context = zmq.Context()
     socket = context.socket(zmq.REP)
     print('Binding', addr)
@@ -49,7 +40,7 @@ if __name__ == '__main__':
     poll.register(socket, zmq.POLLIN)
 
     while True:
-        print('Waiting for request...')
+        #print('Waiting for request...')
         events = poll.poll(timeout=5000)
         if len(events) == 0:
             # timed out
@@ -124,7 +115,8 @@ if __name__ == '__main__':
                     except Empty:
                         pass
                     #print('Got from queue:', out)
-                    out = '\n'.join(out)
+                    #out = '\n'.join(out)
+                    out = ''.join(out)
                     err = []
                     try:
                         while True:
@@ -133,8 +125,26 @@ if __name__ == '__main__':
                     except Empty:
                         pass
                     #print('Got from err queue:', err)
-                    err = '\n'.join(err)
+                    #err = '\n'.join(err)
+                    err = ''.join(err)
                     reply = (proc.returncode, out, err)
+
+            elif func == 'kill':
+                pid = msg[1]
+                if not pid in captive_procs:
+                    print('Request to kill PID', pid, 'not in captive procs; ignore')
+                    reply = None
+                else:
+                    proc = captive_procs[pid]
+                    proc.terminate()
+                    reply = True
+
+            elif func == 'quit':
+                print('Quitting!')
+                return 0
+
+            else:
+                print('Unknown function "%s"' % func)
 
         except:
             import traceback
@@ -142,3 +152,19 @@ if __name__ == '__main__':
         # Send reply
         msg = msgpack.packb(reply)
         socket.send(msg)
+
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--address', default='tcp://*:9999')
+    parser.add_argument('--port', default=0)
+    opt = parser.parse_args()
+
+    if opt.port:
+        addr = 'tcp://*:' + str(opt.port)
+    else:
+        addr = opt.address
+
+    sys.exit(main(addr))
+

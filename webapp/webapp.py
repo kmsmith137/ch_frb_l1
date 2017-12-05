@@ -98,14 +98,36 @@ def index():
     nodes = [n.replace('tcp://','') for n in app.nodes]
     return render_template('index-newer.html',
                            nodes = nodes,
-                           enodes = enumerate(nodes),
+                           enodes = list(enumerate(nodes)),
+                           ecnodes = list(enumerate(app.cnc_nodes)),
                            node_status_url='/node-status',
                            packet_matrix_url='/packet-matrix',
                            packet_matrix_image_url='/packet-matrix.png',
                            packet_matrix_d3_url='/packet-matrix-d3',
+                           l0_node_map_url='/l0-node-map',
                            cnc_run_url='/cnc-run',
                            cnc_follow_url='/cnc-poll',
+                           cnc_kill_url='/cnc-kill',
         )
+
+@app.route('/l0-node-map')
+def l0_node_map():
+    return render_template('l0-node-map.html',
+                           packet_matrix_json_url='/packet-matrix.json',
+                           racks=list(enumerate(['%x' % x for x in range(15)])),
+                           nodesperrack=[0,1,2,3,4,5,6,7,8,9])
+
+@app.route('/cnc-kill', methods=['POST'])
+def cnc_kill():
+    if request.method != 'POST':
+        return 'POST only'
+    pids = request.get_json()
+    print('CNC_kill:', pids)
+    pids = dict(pids)
+    from cnc_client import CncClient
+    client = CncClient(ctx=app.zmq)
+    results = client.kill(pids, timeout=3000)
+    return jsonify(results)
 
 @app.route('/cnc-run', methods=['POST',
                                 # debug
@@ -186,13 +208,45 @@ def sort_l0_nodes(senders):
 
     return senders,sender_names
 
-def get_packet_matrix():
+def get_packet_matrix(group_l0=None):
     # Send RPC requests to all nodes, gather results into an HTML table
     client = get_rpc_client()
     # Make RPC requests async.  Timeouts are in *milliseconds*.
     timeout = 5000.
 
     rates = client.get_packet_rate(timeout=timeout)
+    # 'rates' is a list with rpc_client.PacketRate object per L1 node (or None);
+    # PacketRate has attributes .start, .period, and .packets;
+    # .packets is a sender->npackets mapping.
+
+    if group_l0 == 'node':
+        sender_map = {}
+        for p in rates:
+            if p is None:
+                continue
+            senders = p.packets.keys()
+            for s in senders:
+                # ip:port
+                ip,port = s.split(':')
+                # a.b.c.d
+                abcd = [int(x) for x in ip.split('.')]
+                # L0 nodes have aliases 10.[6789].x.y == 10.1.x.y
+                if abcd[1] in [6,7,8,9]:
+                    abcd[1] = 1
+                ip = '.'.join(str(x) for x in abcd)
+                sender_map[s] = ip + ':' + port
+        #print('Applying sender map:', sender_map)
+        for i,p in enumerate(rates):
+            if p is None:
+                continue
+            mapped = dict()
+            for k,v in p.packets.items():
+                k = sender_map[k]
+                if not k in mapped:
+                    mapped[k] = v
+                else:
+                    mapped[k] += v
+            p.packets = mapped
 
     senders = set()
     packetrates = []
@@ -202,7 +256,8 @@ def get_packet_matrix():
             continue
         senders.update(p.packets.keys())
         # Packet counts -> rates
-        packetrates.append(dict([(k, v/p.period if p.period > 0 else 0) for k,v in p.packets.items()]))
+        packetrates.append(dict([(k, v/p.period if p.period > 0 else 0)
+                                 for k,v in p.packets.items()]))
         
     senders = list(senders)
 
@@ -333,7 +388,9 @@ def packet_rate_l0_json(ip=None):
 
 @app.route('/packet-matrix.json')
 def packet_matrix_json():
-    senders, sender_names, packets = get_packet_matrix()
+    group_l0 = request.args.get('group_l0', None)
+
+    senders, sender_names, packets = get_packet_matrix(group_l0=group_l0)
 
     # 'packets' is a list with one element per L1 node; each list
     # contains a dict from L0 name (in "senders") to the packet count.

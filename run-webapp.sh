@@ -8,7 +8,7 @@ if [[ $# -ne 1 ]]; then
     echo "that an l1_config file will probably work, since it contains the 'rpc_address'"
     echo "key among others."
     echo
-    echo "The webapp will run on port 5002!"
+    echo "The webapp will run on port 5120 -- see run-uwsgi.sh for the thing running on port 5002!"
 
     exit 1
 fi
@@ -25,4 +25,4 @@ export FLASK_DEBUG=1
 
 export PYTHONPATH=${PYTHONPATH}:.
 
-flask run --host 0.0.0.0 --port 5002
+flask run --host 0.0.0.0 --port 5120 #--with-threads
