@@ -17,7 +17,7 @@ class MyParser(argparse.ArgumentParser):
         print >>file, "Usage: ch-frb-make-acq-inventory [-D] <device>"
         print >>file, "The <device> argument should be either 'ssd' or 'nfs'."
         print >>file, "    -D: do not back up old 'acq_json' directory (by default, a backup 'acq_json_deleteme_xxx' is created"
-        print >>file, '    -h: show longer help message and exit'
+        # print >>file, '    -h: show longer help message and exit'
 
 
     def error(self, message=None):
@@ -32,8 +32,8 @@ class MyParser(argparse.ArgumentParser):
     def print_help(self, file=None):
         self.print_usage(file)
 
-        print >>file
-        print >>file, "TBD"
+        # print >>file
+        # print >>file, "HELP TEXT HERE"
 
 
 parser = MyParser()
@@ -54,7 +54,7 @@ args = parser.parse_args()
 
 if args.device == 'ssd':
     toplevel_dir = '/local'
-elif sys.argv[1] == 'nfs':
+elif args.device == 'nfs':
     toplevel_dir = '/frb-archiver-1'
     nfs_hack = True
 else:
@@ -115,7 +115,7 @@ def delete_json_dir(dirname):
         if b in [ '.', '..' ]:
             continue
         
-        a = os.path.join(dirname, f)
+        a = os.path.join(dirname, b)
 
         if os.path.isdir(a):
             if not delete_json_dir(a):
@@ -127,7 +127,7 @@ def delete_json_dir(dirname):
             ret = False
 
     if ret:
-        os.remove(dirname)
+        os.rmdir(dirname)
 
     return ret
 
@@ -236,7 +236,7 @@ class beamdir:
             else:
                 # Hack for NFS load-balancing
                 for i in xrange(i0,i1):
-                    d = replace_beginning_of_string(self.beamdir_abspath, '/frb-archiver-1/', ('/frb-archiver-%d/' % (i%4)))
+                    d = replace_beginning_of_string(self.beamdir_abspath, '/frb-archiver-1/', ('/frb-archiver-%d/' % (i%4+1)))
                     f = os.path.join(d, self.data_file_basenames[i])
                     data_abspath_list.append(f)
         
@@ -309,7 +309,6 @@ class acqdir:
 
         for (beam_id, bd) in sorted(self.beamdir_hash.iteritems()):
             runlist2 = bd.write_json_files(json_dir)
-            runlist2 = [ (run_name, os.path.join(self.acqdir_basename,f)) for (run_name,f) in runlist2 ]
             runlist.extend(runlist2)
 
         runlist_filename = os.path.join(json_dir, ('%s_runlist.json' % self.acqdir_basename))
@@ -406,7 +405,7 @@ if os.path.exists(output_json_dir):
     backup_flag = True
 
 try:
-    a.write_json_files('/local/acq_json')
+    a.write_json_files(output_json_dir)
 except:
     if backup_flag:
         print 'Restoring backup %s -> %s' % (backup_json_dir, output_json_dir)
