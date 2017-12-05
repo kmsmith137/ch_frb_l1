@@ -72,7 +72,8 @@ write_staging_area_gb: 96.0
 # L1a and L1b (in this case we use 4000, corresponding to 4 seconds).  See
 # MANUAL.md for discussion!
 
-l1b_executable_filename: "./toy-l1b.py"
+#l1b_executable_filename: "./toy-l1b.py"
+l1b_executable_filename: "../ch_frb_L1b/ch-frb-l1b.py"
 l1b_buffer_nsamples: 4000
 l1b_pipe_timeout: 0
 
@@ -84,4 +85,4 @@ l1b_pipe_timeout: 0
 # not the same as any existing acquisition on the node.  The data will be written to
 # /local/acq_data/$(stream_acqname).
 
-stream_acqname: "streams_test_1"
+#stream_acqname: "streams_test_1"
