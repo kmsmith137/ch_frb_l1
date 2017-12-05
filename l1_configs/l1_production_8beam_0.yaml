@@ -72,8 +72,8 @@ write_staging_area_gb: 64.0
 # L1a and L1b (in this case we use 4000, corresponding to 4 seconds).  See
 # MANUAL.md for discussion!
 
-l1b_executable_filename: "./toy-l1b.py"
-# l1b_executable_filename: "../ch_frb_L1b/ch-frb-l1b.py"
+#l1b_executable_filename: "./toy-l1b.py"
+l1b_executable_filename: "../ch_frb_L1b/ch-frb-l1b.py"
 l1b_buffer_nsamples: 4000
 l1b_pipe_timeout: 0
 
@@ -109,3 +109,4 @@ l1b_pipe_timeout: 0
 # stream_acqname: "test_acq"
 # stream_beam_ids: [ 0 ]
 
+#stream_acqname: "Dec_01_19:30_ET_acq_chitrang"
