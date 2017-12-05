@@ -429,10 +429,9 @@ void sim_thread_file(const shared_ptr<ch_frb_io::intensity_network_ostream> &ost
     float time_per_chunk = (float) num_seconds/nchunks;
     for (long ichunk = 0; ichunk < nchunks; ichunk++){
         if(ichunk%(nchunks/num_loops)==0){
-            if (ichunk==0)
-                float location = ichunk*time_per_chunk+ 300;
-            else
-                float location = ichunk*time_per_chunk+ 100;
+            float location = ichunk*time_per_chunk+ 300;
+            if (ichunk!=0)
+                location = ichunk*time_per_chunk+ 100;
 	    for(int i=0;i<4;i++){
                 if (iteration >= num_loops) break;
                 int skip_to = iteration*numthreads*4;
