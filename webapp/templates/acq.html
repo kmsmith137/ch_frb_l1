@@ -54,13 +54,21 @@ onClick="stopAcq();" style="font-size:125%;">
     
 <table border="1">
   <tr>
-    <th>Node</th><th>Beams</th><th>Current Acq Name</th><th>Current Acq Size (chunks)</th><th>Current Acq Size (GB)</th><th>SSD free (GB)</th><th>Status</th>
+    <th>Node</th>
+    <th>Beams</th>
+    <th>Current Acq Name</th>
+    <th>Current Acq Beams</th>
+    <th>Current Acq Size (total chunks)</th>
+    <th>Current Acq Size (GB)</th>
+    <th>SSD free (GB)</th>
+    <th>Status</th>
   </tr>
   {% for i,node in enodes %}
   <tr>
     <td>{{node}}</td>
     <td id="node_beams_{{i}}"></td>
     <td id="node_acq_{{i}}">---</td>
+    <td id="node_acqbeams_{{i}}">---</td>
     <td id="node_acqchunks_{{i}}">---</td>
     <td id="node_acqsize_{{i}}">---</td>
     <td id="node_ssd_free_{{i}}">---</td>
@@ -139,6 +147,10 @@ function json_callback(X, repeat) {
         beams = beams.split(',');
         sbeams = sbeams.split(',');
         console.log('streaming beams: ' + sbeams);
+
+        sel = '#node_acqbeams_'+i;
+        $(sel).html(sbeams.join(', '));
+
         var parent = '#node_beams_' + i;
         for (var j=0; j<beams.length; j++) {
             var child = 'node_beams_' + i + '_beam_' + beams[j];
@@ -152,12 +164,12 @@ function json_callback(X, repeat) {
                 var checkbox = d3.select(parent).append('input')
                     .attr('type', 'checkbox')
                     .attr('id', child);
-                if (checked)
+                //if (checked)
                     checkbox.attr('checked', 'true');
                 d3.select(parent).append('text').html(beams[j]);
-            } else {
-                // set checkbox state
-                x.attr('checked', checked);
+            //} else {
+            // set checkbox state
+            //    x.attr('checked', checked);
             }
         }
     }
