@@ -84,7 +84,7 @@ public:
                   "# TYPE %s gauge\n", name, name);
         for (size_t i=2; i<stats.size(); i++) {
             unordered_map<string, uint64_t> bstats = stats[i];
-            mg_printf(conn, "%s{beam=\"%i\"} %lu\n", name, (int)bstats["beam_id"], bstats["ringbuf_fpga_min"]);
+            mg_printf(conn, "%s{beam=\"%i\"} %lu\n", name, (int)bstats["beam_id"], (long)bstats["ringbuf_fpga_min"]);
         }
 
         name = "ringbuf_fpga_max";
@@ -93,7 +93,7 @@ public:
                   "# TYPE %s gauge\n", name, name);
         for (size_t i=2; i<stats.size(); i++) {
             unordered_map<string, uint64_t> bstats = stats[i];
-            mg_printf(conn, "%s{beam=\"%i\"} %lu\n", name, (int)bstats["beam_id"], bstats["ringbuf_fpga_max"]);
+            mg_printf(conn, "%s{beam=\"%i\"} %lu\n", name, (int)bstats["beam_id"], (long)bstats["ringbuf_fpga_max"]);
         }
 
         // Ring buffer stats per beam AND downsampling level.
@@ -129,7 +129,7 @@ public:
                   "# TYPE %s gauge\n", name, name);
         for (auto it=minfpgas.begin(); it!=minfpgas.end(); it++) {
             auto key = it->first;
-            mg_printf(conn, "%s{beam=\"%i\",level=\"%i\"} %lu\n", name, key.first, (int)key.second, it->second);
+            mg_printf(conn, "%s{beam=\"%i\",level=\"%i\"} %lu\n", name, key.first, (int)key.second, (long)it->second);
         }
         name = "ringbuf_level_fpga_max";
         mg_printf(conn,
@@ -137,7 +137,7 @@ public:
                   "# TYPE %s gauge\n", name, name);
         for (auto it=maxfpgas.begin(); it!=maxfpgas.end(); it++) {
             auto key = it->first;
-            mg_printf(conn, "%s{beam=\"%i\",level=\"%i\"} %lu\n", name, key.first, (int)key.second, it->second);
+            mg_printf(conn, "%s{beam=\"%i\",level=\"%i\"} %lu\n", name, key.first, (int)key.second, (long)it->second);
         }
         name = "ringbuf_level_nchunks";
         mg_printf(conn,
@@ -145,7 +145,7 @@ public:
                   "# TYPE %s gauge\n", name, name);
         for (auto it=nchunks.begin(); it!=nchunks.end(); it++) {
             auto key = it->first;
-            mg_printf(conn, "%s{beam=\"%i\",level=\"%i\"} %lu\n", name, key.first, (int)key.second, it->second);
+            mg_printf(conn, "%s{beam=\"%i\",level=\"%i\"} %lu\n", name, key.first, (int)key.second, (long)it->second);
         }
         
         return true;
@@ -176,16 +176,17 @@ shared_ptr<CivetServer> start_web_server(int port,
 }
 
 int main(int argc, char** argv) {
-    int beam = 77;
     string port = "";
     int portnum = 0;
     int udpport = 0;
     int wait = 0;
     float chunksleep = 0;
     int nchunks = 100;
-
+    vector<int> beams;
+    int web_port = 8081;
+    
     int c;
-    while ((c = getopt(argc, argv, "a:p:b:u:ws:n:h")) != -1) {
+    while ((c = getopt(argc, argv, "a:p:b:c:u:ws:n:h")) != -1) {
         switch (c) {
         case 'a':
             port = string(optarg);
@@ -196,9 +197,13 @@ int main(int argc, char** argv) {
             break;
 
         case 'b':
-            beam = atoi(optarg);
+            beams.push_back(atoi(optarg));
             break;
 
+        case 'c':
+            web_port = atoi(optarg);
+            break;
+            
         case 'u':
             udpport = atoi(optarg);
             break;
@@ -218,7 +223,7 @@ int main(int argc, char** argv) {
         case 'h':
         case '?':
         default:
-            cout << string(argv[0]) << ": [-a <address>] [-p <port number>] [-b <beam id>] [-u <L1 udp-port>] [-w to wait indef] [-s <sleep between chunks>] [-n <N chunks>] [-h for help]" << endl;
+            cout << string(argv[0]) << ": [-a <address>] [-p <port number>] [-b <beam id>] [-c <web port>] [-u <L1 udp-port>] [-w to wait indef] [-s <sleep between chunks>] [-n <N chunks>] [-h for help]" << endl;
             cout << "eg,  -a tcp://127.0.0.1:5555" << endl;
             cout << "     -p 5555" << endl;
             cout << "     -b 78" << endl;
@@ -235,8 +240,13 @@ int main(int argc, char** argv) {
     int nt_per = 16;
     int fpga_per = 400;
 
+    if (beams.size() == 0) {
+        beams.push_back(77);
+    }
+    
     intensity_network_stream::initializer ini;
-    ini.beam_ids.push_back(beam);
+    for (int beam: beams)
+        ini.beam_ids.push_back(beam);
     ini.nupfreq = nupfreq;
     ini.nt_per_packet = nt_per;
     ini.fpga_counts_per_sample = fpga_per;
@@ -261,7 +271,6 @@ int main(int argc, char** argv) {
     shared_ptr<intensity_network_stream> stream = intensity_network_stream::make(ini);
     stream->start_stream();
 
-    int web_port = 8081;
     shared_ptr<CivetServer> webserver = start_web_server(web_port, stream);
     if (!webserver) {
         return -1;
@@ -292,52 +301,54 @@ int main(int argc, char** argv) {
 
     for (int i=0; i<nchunks; i++) {
 	assembled_chunk::initializer ini_params;
-	ini_params.beam_id = beam;
-	ini_params.nupfreq = nupfreq;
-	ini_params.nt_per_packet = nt_per;
-	ini_params.fpga_counts_per_sample = fpga_per;
-	ini_params.ichunk = i;
+        for (int b: beams) {
+            ini_params.beam_id = b;
+            ini_params.nupfreq = nupfreq;
+            ini_params.nt_per_packet = nt_per;
+            ini_params.fpga_counts_per_sample = fpga_per;
+            ini_params.ichunk = i;
 
-	unique_ptr<assembled_chunk> uch = assembled_chunk::make(ini_params);
-        assembled_chunk* ch = uch.release();
-        chlog("Injecting " << i);
-        if (stream->inject_assembled_chunk(ch))
-            chlog("Injected " << i);
-        else {
-            chlog("Inject failed (ring buffer full)");
-            failed_push++;
-        }
+            unique_ptr<assembled_chunk> uch = assembled_chunk::make(ini_params);
+            assembled_chunk* ch = uch.release();
+            chlog("Injecting " << i);
+            if (stream->inject_assembled_chunk(ch))
+                chlog("Injected " << i);
+            else {
+                chlog("Inject failed (ring buffer full)");
+                failed_push++;
+            }
 
-        // downstream thread consumes with a lag of 2...
-        if (i >= 2) {
-            // Randomly consume 0 to 2 chunks
-            shared_ptr<assembled_chunk> ach;
-            if ((backlog > 0) && rando(rng)) {
-                cout << "Downstream consumes a chunk (backlog)" << endl;
-                ach = stream->get_assembled_chunk(0, false);
-                if (ach) {
-                    cout << "  (chunk " << ach->ichunk << ")" << endl;
-                    consumed_chunks.push_back(ach->ichunk);
-                    backlog--;
+            // downstream thread consumes with a lag of 2...
+            if (i >= 2) {
+                // Randomly consume 0 to 2 chunks
+                shared_ptr<assembled_chunk> ach;
+                if ((backlog > 0) && rando(rng)) {
+                    cout << "Downstream consumes a chunk (backlog)" << endl;
+                    ach = stream->get_assembled_chunk(0, false);
+                    if (ach) {
+                        cout << "  (chunk " << ach->ichunk << ")" << endl;
+                        consumed_chunks.push_back(ach->ichunk);
+                        backlog--;
+                    }
                 }
-            }
-            if (rando(rng)) {
-                chlog("Downstream consumes a chunk");
-                ach = stream->get_assembled_chunk(0, false);
-                if (ach) {
-                    chlog("  (chunk " << ach->ichunk << ")");
-                    consumed_chunks.push_back(ach->ichunk);
-                } else
-                    backlog++;
-            }
-            if (rando(rng)) {
-                chlog("Downstream consumes a chunk");
-                ach = stream->get_assembled_chunk(0, false);
-                if (ach) {
-                    chlog("  (chunk " << ach->ichunk << ")");
-                    consumed_chunks.push_back(ach->ichunk);
-                } else
-                    backlog++;
+                if (rando(rng)) {
+                    chlog("Downstream consumes a chunk");
+                    ach = stream->get_assembled_chunk(0, false);
+                    if (ach) {
+                        chlog("  (chunk " << ach->ichunk << ")");
+                        consumed_chunks.push_back(ach->ichunk);
+                    } else
+                        backlog++;
+                }
+                if (rando(rng)) {
+                    chlog("Downstream consumes a chunk");
+                    ach = stream->get_assembled_chunk(0, false);
+                    if (ach) {
+                        chlog("  (chunk " << ach->ichunk << ")");
+                        consumed_chunks.push_back(ach->ichunk);
+                    } else
+                        backlog++;
+                }
             }
         }
 
@@ -358,8 +369,9 @@ int main(int argc, char** argv) {
     vector<vector<pair<shared_ptr<assembled_chunk>, uint64_t> > > chunks;
     chlog("Test retrieving chunks...");
     //rb->retrieve(30000000, 50000000, chunks);
-    vector<int> beams;
-    beams.push_back(beam);
+
+    //vector<int> beams;
+    //beams.push_back(beam);
     chunks = stream->get_ringbuf_snapshots(beams);
     stringstream ss;
     ss << "Got " << chunks.size() << " beams, with number of chunks:";
