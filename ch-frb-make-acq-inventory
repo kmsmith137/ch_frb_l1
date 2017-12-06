@@ -14,8 +14,10 @@ class MyParser(argparse.ArgumentParser):
         if file is None:
             file = sys.stdout
 
-        print >>file, "Usage: ch-frb-make-acq-inventory [-D] <device>"
+        print >>file, "Usage: ch-frb-make-acq-inventory [-D] [--nchunks-per-part=NN] [--nchunks-overlap=NN] <device>"
         print >>file, "The <device> argument should be either 'ssd' or 'nfs'."
+        print >>file, "    --nchunks-per-part: long acqs will be split into parts, with specified number of 1s chunks (default 3600)"
+        print >>file, "    --nchunks-overlap: if acq is split into parts, they overlap by specified number of 1s chunks (default 600)"
         print >>file, "    -D: do not back up old 'acq_json' directory (by default, a backup 'acq_json_deleteme_xxx' is created"
         # print >>file, '    -h: show longer help message and exit'
 
@@ -40,17 +42,18 @@ parser = MyParser()
 
 parser.add_argument('device')
 parser.add_argument('-D', action='store_true', help='runs the pipeline with no output directory')
+parser.add_argument('--nchunks-per-part', dest='nchunks_per_part', type=int, default=3600)
+parser.add_argument('--nchunks-overlap', dest='nchunks_overlap', type=int, default=600)
+
+args = parser.parse_args()
 
 # Globals.
 # Each acq is now divided into multiple parts.
 # We take the parts to be 60 minutes long, overlapping by 10 minutes.
-nchunks_per_part = 3600
-nchunk_overlap = 600
+nchunks_per_part = args.nchunks_per_part
+nchunks_overlap = args.nchunks_overlap
 toplevel_dir = None
 nfs_hack = False
-
-
-args = parser.parse_args()
 
 if args.device == 'ssd':
     toplevel_dir = '/local'
@@ -59,6 +62,11 @@ elif args.device == 'nfs':
     nfs_hack = True
 else:
     parser.error("Fatal: <device> argument must be either 'ssd' or 'nfs'.")
+
+if nchunks_overlap < 0:
+    parser.error("Fatal: 'nchunks_overlap' must be >= 0")
+if nchunks_per_part <= nchunks_overlap:
+    parser.error("Fatal: 'nchunks_per_part' must be greater than 'nchunks_overlap'")
 
 
 ####################################################################################################
@@ -220,7 +228,7 @@ class beamdir:
             i1 = (ipart+1) * nchunks_per_part
             
             if (ipart > 0):
-                i0 -= nchunk_overlap
+                i0 -= nchunks_overlap
             if (ipart == (nparts-1)) and not self.in_progress:
                 i1 = self.nfiles
 
@@ -412,8 +420,9 @@ except:
         os.rename(backup_json_dir, output_json_dir)
     raise
 
+a.announce_acquisitions_in_progress()
 
-if args.D:
+if args.D and backup_flag:
     print 'Deleting backup %s' % backup_json_dir
     delete_json_dir(backup_json_dir)
 else:
