@@ -102,9 +102,6 @@ private:
 
     // server start time
     struct timeval _time0;
-
-    // the last value we set for _stream.stream_to_files.
-    std::string _last_stream_to_files;
 };
 
 

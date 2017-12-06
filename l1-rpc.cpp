@@ -447,7 +447,6 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             pattern = "";
             chlog("Turning off streaming");
             _stream->stream_to_files(pattern, { }, 0);
-            _last_stream_to_files = pattern;
             result.first = true;
             result.second = pattern;
         } else {
@@ -472,7 +471,6 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
                     }
                 }
                 _stream->stream_to_files(pattern, beam_ids, 0);
-                _last_stream_to_files = pattern;
                 result.first = true;
                 result.second = pattern;
             } catch (const std::exception& e) {
@@ -492,8 +490,20 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
     } else if (funcname == "stream_status") {
 
         unordered_map<string, string> dict;
-        dict["stream_filename"] = _last_stream_to_files;
 
+        string stream_filename;
+        vector<int> stream_beams;
+        int stream_priority;
+        int chunks_written;
+        size_t bytes_written;
+        _stream->get_streaming_status(stream_filename, stream_beams, stream_priority,
+                                      chunks_written, bytes_written);
+
+        dict["stream_filename"] = stream_filename;
+        dict["stream_priority"] = std::to_string(stream_priority);
+        dict["stream_chunks_written"] = std::to_string(chunks_written);
+        dict["stream_bytes_written"] = std::to_string(bytes_written);
+        
         // df for "ssd" and "nfs"
         struct statvfs vfs;
         if (statvfs("/frb-archiver-1", &vfs) == 0) {
@@ -501,24 +511,39 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             dict["nfs_gb_free"] = std::to_string((int)gb);
         }
         if (statvfs("/local", &vfs) == 0) {
-            chlog("block size " << vfs.f_frsize);
-            chlog("blocks avail " << vfs.f_bavail);
             size_t gb = ((size_t)vfs.f_frsize * (size_t)vfs.f_bavail) / (size_t)(1024 * 1024 * 1024);
             dict["ssd_gb_free"] = std::to_string((int)gb);
         }
 
         // du in _last_stream_to_files
-        if (_last_stream_to_files.size()) {
-            // drop two directory components
-            string acqdir = ch_frb_l1::acq_pattern_to_dir(_last_stream_to_files);
-            try {
-                size_t gb = ch_frb_l1::disk_space_used(acqdir) / (1024 * 1024 * 1024);
-                dict["stream_gb_used"] = std::to_string((int)gb);
-            } catch (const std::exception& e) {
-                chlog("disk_space_used " << _last_stream_to_files << ": " << e.what());
-            }
-        }
+        /*
+         if (_last_stream_to_files.size()) {
+         // drop two directory components
+         string acqdir = ch_frb_l1::acq_pattern_to_dir(_last_stream_to_files);
+         try {
+         size_t gb = ch_frb_l1::disk_space_used(acqdir) / (1024 * 1024 * 1024);
+         dict["stream_gb_used"] = std::to_string((int)gb);
+         } catch (const std::exception& e) {
+         chlog("disk_space_used " << _last_stream_to_files << ": " << e.what());
+         }
+         }
+         */
 
+        // all my beams, as a comma-separated string
+        string allbeams = "";
+        for (int i=0; i<_stream->ini_params.beam_ids.size(); i++) {
+            if (i) allbeams += ",";
+            allbeams += std::to_string(_stream->ini_params.beam_ids[i]);
+        }
+        dict["all_beams"] = allbeams;
+        // beams being streamed
+        string strbeams = "";
+        for (int i=0; i<stream_beams.size(); i++) {
+            if (i) strbeams += ",";
+            strbeams += std::to_string(stream_beams[i]);
+        }
+        dict["stream_beams"] = strbeams;
+        
         // Pack return value into msgpack buffer
         msgpack::sbuffer buffer;
         msgpack::pack(buffer, dict);

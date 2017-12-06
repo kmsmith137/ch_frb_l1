@@ -54,11 +54,14 @@ onClick="stopAcq();" style="font-size:125%;">
     
 <table border="1">
   <tr>
-    <th>Node</th><th>Current Acq Name</th><th>Size</th><th>SSD free GB</th><th>Status</th>
+    <th>Node</th><th>Beams</th><th>Current Acq Name</th><th>Current Acq Size (chunks)</th><th>Current Acq Size (GB)</th><th>SSD free (GB)</th><th>Status</th>
   </tr>
   {% for i,node in enodes %}
   <tr>
-    <td>{{node}}</td><td id="node_acq_{{i}}">---</td>
+    <td>{{node}}</td>
+    <td id="node_beams_{{i}}"></td>
+    <td id="node_acq_{{i}}">---</td>
+    <td id="node_acqchunks_{{i}}">---</td>
     <td id="node_acqsize_{{i}}">---</td>
     <td id="node_ssd_free_{{i}}">---</td>
     <td id="node_status_{{i}}">---</td>
@@ -112,13 +115,51 @@ function json_callback(X, repeat) {
         }
         $(sel).html(fn);
 
-        var val = status[i]['stream_gb_used'];
-        var sel = '#node_acqsize_'+i;
+        var val = status[i]['stream_bytes_written'];
+        val = Number.parseInt(val);
+        gb = val / (1024*1024*1024);
+        plus = (val % (1024*1024)) > 0;
+        val = gb.toFixed(3);
+        if (plus)
+            val += "+";
+        sel = '#node_acqsize_'+i;
         $(sel).html(val);
 
-        var val = status[i]['ssd_gb_free'];
-        var sel = '#node_ssd_free_'+i;
+        val = status[i]['stream_chunks_written'];
+        sel = '#node_acqchunks_'+i;
         $(sel).html(val);
+        
+        val = status[i]['ssd_gb_free'];
+        sel = '#node_ssd_free_'+i;
+        $(sel).html(val);
+
+        // this is screaming out for being handled with d3...
+        var beams = status[i]['all_beams'];
+        var sbeams = status[i]['stream_beams'];
+        beams = beams.split(',');
+        sbeams = sbeams.split(',');
+        console.log('streaming beams: ' + sbeams);
+        var parent = '#node_beams_' + i;
+        for (var j=0; j<beams.length; j++) {
+            var child = 'node_beams_' + i + '_beam_' + beams[j];
+            //console.log('looking for: #' + child);
+            var checked = sbeams.includes(beams[j]);
+            //console.log('streaming that beam? ' + checked);
+            x = $('#'+child);
+            //console.log('children found: ' + x.length);
+            if (x.length == 0) {
+                // insert new checkbox!
+                var checkbox = d3.select(parent).append('input')
+                    .attr('type', 'checkbox')
+                    .attr('id', child);
+                if (checked)
+                    checkbox.attr('checked', 'true');
+                d3.select(parent).append('text').html(beams[j]);
+            } else {
+                // set checkbox state
+                x.attr('checked', checked);
+            }
+        }
     }
 
     if (repeat)
