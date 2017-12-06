@@ -41,10 +41,14 @@ Notes about this acquisition:<br />
     <br />
     <br />
 <input type="button" value="Start Acquisition on all nodes"
-onClick="startAcq();" style="font-size:125%;">
+onClick="startAllAcq();" style="font-size:125%;">
 <input type="button" value="Stop Acquisition on all nodes"
-onClick="stopAcq();" style="font-size:125%;">
+onClick="stopAllAcq();" style="font-size:125%;">
     <br />
+<input type="button" value="Start Acquisition on selected nodes & beams"
+onClick="startAcq();" style="font-size:125%;">
+<input type="button" value="Stop Acquisition on selected nodes & beams"
+onClick="stopAcq();" style="font-size:125%;">
 <span id="acq_status"></span>
 </td></tr>
 </table>
@@ -54,8 +58,11 @@ onClick="stopAcq();" style="font-size:125%;">
     
 <table border="1">
   <tr>
-    <th>Node</th>
-    <th>Beams
+    <th>Node <br/>
+<input type="button" onClick="setAllNodes(true);" value="all">
+<input type="button" onClick="setAllNodes(false);" value="none">
+    </th>
+    <th>Beams <br/>
 <input type="button" onClick="setAllBeams(true);" value="all">
 <input type="button" onClick="setAllBeams(false);" value="none">
 </th>
@@ -68,8 +75,10 @@ onClick="stopAcq();" style="font-size:125%;">
   </tr>
   {% for i,node in enodes %}
   <tr>
-    <td>{{node}}</td>
+    <td>{{node}}
+    <input type="checkbox" id="node_{{i}}" class="node_checkbox" checked></td>
     <td id="node_beams_parent_{{i}}"><span id="node_beams_{{i}}"></span>
+    <br/>
     <input type="button" onClick="setBeams({{i}}, true);" value="all">
     <input type="button" onClick="setBeams({{i}}, false);" value="none">
     </td>
@@ -218,7 +227,12 @@ function setAllBeams(val) {
     sel.prop('checked', val);
 }
 
-function startAcq() {
+function setAllNodes(val) {
+    var sel = $('.node_checkbox');
+    sel.prop('checked', val);
+}
+
+function startAllAcq() {
     meta = {};
     meta['notes'] = $('#acq_meta').val();
     jmeta = JSON.stringify(meta);
@@ -244,7 +258,7 @@ function startAcq() {
         .post(jargs, function(err,X) { acq_callback(err, X, 'Started'); });
 }
 
-function stopAcq() {
+function stopAllAcq() {
     args = {};
     args['acqname'] = '';
     args['acqdev'] = '';
@@ -256,6 +270,12 @@ function stopAcq() {
     	.header('Content-Type', 'application/json')
         .response(function(xhr) { return JSON.parse(xhr.responseText); })
         .post(jargs, function(err,X) { acq_callback(err, X, 'Stopped'); });
+}
+
+function startAcq() {
+}
+
+function stopAcq() {
 }
 
 function acq_callback(err, X, oktxt) {
