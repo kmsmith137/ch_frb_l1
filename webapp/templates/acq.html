@@ -42,14 +42,18 @@ Notes about this acquisition:<br />
     <br />
 <input type="button" value="Start Acquisition on all nodes"
 onClick="startAllAcq();" style="font-size:125%;">
+<input type="button" value="Start Acquisition on selected beams"
+onClick="startAcq();" style="font-size:125%;">
+    <br />
 <input type="button" value="Stop Acquisition on all nodes"
 onClick="stopAllAcq();" style="font-size:125%;">
-    <br />
-<input type="button" value="Start Acquisition on selected nodes & beams"
-onClick="startAcq();" style="font-size:125%;">
-<input type="button" value="Stop Acquisition on selected nodes & beams"
+
+{#
+ <input type="button" value="Stop Acquisition on selected beams"
 onClick="stopAcq();" style="font-size:125%;">
-<span id="acq_status"></span>
+#}
+
+ <span id="acq_status"></span>
 </td></tr>
 </table>
 
@@ -58,10 +62,7 @@ onClick="stopAcq();" style="font-size:125%;">
     
 <table border="1">
   <tr>
-    <th>Node <br/>
-<input type="button" onClick="setAllNodes(true);" value="all">
-<input type="button" onClick="setAllNodes(false);" value="none">
-    </th>
+    <th>Node</th>
     <th>Beams <br/>
 <input type="button" onClick="setAllBeams(true);" value="all">
 <input type="button" onClick="setAllBeams(false);" value="none">
@@ -75,8 +76,7 @@ onClick="stopAcq();" style="font-size:125%;">
   </tr>
   {% for i,node in enodes %}
   <tr>
-    <td>{{node}}
-    <input type="checkbox" id="node_{{i}}" class="node_checkbox" checked></td>
+    <td>{{node}}</td>
     <td id="node_beams_parent_{{i}}"><span id="node_beams_{{i}}"></span>
     <br/>
     <input type="button" onClick="setBeams({{i}}, true);" value="all">
@@ -95,6 +95,9 @@ onClick="stopAcq();" style="font-size:125%;">
 <br><hr><br>
 
 <script type="text/javascript">
+
+//var nnodes = {{ enodes|length }};
+
 // Are we updating the plot?
 var do_update = true;
 
@@ -161,7 +164,7 @@ function json_callback(X, repeat) {
         var sbeams = status[i]['stream_beams'];
         beams = beams.split(',');
         sbeams = sbeams.split(',');
-        console.log('streaming beams: ' + sbeams);
+        //console.log('streaming beams: ' + sbeams);
 
         sel = '#node_acqbeams_'+i;
         $(sel).html(sbeams.join(', '));
@@ -180,6 +183,7 @@ function json_callback(X, repeat) {
                     .attr('type', 'checkbox')
                     .attr('id', child)
                     .attr('class', 'beam_checkbox')
+                    .attr('beam', beams[j])
                     .property('checked', true);
                 //if (checked)
                 //checkbox.attr('checked');
@@ -227,11 +231,6 @@ function setAllBeams(val) {
     sel.prop('checked', val);
 }
 
-function setAllNodes(val) {
-    var sel = $('.node_checkbox');
-    sel.prop('checked', val);
-}
-
 function startAllAcq() {
     meta = {};
     meta['notes'] = $('#acq_meta').val();
@@ -273,10 +272,51 @@ function stopAllAcq() {
 }
 
 function startAcq() {
+    console.log('Starting acquisitions on selected beams...');
+    var sel = $('.beam_checkbox:checked');
+    console.log(sel.length, ' checked');
+    var beams = sel.map(function() {
+        //console.log('map: ' + this);
+        //console.log('beam: ' + this.getAttribute('beam'));
+        return this.getAttribute('beam'); });
+    //console.log('beams: ' + beams);
+    var beamstring = '';
+    for (var i=0; i<beams.length; i++) {
+        if (i > 0)
+            beamstring += ',';
+        beamstring += beams[i];
+        console.log('beam: ' + beams[i]);
+    }
+
+    meta = {};
+    meta['notes'] = $('#acq_meta').val();
+    jmeta = JSON.stringify(meta);
+    console.log('JSON metadata:', jmeta);
+
+    acqname = $('#acq_name').val();
+    console.log('Acq name:', acqname);
+    acqdev = $('#acq_dev').val();
+    console.log('Acq device:', acqdev);
+
+    //beams = beams.join(',');
+    args = {};
+    args['acqname'] = acqname;
+    args['acqdev'] = acqdev;
+    args['acqmeta'] = jmeta;
+    args['acqbeams'] = beamstring;
+    jargs = JSON.stringify(args);
+
+    $('#acq_status').html('Sending request...');
+    
+    d3.request('/acq-start')
+        .mimeType("application/json")
+    	.header('Content-Type', 'application/json')
+        .response(function(xhr) { return JSON.parse(xhr.responseText); })
+        .post(jargs, function(err,X) { acq_callback(err, X, 'Started'); });
 }
 
-function stopAcq() {
-}
+//function stopAcq() {
+//}
 
 function acq_callback(err, X, oktxt) {
     if (X == null) {

@@ -136,7 +136,12 @@ def acq_start():
     acqname = args['acqname']
     acqdev = args['acqdev']
     acqmeta = args['acqmeta']
-    stat = client.stream(acqname, acq_meta=acqmeta, timeout=timeout)
+    acqbeams = args.get('acqbeams', '')
+    print('Beams:', acqbeams)
+    acqbeams = [int(b) for b in acqbeams.split(',')]
+    print('Beams:', acqbeams)
+    stat = client.stream(acqname, acq_meta=acqmeta, acq_beams=acqbeams,
+                         timeout=timeout)
     print('Start stream status:', stat)
     return jsonify(stat)
 
