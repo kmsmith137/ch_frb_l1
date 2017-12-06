@@ -1,17 +1,10 @@
-
-nbeams: 16
+nbeams: 8
 nfreq: 16384
 nt_per_packet: 16
 
 ipaddr:
-#  - "10.8.200.10"
-#  - "10.8.200.11"
-#  - "10.8.200.12"
-#  - "10.8.200.13"
   - "10.6.200.12"
   - "10.7.200.12"
-  - "10.8.200.12"
-  - "10.9.200.12"
 
 port: 6677
 
@@ -19,4 +12,4 @@ port: 6677
 # Note: nthreads must be a multiple of the number of "streams", which
 # is the number of distinct (ipaddr,port) pairs (in this case nsteams=2).
 
-nthreads: 4
+nthreads: 2
