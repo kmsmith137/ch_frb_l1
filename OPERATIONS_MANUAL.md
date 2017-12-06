@@ -180,6 +180,15 @@ and postprocessing the captured data with the offline pipeline.
   5120-5129 = Dustin
   5130-5139 = Kendrick
   5140-5149 = Alex
+
+  5555 = L1 RPC  
+  UDP 1313 = used by correlator to send real data packets
+  UDP 6677 = used for simulated data packets in examples in MANUAL.md
+
+  9090 = Prometheus
+  9100 = node_exporter
+  9116 = snmp_exporter
+  9093 = alertmanager
   ```
 
 <a name="analyzing-acquisitions"></a>
