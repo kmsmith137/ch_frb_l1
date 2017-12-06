@@ -55,7 +55,10 @@ onClick="stopAcq();" style="font-size:125%;">
 <table border="1">
   <tr>
     <th>Node</th>
-    <th>Beams</th>
+    <th>Beams
+<input type="button" onClick="setAllBeams(true);" value="all">
+<input type="button" onClick="setAllBeams(false);" value="none">
+</th>
     <th>Current Acq Name</th>
     <th>Current Acq Beams</th>
     <th>Current Acq Size (total chunks)</th>
@@ -66,7 +69,10 @@ onClick="stopAcq();" style="font-size:125%;">
   {% for i,node in enodes %}
   <tr>
     <td>{{node}}</td>
-    <td id="node_beams_{{i}}"></td>
+    <td id="node_beams_parent_{{i}}"><span id="node_beams_{{i}}"></span>
+    <input type="button" onClick="setBeams({{i}}, true);" value="all">
+    <input type="button" onClick="setBeams({{i}}, false);" value="none">
+    </td>
     <td id="node_acq_{{i}}">---</td>
     <td id="node_acqbeams_{{i}}">---</td>
     <td id="node_acqchunks_{{i}}">---</td>
@@ -155,7 +161,7 @@ function json_callback(X, repeat) {
         for (var j=0; j<beams.length; j++) {
             var child = 'node_beams_' + i + '_beam_' + beams[j];
             //console.log('looking for: #' + child);
-            var checked = sbeams.includes(beams[j]);
+            //var checked = sbeams.includes(beams[j]);
             //console.log('streaming that beam? ' + checked);
             x = $('#'+child);
             //console.log('children found: ' + x.length);
@@ -163,9 +169,11 @@ function json_callback(X, repeat) {
                 // insert new checkbox!
                 var checkbox = d3.select(parent).append('input')
                     .attr('type', 'checkbox')
-                    .attr('id', child);
+                    .attr('id', child)
+                    .attr('class', 'beam_checkbox')
+                    .property('checked', true);
                 //if (checked)
-                    checkbox.attr('checked', 'true');
+                //checkbox.attr('checked');
                 d3.select(parent).append('text').html(beams[j]);
             //} else {
             // set checkbox state
@@ -193,6 +201,21 @@ function startUpdating() {
 }
 function stopUpdating() {
     do_update = false;
+}
+
+function setBeams(i, val) {
+    //console.log('setAllBeams: ' + i);
+    //var sel = '#node_beams_parent_'+i + ' span input:checkbox';
+    var sel = '#node_beams_'+i + ' input:checkbox';
+    //console.log('selection: ' + sel);
+    var sel = $(sel);
+    //console.log('selected nodes: ' + sel.length);
+    sel.prop('checked', val);
+}
+
+function setAllBeams(val) {
+    var sel = $('.beam_checkbox');
+    sel.prop('checked', val);
 }
 
 function startAcq() {
