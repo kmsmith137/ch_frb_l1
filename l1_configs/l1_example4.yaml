@@ -31,12 +31,13 @@ port: 6677
 rpc_address: [ "tcp://10.2.1.101:5555", 
 	       "tcp://10.2.2.101:5555" ]
 
-# The L1 node is configured so that it "thinks" the NFS server is two different
-# servers, mounted on directories /frb-archiver1, /frb-archiver2.  File writes to 
-# either of these four filesystems will be sent from the corresponding NIC.  The 
-# node is responsible for load-balancing file writes between these filesystems.
+# The L1 node is configured so that it "thinks" the NFS server is four different
+# servers, mounted on directories /frb-archiver1, /frb-archiver2, /frb-archiver3,
+# /frb-archiver4.  File writes to each of these four filesystems will be sent from
+# the corresponding NIC.  The node is responsible for load-balancing file writes 
+# between these filesystems.
 #
-# Here, we define 5 output_devices, corresponding to (2 NIC's) + (1 SSD).
+# Here, we define 3 output_devices, corresponding to (2 NIC's) + (1 SSD).
 # Each output device will get a separate file I/O thread.  This allows file
 # I/O on each device to proceed independently.
 
