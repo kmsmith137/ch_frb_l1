@@ -137,8 +137,11 @@ def acq_start():
     acqdev = args['acqdev']
     acqmeta = args['acqmeta']
     acqbeams = args.get('acqbeams', '')
-    print('Beams:', acqbeams)
-    acqbeams = [int(b) for b in acqbeams.split(',')]
+    # print('Beams:', acqbeams)
+    if len(acqbeams):
+        acqbeams = [int(b) for b in acqbeams.split(',')]
+    else:
+        acqbeams = []
     print('Beams:', acqbeams)
     stat = client.stream(acqname, acq_meta=acqmeta, acq_beams=acqbeams,
                          timeout=timeout)

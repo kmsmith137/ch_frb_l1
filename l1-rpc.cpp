@@ -424,9 +424,24 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         string acq_meta = oh.get().via.array.ptr[2].as<string>();
         // grab beam_ids
         vector<int> beam_ids;
-        for (size_t i=0; i<oh.get().via.array.ptr[3].via.array.size; i++) {
+        int nbeams = oh.get().via.array.ptr[3].via.array.size;
+        for (size_t i=0; i<nbeams; i++) {
             int beam = oh.get().via.array.ptr[3].via.array.ptr[i].as<int>();
-            beam_ids.push_back(beam);
+            // Be forgiving about requests to stream beams that we
+            // aren't handling -- otherwise the client has to keep
+            // track of which L1 server has which beams, which is a
+            // pain.
+            bool found = false;
+            for (int b : _stream->ini_params.beam_ids) {
+                if (b == beam) {
+                    found = true;
+                    break;
+                }
+            }
+            if (found)
+                beam_ids.push_back(beam);
+            else
+                chlog("Stream request for beam " << beam << " which isn't being handled by this node.  Ignoring.");
         }
 
         chlog("Stream request: \"" << acq_name << "\", device=\"" << acq_dev << "\", " << beam_ids.size() << " beams.");
@@ -434,8 +449,11 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             for (size_t i=0; i<beam_ids.size(); i++)
                 chlog("  beam " << beam_ids[i]);
         }
-        // Default to all beams
-        if (beam_ids.size() == 0)
+        // Default to all beams if no beams were specified.
+        // (note that we use nbeams: the number of specified beams, even if
+        // none of them are owned by this node.  The beams owned by this node
+        // that aren't in the specified set will have streaming turned off.)
+        if (nbeams == 0)
             beam_ids = _stream->ini_params.beam_ids;
         // Default to acq_dev = "ssd"
         if (acq_dev.size() == 0)

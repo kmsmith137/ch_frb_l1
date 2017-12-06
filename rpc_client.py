@@ -226,6 +226,8 @@ class RpcClient(object):
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
 
+    ## the acq_beams should perhaps be a list of lists of beam ids,
+    ## one list per L1 server.
     def stream(self, acq_name, acq_dev='', acq_meta='', acq_beams=[],
                servers=None, wait=True, timeout=-1):
         if servers is None:
