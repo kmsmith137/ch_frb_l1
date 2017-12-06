@@ -163,7 +163,7 @@ class beamdir:
         h = { }
 
         for f in os.listdir(self.beamdir_abspath):
-            m = re.match(r'chunk_(\d+).msg', f)
+            m = re.match(r'chunk_(\d+).msg$', f)
 
             if not m:
                 f = os.path.join(self.beamdir_abspath, f)
