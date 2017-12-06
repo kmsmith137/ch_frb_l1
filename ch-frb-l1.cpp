@@ -504,7 +504,6 @@ l1_config::l1_config(int argc, char **argv)
 
     // I put this last, since it creates directories.
     this->stream_filename_pattern = ch_frb_l1::acqname_to_filename_pattern(stream_devname, stream_acqname, stream_beam_ids);
-    cout << "XXX stream_filename_pattern = " << stream_filename_pattern << endl;
 }
 
 
