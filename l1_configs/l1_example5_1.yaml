@@ -23,13 +23,10 @@ nt_per_packet: 16
 
 # With 8 beams/node, we only use two out of four NIC's.
 
-ipaddr: [ "10.6.200.11",
-	  "10.7.200.11" ]
-
+ipaddr: [ "eno1", "eno2" ]
 port: 6677
 
-rpc_address: [ "tcp://10.6.200.11:5555", 
-	       "tcp://10.7.200.11:5555" ]
+rpc_address: [ "tcp://eno1:5555", "tcp://eno2:5555" ]
 
 # The L1 node is configured so that it "thinks" the NFS server is four different
 # servers, mounted on directories /frb-archiver1, /frb-archiver2, /frb-archiver3,
