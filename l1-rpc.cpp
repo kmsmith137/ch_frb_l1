@@ -415,13 +415,14 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         // grab arguments: [ "acq_name", "acq_dev", "acq_meta.json",
         //                   [ beam ids ] ]
         msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
-        if (oh.get().via.array.size != 4) {
-            chlog("stream RPC: failed to parse input arguments: expected array of size 4");
+        if (oh.get().via.array.size != 5) {
+            chlog("stream RPC: failed to parse input arguments: expected array of size 5");
             return -1;
         }
         string acq_name = oh.get().via.array.ptr[0].as<string>();
         string acq_dev = oh.get().via.array.ptr[1].as<string>();
         string acq_meta = oh.get().via.array.ptr[2].as<string>();
+        bool acq_new = oh.get().via.array.ptr[4].as<bool>();
         // grab beam_ids
         vector<int> beam_ids;
         int nbeams = oh.get().via.array.ptr[3].via.array.size;
@@ -469,9 +470,9 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             result.second = pattern;
         } else {
             try {
-                pattern = ch_frb_l1::acqname_to_filename_pattern(acq_dev, acq_name, _stream->ini_params.beam_ids);
+                pattern = ch_frb_l1::acqname_to_filename_pattern(acq_dev, acq_name, _stream->ini_params.beam_ids, acq_new);
                 chlog("Streaming to filename pattern: " << pattern);
-                if (acq_meta.size()) {
+                if (acq_new && acq_meta.size()) {
                     // write metadata file in acquisition dir.
                     string acqdir = ch_frb_l1::acq_pattern_to_dir(pattern);
                     string fn = acqdir + "/metadata.json";

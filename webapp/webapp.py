@@ -165,6 +165,7 @@ def acq_start():
     acqname = args['acqname']
     acqdev = args['acqdev']
     acqmeta = args['acqmeta']
+    acqnew = args.get('acqnew', True);
     acqbeams = args.get('acqbeams', '')
     # print('Beams:', acqbeams)
     if len(acqbeams):
@@ -173,6 +174,7 @@ def acq_start():
         acqbeams = []
     print('Beams:', acqbeams)
     stat = client.stream(acqname, acq_meta=acqmeta, acq_beams=acqbeams,
+                         new_stream=acqnew,
                          timeout=timeout)
     print('Start stream status:', stat)
     return jsonify(stat)

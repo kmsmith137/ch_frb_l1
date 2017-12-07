@@ -102,6 +102,7 @@ var do_update = true;
 // How many milliseconds between updates?
 var update_period = 10000;
 
+//var last_acq_started = null;
 
 function json_callback(X, repeat) {
     //console.log('JSON callback: ' + X);
@@ -240,6 +241,9 @@ function startAllAcq() {
     acqdev = $('#acq_dev').val();
     console.log('Acq device:', acqdev);
 
+    //acqnew = (acqname != last_acq_started);
+    //last_acq_started = acqname;
+    
     args = {};
     args['acqname'] = acqname;
     args['acqdev'] = acqdev;
@@ -296,12 +300,16 @@ function startAcq() {
     acqdev = $('#acq_dev').val();
     console.log('Acq device:', acqdev);
 
-    //beams = beams.join(',');
+    //acqnew = (acqname != last_acq_started);
+    //last_acq_started = acqname;
+
     args = {};
     args['acqname'] = acqname;
     args['acqdev'] = acqdev;
     args['acqmeta'] = jmeta;
     args['acqbeams'] = beamstring;
+    // args['acqnew'] = last_acq_started;
+    args['acqnew'] = false; // allow updates
     jargs = JSON.stringify(args);
 
     $('#acq_status').html('Sending request...');

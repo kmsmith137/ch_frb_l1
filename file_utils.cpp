@@ -53,7 +53,7 @@ static void check_acqdir_base(const string &acqdir_base)
 	
 
 // Helper for acqname_to_filename_pattern()
-static void check_acqdir(const string &acqdir_base, const string &acqname, const vector<int> &beam_ids)
+static void check_acqdir(const string &acqdir_base, const string &acqname, const vector<int> &beam_ids, bool new_acq)
 {
     string acqdir = acqdir_base + "/" + acqname;
     makedir(acqdir, false);  // throw_exception_if_directory_exists=false
@@ -72,7 +72,7 @@ static void check_acqdir(const string &acqdir_base, const string &acqname, const
 	    makedir(beamdir, false);   // throw_exception_if_directory_exists=false
 	else if (!is_directory(beamdir))
 	    throw runtime_error("ch-frb-l1: acqdir " + acqdir + " exists, but is not a directory?!");
-	else if (!is_empty_directory(beamdir)) 
+	else if (new_acq && !is_empty_directory(beamdir))
 	    // This is the important case to check, to avoid overwriting a previous acquisition with the same name.
 	    throw runtime_error("ch-frb-l1: acqdir " + acqdir + " already exists and is nonempty");
 	
@@ -82,14 +82,14 @@ static void check_acqdir(const string &acqdir_base, const string &acqname, const
 }
 
 
-string acqname_to_filename_pattern(const string &devname, const string &acqname, const vector<int> &beam_ids)
+string acqname_to_filename_pattern(const string &devname, const string &acqname, const vector<int> &beam_ids, bool new_acq)
 {
     if ((acqname.size() == 0) || (beam_ids.size() == 0))
 	return string();  // no acquisition requested
 
     if (!strcasecmp(devname.c_str(), "ssd")) {
 	check_acqdir_base("/local/acq_data");
-	check_acqdir("/local/acq_data", acqname, beam_ids);
+	check_acqdir("/local/acq_data", acqname, beam_ids, new_acq);
 	return "/local/acq_data/" + acqname + "/beam_(BEAM)/chunk_(CHUNK).msg";
     }
     else if (!strcasecmp(devname.c_str(), "nfs")) {
@@ -97,7 +97,7 @@ string acqname_to_filename_pattern(const string &devname, const string &acqname,
 	check_acqdir_base("/frb-archiver-2/acq_data");	
 	check_acqdir_base("/frb-archiver-3/acq_data");	
 	check_acqdir_base("/frb-archiver-4/acq_data");
-	check_acqdir("/frb-archiver-1/acq_data", acqname, beam_ids);
+	check_acqdir("/frb-archiver-1/acq_data", acqname, beam_ids, new_acq);
 	return "/frb-archiver-(STREAM)/acq_data/" + string(acqname) + "/beam_(BEAM)/chunk_(CHUNK).msg";
     }
     else
