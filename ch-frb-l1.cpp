@@ -333,7 +333,7 @@ l1_config::l1_config(int argc, char **argv)
     }
 
     // Convert network interface names in "ipaddr", eg, "eno2", into the interface's IP address.
-    for (int i=0; i<ipaddr.size(); i++) {
+    for (size_t i=0; i<ipaddr.size(); i++) {
         // Try to parse as dotted-decimal IP address
         struct in_addr inaddr;
         if (inet_aton(ipaddr[i].c_str(), &inaddr) == 1) {
@@ -350,7 +350,7 @@ l1_config::l1_config(int argc, char **argv)
     }
 
     // Convert network interface names in "rpc_address" entries.
-    for (int i=0; i<rpc_address.size(); i++) {
+    for (size_t i=0; i<rpc_address.size(); i++) {
         // "tcp://eno2:5555" -> "tcp://10.7.100.15:5555"
         size_t proto = rpc_address[i].find("//");
         if (proto == std::string::npos)
