@@ -54,23 +54,9 @@ static void check_acqdir(const string &acqdir_base, const string &acqname, const
 {
     string acqdir = acqdir_base + "/" + acqname;
     makedir(acqdir, false);  // throw_exception_if_directory_exists=false
-    
-    if (!is_empty_directory(acqdir)) {
-	// We throw an exception if acqdir exists and is a nonempty directory,
-	// unless it just contains some empty directories.
-
-	for (const auto &d: listdir(acqdir)) {
-	    if ((d == ".") || (d == ".."))
-		continue;
-	    
-	    string subdir = acqdir + "/" + d;
-
-	    if (!is_directory(subdir) || !is_empty_directory(subdir))
-		throw runtime_error("ch-frb-l1: acqdir " + acqdir + " already exists and is nonempty");
-	}
-    }
 
     for (int beam_id: beam_ids) {
+	// Create per-beam directory.
 	// FIXME it would be better to do directory creation on-the-fly in ch_frb_io.
 	// (At some point this will be necessary, to implement on-the-fly beam_ids.)
 
@@ -78,7 +64,17 @@ static void check_acqdir(const string &acqdir_base, const string &acqname, const
 	beamdir_s << acqdir << "/beam_" << setfill('0') << setw(4) << beam_id;
 	
 	string beamdir = beamdir_s.str();
-	makedir(beamdir, false);   // throw_exception_if_directory_exists=false
+
+	if (!file_exists(beamdir))
+	    makedir(beamdir, false);   // throw_exception_if_directory_exists=false
+	else if (!is_directory(beamdir))
+	    throw runtime_error("ch-frb-l1: acqdir " + acqdir + " exists, but is not a directory?!");
+	else if (!is_empty_directory(beamdir)) 
+	    // This is the important case to check, to avoid overwriting a previous acquisition with the same name.
+	    throw runtime_error("ch-frb-l1: acqdir " + acqdir + " already exists and is nonempty");
+	
+	// If we get here, then the per-beam directory exists and is empty.  
+	// This is OK, so just fall through.
     }
 }
 
