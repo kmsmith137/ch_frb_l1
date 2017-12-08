@@ -717,6 +717,8 @@ struct l1_server {
     bool asynchronous_dedispersion = false;     // run RFI and dedispersion in separate threads?
     double sleep_hack = 0.0;                    // a temporary kludge that will go away soon
 
+    string command_line;
+
     // "Heavyweight" data structures.
     vector<shared_ptr<bonsai::trigger_pipe>> l1b_subprocesses;   // can be vector of empty pointers, if L1B is not being run.
     vector<shared_ptr<ch_frb_io::output_device>> output_devices;
@@ -752,6 +754,10 @@ struct l1_server {
 l1_server::l1_server(int argc, char **argv) :
     config(argc, argv)
 {
+    command_line = "";
+    for (int i=0; i<argc; i++)
+        command_line += (i ? " " : "") + argv[i];
+
     // Factor of 2 is from hyperthreading.
     int num_cores = std::thread::hardware_concurrency() / 2;
 
@@ -1025,7 +1031,7 @@ void l1_server::make_rpc_servers()
     this->rpc_threads.resize(config.nstreams);
     
     for (int istream = 0; istream < config.nstreams; istream++) {
-	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], config.rpc_address[istream]);
+	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], config.rpc_address[istream], command_line);
 	rpc_threads[istream] = rpc_servers[istream]->start();
     }
 }

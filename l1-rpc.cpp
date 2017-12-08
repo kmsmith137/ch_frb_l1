@@ -223,7 +223,9 @@ void l1_write_request::write_callback(const string &error_message)
 
 L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
                          const string &port,
+                         const string &cmdline,
                          zmq::context_t *ctx) :
+    _command_line(cmdline),
     _ctx(ctx ? ctx : new zmq::context_t()),
     _created_ctx(ctx == NULL),
     _frontend(*_ctx, ZMQ_ROUTER),
@@ -673,7 +675,6 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
         // Gather stats...
         vector<unordered_map<string, uint64_t> > stats = _stream->get_statistics();
-
         {
             // This is a bit of a HACK!
             // read and parse /proc/stat, add to stats[0].
