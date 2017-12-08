@@ -31,27 +31,10 @@
 
 #include "ch_frb_l1.hpp"
 #include "chlog.hpp"
+#include "cxxopts.hpp"
 
 using namespace std;
 using namespace ch_frb_l1;
-
-
-static void usage()
-{
-    cerr << "Usage: ch-frb-l1 [-fvpmct] <l1_config.yaml> <rfi_config.json> <bonsai_config.hdf5> <l1b_config_file>\n"
-	 << "  -f forces the L1 server to run, even if the config files look fishy\n"
-	 << "  -v increases verbosity of the toplevel ch-frb-l1 logic\n"
-	 << "  -p enables a very verbose debug trace of the pipe I/O between L1a and L1b\n"
-	 << "  -m enables a very verbose debug trace of the memory_slab_pool allocation\n"
-	 << "  -w enables a very verbose debug trace of the logic for writing chunks\n"
-	 << "  -c deliberately crash dedispersion thread (for debugging, obviously)\n"
-	 << "  -t starts a \"toy server\" which assembles packets, but does not run RFI removal,\n"
-	 << "     dedispersion, or L1B (if -t is specified, then the last 3 arguments are optional)\n";
-
-    exit(2);
-}
-
-
 
 // -------------------------------------------------------------------------------------------------
 //
@@ -183,45 +166,55 @@ l1_config::l1_config(int argc, char **argv)
 
     vector<string> args;
 
-    // Low-budget command line parsing
+    vector<int> acq_beams;
+    string acq_name;
 
-    for (int i = 1; i < argc; i++) {
-	if (argv[i][0] != '-') {
-	    args.push_back(argv[i]);
-	    continue;
-	}
+    cxxopts::Options parser("ch-frb-l1", "CHIME FRB L1 server");
+    parser.positional_help("<l1_config.yaml> [<rfi_config.json> <bonsai_config.hdf5> <l1b_config_file>]");
 
-	for (int j = 1; argv[i][j] != 0; j++) {
-	    if (argv[i][j] == 'v')
-		this->l1_verbosity = 2;
-	    else if (argv[i][j] == 'f')
-		this->fflag = true;
-	    else if (argv[i][j] == 'p')
-		this->l1b_pipe_io_debug = true;
-	    else if (argv[i][j] == 'm')
-		this->memory_pool_debug = true;
-	    else if (argv[i][j] == 'w')
-		this->write_chunk_debug = true;
-	    else if (argv[i][j] == 'c')
-		this->deliberately_crash = true;
-	    else if (argv[i][j] == 't')
-		this->tflag = true;
-	    else
-		usage();
-	}
+    parser.add_options()
+        ("h,help", "Help")
+        ("v,verbose", "Increases verbosity of the toplevel ch-frb-l1 logic")
+        ("f,force", "Forces the L1 server to run, even if the config files look fishy")
+        ("p,pipe", "Enables a very verbose debug trace of the pipe I/O between L1a and L1b")
+        ("m,memory", "Enables a very verbose debug trace of the memory_slab_pool allocation")
+        ("w,write", "Eables a very verbose debug trace of the logic for writing chunks")
+        ("c,crash", "Deliberately crash dedispersion thread (for debugging, obviously)")
+        ("t,toy", "Starts a \"toy server\" which assembles packets, but does not run RFI removal, dedispersion, or L1B (if -t is specified, then the last 3 arguments are optional)")
+        ("a,acq", "Stream data to disk, saving it to this acquisition directory name", cxxopts::value<std::string>(acq_name))
+        ("n,nfs", "For streaming data acquisition, stream to NFS, not SSD")
+        ("b,beam", "For streaming data acquisition, beam number to capture (can be repeated; default is all beams)", cxxopts::value<vector<int> >(acq_beams), "<beam number>")
+        ("positional", "Positional parameters", cxxopts::value<std::vector<std::string>>(args))
+        ;
+    parser.parse_positional({"positional"});
+    auto opts = parser.parse(argc, argv);
+
+    if (opts.count("v"))
+        this->l1_verbosity = 2;
+    if (opts.count("f"))
+        this->fflag = true;
+    if (opts.count("p"))
+        this->l1b_pipe_io_debug = true;
+    if (opts.count("m"))
+        this->memory_pool_debug = true;
+    if (opts.count("w"))
+        this->write_chunk_debug = true;
+    if (opts.count("c"))
+        this->deliberately_crash = true;
+    if (opts.count("t"))
+        this->tflag = true;
+
+    if (opts.count("help") || (args.size() == 0) || (!((args.size() == 4) || ((args.size() == 1) && (this->tflag)))) ){
+        std::cout << parser.help({""}) << endl;
+        exit(0);
     }
 
+    this->l1_config_filename = args[0];
     if (args.size() == 4) {
-	this->l1_config_filename = args[0];
 	this->rfi_config_filename = args[1];
 	this->bonsai_config_filename = args[2];
 	this->l1b_config_filename = args[3];
     }
-    else if (tflag && (args.size() == 1))
-	this->l1_config_filename = args[0];
-    else
-	usage();
-
 
     if (!tflag) {
 	// Open rfi_config file.
@@ -369,9 +362,20 @@ l1_config::l1_config(int argc, char **argv)
 
     // Read stream params (postponed to here, so we get 'beam_ids' first).
 
-    this->stream_devname = p.read_scalar<string> ("stream_devname", "ssd");
-    this->stream_acqname = p.read_scalar<string> ("stream_acqname", "");
-    this->stream_beam_ids = p.read_vector<int> ("stream_beam_ids", this->beam_ids);
+    // If a stream is specified on the command-line, override the config file.
+    if (opts.count("acq")) {
+        if (acq_name == "none") {
+            // no streaming!
+        } else {
+            this->stream_devname = opts.count("nfs") ? "nfs" : "ssd";
+            this->stream_acqname = acq_name;
+            this->stream_beam_ids = acq_beams;
+        }
+    } else {
+        this->stream_devname = p.read_scalar<string> ("stream_devname", "ssd");
+        this->stream_acqname = p.read_scalar<string> ("stream_acqname", "");
+        this->stream_beam_ids = p.read_vector<int> ("stream_beam_ids", this->beam_ids);
+    }
 
     for (int b: stream_beam_ids)
 	if (!vcontains(beam_ids, b))
