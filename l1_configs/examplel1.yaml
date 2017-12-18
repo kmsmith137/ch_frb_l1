@@ -17,10 +17,10 @@ nt_per_packet: 16
 # Configure the L1 server to use the loopback interface 127.0.0.1 and UDP port 6677.
 # The RPC server will run on TCP port 5555.
 
-ipaddr: "127.0.0.1"
+ipaddr: "10.2.1.101"
 port: 6677
-rpc_address: "tcp://127.0.0.1:5555"
-beam_ids: [4, 5, 6, 7]
+rpc_address: "tcp://10.2.2.101:5556"
+beam_ids: [0, 1, 2, 3]
 # This configures the L1 server to use a single I/O thread for all writes.
 # See 'output_devices' in MANUAL.md for discussion!
 output_devices: ""
