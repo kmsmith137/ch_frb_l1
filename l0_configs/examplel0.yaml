@@ -13,11 +13,11 @@ nfreq: 16384
 #nt_per_packet: 64
 nt_per_packet: 16
 start_beam_id: 4
-ipaddr: "127.0.0.1"   # to loopback address
-#ipaddr: "10.2.1.101"  # to frb-compute-1
+#ipaddr: "127.0.0.1"   # to loopback address
+ipaddr: "10.2.1.101"  # to frb-compute-1
 port: 6677
-start_beam_id: 4
-beam_ids: [4, 5, 6, 7]
+start_beam_id: 0
+beam_ids: [0, 1, 2, 3]
 # Total number of threads used by the L0 simulator.
 # Note: nthreads must be a multiple of the number of "streams", which
 # is the number of distinct (ipaddr,port) pairs (in this case nsteams=1).
