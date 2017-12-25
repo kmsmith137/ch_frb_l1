@@ -61,7 +61,7 @@ make -j4 all install
 cd ..
 
 cd ch_frb_rfi
-make clean uninstall
+make uninstall
 git checkout master
 git pull
 make -j4 install
