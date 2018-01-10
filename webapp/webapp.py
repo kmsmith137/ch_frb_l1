@@ -13,10 +13,14 @@ from flask import Flask, render_template, jsonify, request, redirect
 
 import os
 import sys
+from datetime import datetime, timedelta
 import json
 import yaml
 import msgpack
 import numpy as np
+import sqlalchemy
+from sqlalchemy.orm import sessionmaker, scoped_session
+from chlog_database import LogMessage
 
 app = Flask(__name__)
 
@@ -29,7 +33,10 @@ def get_rpc_client():
                                 identity='webapp.py')
     return _rpc_client
 
-def parse_config():
+def get_db_session():
+    return app.make_db_session()
+
+def parse_config(app):
     """
     The webapp assumes that the WEBAPP_CONFIG environment variables
     are set to the names of a yaml config file.
@@ -50,19 +57,19 @@ def parse_config():
         print("  'run-webapp.sh' in the toplevel ch_frb_l1 directory, which")
         print("  automatically sets this variable?")
         sys.exit(1)
-    config_filename_1 = os.environ['WEBAPP_CONFIG']
-    if not os.path.exists(config_filename_1):
-        print("webapp: config file '%s' not found" % config_filename_1)
+    config_filename = os.environ['WEBAPP_CONFIG']
+    if not os.path.exists(config_filename):
+        print("webapp: config file '%s' not found" % config_filename)
         sys.exit(1)
 
     try:
-        y = yaml.load(open(config_filename_1))
+        y = yaml.load(open(config_filename))
     except:
-        print("webapp: couldn't parse yaml config file '%s'" % config_filename_1)
+        print("webapp: couldn't parse yaml config file '%s'" % config_filename)
         sys.exit(1)
 
     if not isinstance(y,dict) or not 'rpc_address' in y:
-        print("webapp: no 'rpc_address' field found in yaml file '%s'" % config_filename_1)
+        print("webapp: no 'rpc_address' field found in yaml file '%s'" % config_filename)
         sys.exit(1)
 
     nodes = y['rpc_address']
@@ -72,7 +79,8 @@ def parse_config():
     if not isinstance(nodes,list) or not all(isinstance(x, basestring) for x in nodes):
         print("%s: expected 'rpc_address' field to be a list of strings" % config_filename)
         sys.exit(1)
-
+    app.nodes = nodes
+        
     if not 'cnc_address' in y:
         print('No cnc_address item in YAML file; not sending command-n-control')
         cnc_nodes = []
@@ -84,12 +92,15 @@ def parse_config():
         if not isinstance(cnc_nodes,list) or not all(isinstance(x, basestring) for x in cnc_nodes):
             print("%s: expected 'cnc_address' field to be a list of strings" % config_filename)
             sys.exit(1)
-
+    app.cnc_nodes = cnc_nodes
     # FIXME(?): check the format of the node strings here?
     # (Should be something like 'tcp://10.0.0.101:5555')
-    return nodes, cnc_nodes
 
-app.nodes, app.cnc_nodes = parse_config()
+    database = y.get('log_database', 'sqlite:///log.sqlite3')
+    engine = sqlalchemy.create_engine(database)
+    app.make_db_session = scoped_session(sessionmaker(bind=engine))
+
+parse_config(app)
 
 import zmq
 app.zmq = zmq.Context()
@@ -110,6 +121,16 @@ def index():
                            cnc_follow_url='/cnc-poll',
                            cnc_kill_url='/cnc-kill',
         )
+
+@app.route('/l1-logs-recent')
+def l1_logs_recent():
+    session = get_db_session()
+    datecut = datetime.now() - timedelta(0, 60)
+    logs = session.query(LogMessage).filter(LogMessage.date >= datecut)
+    filters = [('date after ' + str(datecut), 'date_gt_%s' % str(datecut).replace(' ','_'))]
+    return render_template('l1-logs-recent.html',
+                           logs=logs,
+                           logfilters=filters)
 
 @app.route('/l0-node-map')
 def l0_node_map():

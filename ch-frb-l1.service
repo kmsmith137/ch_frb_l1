@@ -1,0 +1,19 @@
+# systemd config file for ch-frb-l1 -- copy to /etc/systemd/system/
+
+[Unit]
+Description=ch-frb-l1 - CHIME/FRB L1 server
+After=network.target
+
+[Service]
+Type=simple
+
+User=dstn
+WorkingDirectory=/home/dstn/chime/ch_frb_l1
+ExecStart=/home/dstn/chime/ch_frb_l1/ch-frb-l1.sh
+# This needs systemd version >= 236, we have 219.
+#StandardOutput=file:/home/dstn/chime/ch_frb_l1/ch-frb-l1.log
+#StandardError=file:/home/dstn/chime/ch_frb_l1/ch-frb-l1.err
+Restart=on-abnormal
+
+# [Install]
+# WantedBy=multi-user.target
