@@ -146,7 +146,7 @@ def cnc_kill():
     pids = request.get_json()
     print('CNC_kill:', pids)
     pids = dict(pids)
-    from cnc_client import CncClient
+    from webapp.cnc_client import CncClient
     client = CncClient(ctx=app.zmq)
     results = client.kill(pids, timeout=3000)
     return jsonify(results)
@@ -164,20 +164,30 @@ def cnc_run():
         launch = request.args.get('launch', False)
         captive = request.args.get('captive', False)
     print('Launch', launch, 'Captive', captive, 'Command:', cmd)
-    from cnc_client import CncClient
+    from webapp.cnc_client import CncClient
     client = CncClient(ctx=app.zmq)
 
     results = client.run(cmd, app.cnc_nodes, timeout=5000, launch=launch,
                          captive=captive)
-    # print('Got results:')
-    # for r in results:
-    #     print('  ', r)
+    print('Got results:')
+    rr = []
+    for r in results:
+        print('  ', r)
+        if r is None:
+            rr.append(None)
+        else:
+            (rtn, out, err) = r
+            out = out.decode()
+            err = err.decode()
+            rr.append((rtn, out, err))
+    results = rr
+
     results = list(zip(app.cnc_nodes, results))
     return jsonify(results)
 
 @app.route('/cnc-poll/<name>/<pid>')
 def cnc_poll(name=None, pid=None):
-    from cnc_client import CncClient
+    from webapp.cnc_client import CncClient
     client = CncClient(ctx=app.zmq)
     res = client.poll(int(pid), 'tcp://' + name)
     return jsonify(res)
