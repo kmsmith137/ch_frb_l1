@@ -109,3 +109,4 @@ l1b_pipe_timeout: 0
 # stream_acqname: "test_acq"
 # stream_beam_ids: [ 0 ]
 
+logger_address: "tcp://cf0g9:7777"
