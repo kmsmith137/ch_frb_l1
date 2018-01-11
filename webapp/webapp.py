@@ -122,6 +122,39 @@ def index():
                            cnc_kill_url='/cnc-kill',
         )
 
+@app.route('/l1-logs-stdout')
+def l1_logs_stdout():
+    # Retrieve systemd/journalctl logs for ch-frb-l1 systemd processes.
+    from webapp.cnc_client import CncClient
+    client = CncClient(ctx=app.zmq)
+    results = client.run('journalctl -u ch-frb-l1', app.cnc_nodes,
+                         timeout=3000)
+    rr = []
+    for r in results:
+        print('  ', r)
+        if r is None:
+            rr.append(None)
+        else:
+            (rtn, out, err) = r
+            out = out.decode()
+            err = err.decode()
+            rr.append((rtn, out, err))
+    results = rr
+    print('Results:', results)
+    print('CNC nodes:', app.cnc_nodes)
+    #return jsonify(results)
+
+    #    {% for node,logs in zip(nodes, logmsgs) %}
+
+    return render_template('l1-logs-stdout.html',
+                           logmsgs = list(zip(app.cnc_nodes,
+                                              [['x','y','z']
+                                               for n in app.cnc_nodes])),
+        )
+#nodes=app.cnc_nodes,
+#logmsgs=[['x','y','z']
+#for n in app.cnc_nodes],
+
 @app.route('/l1-logs-recent')
 def l1_logs_recent():
     session = get_db_session()
