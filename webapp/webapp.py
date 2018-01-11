@@ -22,6 +22,10 @@ import sqlalchemy
 from sqlalchemy.orm import sessionmaker, scoped_session
 from chlog_database import LogMessage
 
+#print('paths:', '\n'.join(sys.path))
+#import webapp
+#print('webapp', webapp)
+
 app = Flask(__name__)
 
 _rpc_client = None
@@ -32,6 +36,12 @@ def get_rpc_client():
         _rpc_client = RpcClient(dict([(''+str(i), k) for i,k in enumerate(app.nodes)]),
                                 identity='webapp.py')
     return _rpc_client
+
+def get_cnc_client():
+    # from webapp.cnc_client import CncClient
+    from cnc_client import CncClient
+    client = CncClient(ctx=app.zmq)
+    return client
 
 def get_db_session():
     return app.make_db_session()
@@ -125,9 +135,8 @@ def index():
 @app.route('/l1-logs-stdout')
 def l1_logs_stdout():
     # Retrieve systemd/journalctl logs for ch-frb-l1 systemd processes.
-    from webapp.cnc_client import CncClient
-    client = CncClient(ctx=app.zmq)
-    results = client.run('journalctl -u ch-frb-l1', app.cnc_nodes,
+    client = get_cnc_client()
+    results = client.run('journalctl --system --boot --since yesterday --unit ch-frb-l1', app.cnc_nodes,
                          timeout=3000)
     rr = []
     for r in results:
@@ -144,16 +153,20 @@ def l1_logs_stdout():
     print('CNC nodes:', app.cnc_nodes)
     #return jsonify(results)
 
-    #    {% for node,logs in zip(nodes, logmsgs) %}
+    logmsgs = []
+    for r in results:
+        if r is None:
+            logmsgs.append(['Timed out'])
+            continue
+        rtn,out,err = r
+        if rtn != 0:
+            logmsgs.append(['Return value: %i' % rtn] + err.split('\n') + out.split('\n'))
+        else:
+            logmsgs.append(err.split('\n') + out.split('\n'))
 
     return render_template('l1-logs-stdout.html',
-                           logmsgs = list(zip(app.cnc_nodes,
-                                              [['x','y','z']
-                                               for n in app.cnc_nodes])),
-        )
-#nodes=app.cnc_nodes,
-#logmsgs=[['x','y','z']
-#for n in app.cnc_nodes],
+                           logmsgs = list(zip(app.cnc_nodes, logmsgs)),
+                       )
 
 @app.route('/l1-logs-recent')
 def l1_logs_recent():
@@ -179,8 +192,7 @@ def cnc_kill():
     pids = request.get_json()
     print('CNC_kill:', pids)
     pids = dict(pids)
-    from webapp.cnc_client import CncClient
-    client = CncClient(ctx=app.zmq)
+    client = get_cnc_client()
     results = client.kill(pids, timeout=3000)
     return jsonify(results)
 
@@ -197,9 +209,7 @@ def cnc_run():
         launch = request.args.get('launch', False)
         captive = request.args.get('captive', False)
     print('Launch', launch, 'Captive', captive, 'Command:', cmd)
-    from webapp.cnc_client import CncClient
-    client = CncClient(ctx=app.zmq)
-
+    client = get_cnc_client()
     results = client.run(cmd, app.cnc_nodes, timeout=5000, launch=launch,
                          captive=captive)
     print('Got results:')
@@ -220,8 +230,7 @@ def cnc_run():
 
 @app.route('/cnc-poll/<name>/<pid>')
 def cnc_poll(name=None, pid=None):
-    from webapp.cnc_client import CncClient
-    client = CncClient(ctx=app.zmq)
+    client = get_cnc_client()
     res = client.poll(int(pid), 'tcp://' + name)
     return jsonify(res)
 
