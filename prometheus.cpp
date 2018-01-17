@@ -10,13 +10,6 @@ using namespace ch_frb_io;
 
 #include "CivetServer.h"
 
-int metric_counter = 0;
-
-uint64_t last_network_thread_waiting = 0;
-uint64_t last_network_thread_working = 0;
-uint64_t last_assembler_thread_waiting = 0;
-uint64_t last_assembler_thread_working = 0;
-
 class L1PrometheusHandler : public CivetHandler {
 public:
     L1PrometheusHandler(shared_ptr<intensity_network_stream> stream) :
@@ -30,50 +23,10 @@ public:
                   "Content-Type: text/plain\r\n"
                   "Connection: close\r\n\r\n");
 
-        metric_counter++;
-        const char* name = "chime_frb_l1_metrics_count";
-        mg_printf(conn,
-                  "# HELP %s Number of times Prometheus metrics have been polled\n"
-                  "# TYPE %s gauge\n"
-                  "%s %i\n", name, name, name, metric_counter);
-
         vector<unordered_map<string, uint64_t> > stats = _stream->get_statistics();
 
         // Stats for the whole stream.
         unordered_map<string, uint64_t> sstats = stats[0];
-        
-        uint64_t wait = sstats["network_thread_waiting_usec"];
-        uint64_t work = sstats["network_thread_working_usec"];
-
-        uint64_t dwait = wait - last_network_thread_waiting;
-        uint64_t dwork = work - last_network_thread_working;
-        float fwork;
-        fwork = (dwait+dwork == 0) ? 0. : (dwork / (dwait + dwork));
-
-        last_network_thread_waiting = wait;
-        last_network_thread_working = work;
-        
-        name = "network_thread_fraction";
-        mg_printf(conn,
-                  "# HELP %s Instantaneous fraction of the time the network thread is working\n"
-                  "# TYPE %s gauge\n"
-                  "%s %f\n", name, name, name, fwork);
-
-        wait = sstats["assembler_thread_waiting_usec"];
-        work = sstats["assembler_thread_working_usec"];
-
-        dwait = wait - last_assembler_thread_waiting;
-        dwork = work - last_assembler_thread_working;
-        fwork = (dwait+dwork == 0) ? 0. : (dwork / (dwait + dwork));
-
-        last_assembler_thread_waiting = wait;
-        last_assembler_thread_working = work;
-        
-        name = "assembler_thread_fraction";
-        mg_printf(conn,
-                  "# HELP %s Instantaneous fraction of the time the assembler thread is working\n"
-                  "# TYPE %s gauge\n"
-                  "%s %f\n", name, name, name, fwork);
 
         // Stats per beam.  It seems that prometheus array values for
         // a single variable type have to appear together, hence the
