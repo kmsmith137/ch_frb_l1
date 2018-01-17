@@ -3,8 +3,8 @@
 #include <sstream>
 #include <ch_frb_io.hpp>
 #include <l1-rpc.hpp>
+#include <l1-prometheus.hpp>
 #include <chlog.hpp>
-#include <prometheus.hpp>
 
 using namespace std;
 using namespace ch_frb_io;
@@ -98,8 +98,8 @@ int main(int argc, char** argv) {
 
     int prometheus_port = 8081;
     string prometheus_ip = "";
-    shared_ptr<PrometheusServer> prometheus_server = start_prometheus_server
-        (prometheus_ip, prometheus_port, stream);
+    shared_ptr<L1PrometheusServer> prometheus_server = start_prometheus_server
+        (prometheus_ip + to_string(prometheus_port), stream);
     if (!prometheus_server) {
         return -1;
     }

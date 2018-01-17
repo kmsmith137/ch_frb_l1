@@ -47,9 +47,12 @@ public:
             const char* type;
         };
 
-        //struct metric_stat onems = {"network_thread_waiting_ms", "l1_network_thread_wait_ms",
-        //"Cumulative milliseconds spent waiting in the UDP packet-receiving thread"};
-
+        uint64_t slab_bytes = sstats["memory_pool_slab_nbytes"];
+        sstats["memory_pool_slab_size_bytes"] = 
+            sstats["memory_pool_slab_size"] * slab_bytes;
+        sstats["memory_pool_slab_avail_bytes"] = 
+            sstats["memory_pool_slab_avail"] * slab_bytes;
+        
         struct metric_stat ms[] = {
             {"network_thread_waiting_ms", "l1_network_thread_wait_ms",
              "Cumulative milliseconds spent waiting in the UDP packet-receiving thread"},
@@ -69,8 +72,22 @@ public:
              "Number of data chunks dropped by the L1 assembler"},
             {"count_assembler_queued", "l1_assembler_queued",
              "Number of data chunks sent downstream by the L1 assembler"},
+            {"streaming_n_beams", "l1_streaming_beams_count",
+             "Streaming data to disk: number of beams being written"},
+            {"output_chunks_queued", "l1_output_queued_chunks",
+             "Number of chunks of data queued for writing"},
+            {"memory_pool_slab_size_bytes", "l1_memorypool_capacity_bytes",
+             "Number of bytes total capacity in memory pool"},
+            {"memory_pool_slab_avail_bytes", "l1_memorypool_avail_bytes",
+             "Number of bytes available (free) in memory pool"},
+            {"memory_pool_slab_size", "l1_memorypool_capacity_slabs",
+             "Total capacity in memory pool, in 'slabs'"},
+            {"memory_pool_slab_avail", "l1_memorypool_avail_slabs",
+             "Available number in memory pool, in 'slabs'"},
         };
 
+        // FIXME -- add output_chunks_queued_X fields (by path prefix)?
+        
         for (int i=0; i<sizeof(ms)/sizeof(struct metric_stat); i++) {
             //const char* metric = ms[i].key.c_str();
             const char* metric = ms[i].key;
@@ -96,78 +113,55 @@ public:
                       "%s{reason=\"%s\"} %llu\n", key, ms2[i].metric,
                       (unsigned long long)sstats[ms2[i].key]);
         }
-        
-        // Stats per beam.  It seems that prometheus array values for
-        // a single variable type have to appear together, hence the
-        // looping over beams here
-        const char* name = "ringbuf_fpga_min";
-        mg_printf(conn,
-                  "# HELP %s Smallest FPGA-counts timestamp in the ring buffer, per beam\n"
-                  "# TYPE %s gauge\n", name, name);
-        for (size_t i=2; i<stats.size(); i++) {
-            unordered_map<string, uint64_t> bstats = stats[i];
-            mg_printf(conn, "%s{beam=\"%i\"} %lu\n", name, (int)bstats["beam_id"], bstats["ringbuf_fpga_min"]);
-        }
 
-        name = "ringbuf_fpga_max";
-        mg_printf(conn,
-                  "# HELP %s Largest FPGA-counts timestamp in the ring buffer, per beam\n"
-                  "# TYPE %s gauge\n", name, name);
-        for (size_t i=2; i<stats.size(); i++) {
-            unordered_map<string, uint64_t> bstats = stats[i];
-            mg_printf(conn, "%s{beam=\"%i\"} %lu\n", name, (int)bstats["beam_id"], bstats["ringbuf_fpga_max"]);
-        }
+        // Stats per beam.
 
-        // Ring buffer stats per beam AND downsampling level.
-        vector<vector<pair<shared_ptr<assembled_chunk>,uint64_t> > > snap = _stream->get_ringbuf_snapshots();
-        // summary: per-beam x per-level min and max FPGA counts and N chunks
-        map<pair<int, uint64_t>, uint64_t> minfpgas;
-        map<pair<int, uint64_t>, uint64_t> maxfpgas;
-        map<pair<int, uint64_t>, uint64_t> nchunks;
-        // per beam
-        for (auto it=snap.begin(); it!=snap.end(); it++) {
-            // per (chunk,where)
-            for (auto chw=it->begin(); chw!=it->end(); chw++) {
-                pair<int, uint64_t> key = make_pair(chw->first->beam_id, chw->second);
-                auto v = minfpgas.find(key);
-                if (v == minfpgas.end()) {
-                    // new
-                    minfpgas[key] = chw->first->fpga_begin;
-                    maxfpgas[key] = chw->first->fpga_end;
-                    nchunks [key] = 1;
-                } else {
-                    minfpgas[key] = min(minfpgas[key], chw->first->fpga_begin);
-                    maxfpgas[key] = max(maxfpgas[key], chw->first->fpga_end);
-                    nchunks [key] = nchunks[key] + 1;
-                }
+        // Per-beam stats
+        struct metric_stat ms4[] = {
+            {"streaming_bytes_written", "l1_streaming_written_bytes",
+             "Streaming data to disk: number of bytes written"},
+            {"streaming_chunks_written", "l1_streaming_written_chunks",
+             "Streaming data to disk: number of chunks of data written"},
+        };
+        for (int i=0; i<sizeof(ms4)/sizeof(struct metric_stat); i++) {
+            const char* name = ms4[i].metric;
+            mg_printf(conn,
+                      "# HELP %s %s\n"
+                      "# TYPE %s %s\n", name, ms4[i].help, name, ms4[i].type);
+            for (size_t ib=2; ib<stats.size(); ib++) {
+                unordered_map<string, uint64_t> bstats = stats[ib];
+                const char* key = ms4[i].key;
+                mg_printf(conn, "%s{beam=\"%i\"} %llu\n", name, (int)bstats["beam_id"], (unsigned long long)bstats[key]);
             }
         }
-        // Drop the snapshot (releasing assembled_chunks)
-        snap.clear();
+        
+        // Per-beam x per-ringbuffer-level stats
+        struct metric_stat ms3[] = {
+            {"ringbuf_fpga_min", "l1_ringbuf_min_fpga",
+             "Smallest FPGA-counts timestamp in the ring buffer"},
+            {"ringbuf_fpga_max", "l1_ringbuf_max_fpga",
+             "Largest FPGA-counts timestamp in the ring buffer"},
+            {"ringbuf_capacity", "l1_ringbuf_capacity_chunks",
+             "Maximum number of chunks of data in the ring buffer"},
+            {"ringbuf_ntotal", "l1_ringbuf_size_chunks",
+             "Current number of chunks of data in the ring buffer"},
+        };
 
-        name = "ringbuf_level_fpga_min";
-        mg_printf(conn,
-                  "# HELP %s Smallest FPGA-counts timestamp in the ring buffer, per beam AND binning\n"
-                  "# TYPE %s gauge\n", name, name);
-        for (auto it=minfpgas.begin(); it!=minfpgas.end(); it++) {
-            auto key = it->first;
-            mg_printf(conn, "%s{beam=\"%i\",level=\"%i\"} %lu\n", name, key.first, (int)key.second, it->second);
-        }
-        name = "ringbuf_level_fpga_max";
-        mg_printf(conn,
-                  "# HELP %s Largest FPGA-counts timestamp in the ring buffer, per beam AND binning\n"
-                  "# TYPE %s gauge\n", name, name);
-        for (auto it=maxfpgas.begin(); it!=maxfpgas.end(); it++) {
-            auto key = it->first;
-            mg_printf(conn, "%s{beam=\"%i\",level=\"%i\"} %lu\n", name, key.first, (int)key.second, it->second);
-        }
-        name = "ringbuf_level_nchunks";
-        mg_printf(conn,
-                  "# HELP %s Number of chunks in the ring buffer, per beam AND binning\n"
-                  "# TYPE %s gauge\n", name, name);
-        for (auto it=nchunks.begin(); it!=nchunks.end(); it++) {
-            auto key = it->first;
-            mg_printf(conn, "%s{beam=\"%i\",level=\"%i\"} %lu\n", name, key.first, (int)key.second, it->second);
+        for (int i=0; i<sizeof(ms3)/sizeof(struct metric_stat); i++) {
+            const char* name = ms3[i].metric;
+            mg_printf(conn,
+                      "# HELP %s %s\n"
+                      "# TYPE %s %s\n", name, ms3[i].help, name, ms3[i].type);
+            for (size_t ib=2; ib<stats.size(); ib++) {
+                unordered_map<string, uint64_t> bstats = stats[ib];
+                int nlev = bstats["ringbuf_nlevels"];
+                const char* key = ms3[i].key;
+                mg_printf(conn, "%s{beam=\"%i\",level=\"0\"} %llu\n", name, (int)bstats["beam_id"], (unsigned long long)bstats[key]);
+                for (int lev=1; lev<nlev; lev++) {
+                    mg_printf(conn, "%s{beam=\"%i\",level=\"%i\"} %llu\n", name, (int)bstats["beam_id"], lev,
+                              (unsigned long long)bstats[stringprintf("%s_level%i", key, lev)]);
+                }
+            }
         }
         
         return true;
@@ -185,23 +179,27 @@ public:
 protected:
 };
  */
-class PrometheusServer : public CivetServer {};
+class L1PrometheusServer : public CivetServer {
+public:
+    L1PrometheusServer(std::vector<std::string> options,
+                       const struct CivetCallbacks *callbacks = 0,
+                       const void *UserContext = 0) :
+        CivetServer(options, callbacks, UserContext) {}
+    virtual ~L1PrometheusServer() {}
+};
 
-shared_ptr<CivetServer> start_prometheus_server(string ipaddr, int port,
-                                                shared_ptr<intensity_network_stream> stream) {
+shared_ptr<L1PrometheusServer> start_prometheus_server(string ipaddr_port,
+                                                       shared_ptr<intensity_network_stream> stream) {
     //"document_root", DOCUMENT_ROOT, "listening_ports", PORT, 0};
     std::vector<std::string> options;
     // listening_ports = [ipaddr:]port
     options.push_back("listening_ports");
-    if (ipaddr.size())
-        options.push_back(ipaddr + ":" + to_string(port));
-    else
-        options.push_back(to_string(port));
-    shared_ptr<CivetServer> server;
+    options.push_back(ipaddr_port);
+    shared_ptr<L1PrometheusServer> server;
     try {
-        server = make_shared<CivetServer>(options);
+        server = make_shared<L1PrometheusServer>(options);
     } catch (CivetException &e) {
-        cout << "Failed to start web server on port " << port << ": "
+        cout << "Failed to start web server on address " << ipaddr_port << ": "
              << e.what() << endl;
         return server;
     }
