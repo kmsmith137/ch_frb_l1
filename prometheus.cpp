@@ -38,16 +38,13 @@ public:
             sstats["assembler_thread_working_usec"] / 1000;
         
         struct metric_stat {
-            metric_stat(const char* k1, const char* k2, const char* k3) :
-                key(k1), metric(k2), help(k3) {}
-            // string key;
-            // string metric;
-            // string help;
-            // string type="gauge";
+            metric_stat(const char* k1, const char* k2, const char* k3="",
+                        const char* k4="gauge") :
+                key(k1), metric(k2), help(k3), type(k4) {}
             const char* key;
             const char* metric;
             const char* help;
-            const char* type="gauge";
+            const char* type;
         };
 
         //struct metric_stat onems = {"network_thread_waiting_ms", "l1_network_thread_wait_ms",
@@ -81,6 +78,23 @@ public:
                       "# HELP %s %s\n" 
                       "# TYPE %s %s\n"
                       "%s %llu\n", metric, ms[i].help, metric, ms[i].type, metric, (unsigned long long)sstats[ms[i].key]);
+        }
+
+        struct metric_stat ms2[] = {
+            {"count_packets_bad", "malformed"},
+            {"count_packets_dropped", "bufferfull"},
+            {"count_packets_beam_id_mismatch", "beamidmismatch"},
+            {"count_packets_stream_mismatch", "formatmismatch"},
+        };
+        const char* key = "l1_assembler_bad_packets";
+        mg_printf(conn,
+                  "# HELP %s %s\n"
+                  "# TYPE %s gauge\n", key,
+                  "Number of invalid packets received on L1 UDP socket", key);
+        for (int i=0; i<sizeof(ms2)/sizeof(struct metric_stat); i++) {
+            mg_printf(conn,
+                      "%s{reason=\"%s\"} %llu\n", key, ms2[i].metric,
+                      (unsigned long long)sstats[ms2[i].key]);
         }
         
         // Stats per beam.  It seems that prometheus array values for
