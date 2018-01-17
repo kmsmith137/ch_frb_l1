@@ -28,10 +28,65 @@ public:
         // Stats for the whole stream.
         unordered_map<string, uint64_t> sstats = stats[0];
 
+        sstats["network_thread_waiting_ms"] =
+            sstats["network_thread_waiting_usec"] / 1000;
+        sstats["network_thread_working_ms"] =
+            sstats["network_thread_working_usec"] / 1000;
+        sstats["assembler_thread_waiting_ms"] =
+            sstats["assembler_thread_waiting_usec"] / 1000;
+        sstats["assembler_thread_working_ms"] =
+            sstats["assembler_thread_working_usec"] / 1000;
+        
+        struct metric_stat {
+            metric_stat(const char* k1, const char* k2, const char* k3) :
+                key(k1), metric(k2), help(k3) {}
+            // string key;
+            // string metric;
+            // string help;
+            // string type="gauge";
+            const char* key;
+            const char* metric;
+            const char* help;
+            const char* type="gauge";
+        };
+
+        //struct metric_stat onems = {"network_thread_waiting_ms", "l1_network_thread_wait_ms",
+        //"Cumulative milliseconds spent waiting in the UDP packet-receiving thread"};
+
+        struct metric_stat ms[] = {
+            {"network_thread_waiting_ms", "l1_network_thread_wait_ms",
+             "Cumulative milliseconds spent waiting in the UDP packet-receiving thread"},
+            {"network_thread_working_ms", "l1_network_thread_work_ms",
+             "Cumulative milliseconds spent working in the UDP packet-receiving thread"},
+            {"count_bytes_received", "l1_assembler_received_bytes",
+             "Number of bytes received on this L1 UDP socket"},
+            {"count_packets_received", "l1_assembler_received_packets",
+             "Number of packets received on this L1 UDP socket"},
+            {"count_packets_good", "l1_assembler_good_packets",
+             "Number of valid packets received on this L1 UDP socket"},
+            {"count_assembler_hits", "l1_assembler_hits_packets",
+             "Number of packets received in order at the L1 assembler"},
+            {"count_assembler_misses", "l1_assembler_misses_packets",
+             "Number of packets received out of order at the L1 assembler"},
+            {"count_assembler_drops", "l1_assembler_dropped_chunks",
+             "Number of data chunks dropped by the L1 assembler"},
+            {"count_assembler_queued", "l1_assembler_queued",
+             "Number of data chunks sent downstream by the L1 assembler"},
+        };
+
+        for (int i=0; i<sizeof(ms)/sizeof(struct metric_stat); i++) {
+            //const char* metric = ms[i].key.c_str();
+            const char* metric = ms[i].key;
+            mg_printf(conn,
+                      "# HELP %s %s\n" 
+                      "# TYPE %s %s\n"
+                      "%s %llu\n", metric, ms[i].help, metric, ms[i].type, metric, (unsigned long long)sstats[ms[i].key]);
+        }
+        
         // Stats per beam.  It seems that prometheus array values for
         // a single variable type have to appear together, hence the
         // looping over beams here
-        name = "ringbuf_fpga_min";
+        const char* name = "ringbuf_fpga_min";
         mg_printf(conn,
                   "# HELP %s Smallest FPGA-counts timestamp in the ring buffer, per beam\n"
                   "# TYPE %s gauge\n", name, name);
