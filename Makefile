@@ -53,7 +53,7 @@ L1_OBJS := l1-rpc.o
 CPP_CFLAGS ?=
 CPP_CFLAGS += -I$(CPPZMQ_INC_DIR) -I$(MSGPACK_INC_DIR)
 
-CIVET_OBJS := civetweb/CivetServer.o civetweb/civetweb.o
+CIVET_OBJS := prometheus.o civetweb/CivetServer.o civetweb/civetweb.o
 CPP_CFLAGS += -Icivetweb
 
 doc/dependencies.png: doc/dependencies.dot
