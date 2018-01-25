@@ -25,8 +25,9 @@ def get_rpc_client():
     global _rpc_client
     if _rpc_client is None:
         from rpc_client import RpcClient
-        _rpc_client = RpcClient(dict([(''+str(i), k) for i,k in enumerate(app.nodes)]),
-                                identity='webapp.py')
+        from collections import OrderedDict
+        servers = OrderedDict([(''+str(i), k) for i,k in enumerate(app.nodes)])
+        _rpc_client = RpcClient(servers)
     return _rpc_client
 
 def parse_config():
@@ -90,6 +91,7 @@ def parse_config():
     return nodes, cnc_nodes
 
 app.nodes, app.cnc_nodes = parse_config()
+#app.beams = [None for n in app.nodes]
 
 import zmq
 app.zmq = zmq.Context()
@@ -111,6 +113,44 @@ def index():
                            cnc_kill_url='/cnc-kill',
         )
 
+@app.route('/acq')
+def acq_page():
+    nodes = [n.replace('tcp://','') for n in app.nodes]
+    return render_template('acq.html',
+                           enodes = list(enumerate(nodes)))
+
+@app.route('/acq-status-json')
+def acq_status_json():
+    client = get_rpc_client()
+    # Make RPC requests for list_chunks and get_statistics asynchronously
+    timeout = 5000.
+    stat = client.stream_status(timeout=timeout)
+    print('Got stream status:', stat)
+    return jsonify(stat)
+
+@app.route('/acq-start', methods=['POST'])
+def acq_start():
+    client = get_rpc_client()
+    # Make RPC requests for list_chunks and get_statistics asynchronously
+    timeout = 5000.
+    args = request.get_json()
+    acqname = args['acqname']
+    acqdev = args['acqdev']
+    acqmeta = args['acqmeta']
+    acqnew = args.get('acqnew', True);
+    acqbeams = args.get('acqbeams', '')
+    # print('Beams:', acqbeams)
+    if len(acqbeams):
+        acqbeams = [int(b) for b in acqbeams.split(',')]
+    else:
+        acqbeams = []
+    print('Beams:', acqbeams)
+    stat = client.stream(acqname, acq_meta=acqmeta, acq_beams=acqbeams,
+                         new_stream=acqnew,
+                         timeout=timeout)
+    print('Start stream status:', stat)
+    return jsonify(stat)
+
 @app.route('/l0-node-map')
 def l0_node_map():
     return render_template('l0-node-map.html',
@@ -120,8 +160,8 @@ def l0_node_map():
 
 @app.route('/cnc-kill', methods=['POST'])
 def cnc_kill():
-    if request.method != 'POST':
-        return 'POST only'
+    #if request.method != 'POST':
+    #    return 'POST only'
     pids = request.get_json()
     print('CNC_kill:', pids)
     pids = dict(pids)

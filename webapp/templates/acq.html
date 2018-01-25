@@ -1,0 +1,363 @@
+<!doctype html>
+<html>
+<head>
+<title>CHIME FRB L1 status</title>
+
+<script type="text/javascript" src="{{ url_for('static', filename='jquery.js') }}"></script>
+<script type="text/javascript" src="{{ url_for('static', filename='d3.min.js') }}"></script>
+
+<style>
+table {
+border-collapse: collapse;
+}
+th, td {
+    padding: 5px;
+    text-align: center;
+}
+</style>
+
+</head>
+
+<body>
+
+<h3>Current L1 node acquisition status</h3>
+
+<p>
+<input type="button" onClick="stopUpdating()"  value="Stop updating" />
+<input type="button" onClick="startUpdating()" value="Start updating"/>
+<span id="json-status"> </span>
+Last update: <span id="last-update">--</span>
+</p>
+
+<table border="1">
+<tr><td>
+Acquisition name: <input type="text" size="20" id="acq_name">
+    Device: <select id="acq_dev">
+    <option value="ssd">SSD</option>
+    <option value="nfs">NFS</option>
+    </select><br />
+Notes about this acquisition:<br />
+<textarea cols="50" rows="5" id="acq_meta"></textarea>
+    <br />
+    <br />
+<input type="button" value="Start Acquisition on all nodes"
+onClick="startAllAcq();" style="font-size:125%;">
+<input type="button" value="Start Acquisition on selected beams"
+onClick="startAcq();" style="font-size:125%;">
+    <br />
+<input type="button" value="Stop Acquisition on all nodes"
+onClick="stopAllAcq();" style="font-size:125%;">
+
+{#
+ <input type="button" value="Stop Acquisition on selected beams"
+onClick="stopAcq();" style="font-size:125%;">
+#}
+
+ <span id="acq_status"></span>
+</td></tr>
+</table>
+
+    <br />
+    <br />
+    
+<table border="1">
+  <tr>
+    <th>Node</th>
+    <th>Beams <br/>
+<input type="button" onClick="setAllBeams(true);" value="all">
+<input type="button" onClick="setAllBeams(false);" value="none">
+</th>
+    <th>Current Acq Name</th>
+    <th>Current Acq Beams</th>
+    <th>Current Acq Size (total chunks)</th>
+    <th>Current Acq Size (GB)</th>
+    <th>SSD free (GB)</th>
+    <th>Status</th>
+  </tr>
+  {% for i,node in enodes %}
+  <tr>
+    <td>{{node}}</td>
+    <td id="node_beams_parent_{{i}}"><span id="node_beams_{{i}}"></span>
+    <br/>
+    <input type="button" onClick="setBeams({{i}}, true);" value="all">
+    <input type="button" onClick="setBeams({{i}}, false);" value="none">
+    </td>
+    <td id="node_acq_{{i}}">---</td>
+    <td id="node_acqbeams_{{i}}">---</td>
+    <td id="node_acqchunks_{{i}}">---</td>
+    <td id="node_acqsize_{{i}}">---</td>
+    <td id="node_ssd_free_{{i}}">---</td>
+    <td id="node_status_{{i}}">---</td>
+  </tr>
+{% endfor %}
+</table>
+  
+<br><hr><br>
+
+<script type="text/javascript">
+
+// Are we updating the plot?
+var do_update = true;
+
+// How many milliseconds between updates?
+var update_period = 10000;
+
+//var last_acq_started = null;
+
+function json_callback(X, repeat) {
+    //console.log('JSON callback: ' + X);
+
+    if (!do_update) {
+        $('#json-status').html('Stopped.');
+        return;
+    }
+    
+    if (X == null) {
+        $('#json-status').html('Empty reply');
+        if (repeat)
+            setTimeout('json_update(true)', update_period);
+        return;
+    }
+    $('#last-update').html(new Date());
+    $('#json-status').html('Got reply');
+
+    //
+    var status = X;
+    for (var i=0; i<status.length; i++) {
+        var st = status[i];
+        if (st == null) {
+            var sel = '#node_status_'+i;
+            $(sel).html('Status query timed out');
+            var sel = '#node_acq_'+i;
+            $(sel).html('---');
+            continue;
+        }
+        var fn = status[i]['stream_filename'];
+        fn = fn.replace('beam_(BEAM)/chunk_(CHUNK).msg', '');
+        var sel = '#node_acq_'+i;
+        if (fn.length == 0) {
+            fn = '(none)';
+        }
+        $(sel).html(fn);
+
+        var val = status[i]['stream_bytes_written'];
+        val = Number.parseInt(val);
+        gb = val / (1024*1024*1024);
+        plus = (val % (1024*1024)) > 0;
+        val = gb.toFixed(3);
+        if (plus)
+            val += "+";
+        sel = '#node_acqsize_'+i;
+        $(sel).html(val);
+
+        val = status[i]['stream_chunks_written'];
+        sel = '#node_acqchunks_'+i;
+        $(sel).html(val);
+        
+        val = status[i]['ssd_gb_free'];
+        sel = '#node_ssd_free_'+i;
+        $(sel).html(val);
+
+        // this is screaming out for being handled with d3...
+        var beams = status[i]['all_beams'];
+        var sbeams = status[i]['stream_beams'];
+        beams = beams.split(',');
+        sbeams = sbeams.split(',');
+        //console.log('streaming beams: ' + sbeams);
+
+        sel = '#node_acqbeams_'+i;
+        $(sel).html(sbeams.join(', '));
+
+        var parent = '#node_beams_' + i;
+        for (var j=0; j<beams.length; j++) {
+            var child = 'node_beams_' + i + '_beam_' + beams[j];
+            //console.log('looking for: #' + child);
+            //var checked = sbeams.includes(beams[j]);
+            //console.log('streaming that beam? ' + checked);
+            x = $('#'+child);
+            //console.log('children found: ' + x.length);
+            if (x.length == 0) {
+                // insert new checkbox!
+                var checkbox = d3.select(parent).append('input')
+                    .attr('type', 'checkbox')
+                    .attr('id', child)
+                    .attr('class', 'beam_checkbox')
+                    .attr('beam', beams[j])
+                    .property('checked', true);
+                //if (checked)
+                //checkbox.attr('checked');
+                d3.select(parent).append('text').html(beams[j]);
+            //} else {
+            // set checkbox state
+            //    x.attr('checked', checked);
+            }
+        }
+    }
+
+    if (repeat)
+        setTimeout('json_update(true)', update_period);
+}
+
+// Make a JSON request for the packet matrix; call "json_callback"
+function json_update(repeat) {
+    $('#json-status').html('Sending...');
+    d3.request('/acq-status-json')
+        .mimeType("application/json")
+        .response(function(xhr) { return JSON.parse(xhr.responseText); })
+        .get(function(X) { json_callback(X, repeat); });
+}
+
+function startUpdating() {
+    do_update = true;
+    json_update(true);
+}
+function stopUpdating() {
+    do_update = false;
+}
+
+function setBeams(i, val) {
+    //console.log('setAllBeams: ' + i);
+    //var sel = '#node_beams_parent_'+i + ' span input:checkbox';
+    var sel = '#node_beams_'+i + ' input:checkbox';
+    //console.log('selection: ' + sel);
+    var sel = $(sel);
+    //console.log('selected nodes: ' + sel.length);
+    sel.prop('checked', val);
+}
+
+function setAllBeams(val) {
+    var sel = $('.beam_checkbox');
+    sel.prop('checked', val);
+}
+
+function startAllAcq() {
+    meta = {};
+    meta['notes'] = $('#acq_meta').val();
+    jmeta = JSON.stringify(meta);
+    console.log('JSON metadata:', jmeta);
+
+    acqname = $('#acq_name').val();
+    console.log('Acq name:', acqname);
+    acqdev = $('#acq_dev').val();
+    console.log('Acq device:', acqdev);
+
+    //acqnew = (acqname != last_acq_started);
+    //last_acq_started = acqname;
+    
+    args = {};
+    args['acqname'] = acqname;
+    args['acqdev'] = acqdev;
+    args['acqmeta'] = jmeta;
+    jargs = JSON.stringify(args);
+
+    $('#acq_status').html('Sending request...');
+    
+    d3.request('/acq-start')
+        .mimeType("application/json")
+    	.header('Content-Type', 'application/json')
+        .response(function(xhr) { return JSON.parse(xhr.responseText); })
+        .post(jargs, function(err,X) { acq_callback(err, X, 'Started'); });
+}
+
+function stopAllAcq() {
+    args = {};
+    args['acqname'] = '';
+    args['acqdev'] = '';
+    args['acqmeta'] = '';
+    jargs = JSON.stringify(args);
+    $('#acq_status').html('Sending request...');
+    d3.request('/acq-start')
+        .mimeType("application/json")
+    	.header('Content-Type', 'application/json')
+        .response(function(xhr) { return JSON.parse(xhr.responseText); })
+        .post(jargs, function(err,X) { acq_callback(err, X, 'Stopped'); });
+}
+
+function startAcq() {
+    console.log('Starting acquisitions on selected beams...');
+    var sel = $('.beam_checkbox:checked');
+    console.log(sel.length, ' checked');
+    var beams = sel.map(function() {
+        //console.log('map: ' + this);
+        //console.log('beam: ' + this.getAttribute('beam'));
+        return this.getAttribute('beam'); });
+    //console.log('beams: ' + beams);
+    var beamstring = '';
+    for (var i=0; i<beams.length; i++) {
+        if (i > 0)
+            beamstring += ',';
+        beamstring += beams[i];
+        console.log('beam: ' + beams[i]);
+    }
+
+    meta = {};
+    meta['notes'] = $('#acq_meta').val();
+    jmeta = JSON.stringify(meta);
+    console.log('JSON metadata:', jmeta);
+
+    acqname = $('#acq_name').val();
+    console.log('Acq name:', acqname);
+    acqdev = $('#acq_dev').val();
+    console.log('Acq device:', acqdev);
+
+    //acqnew = (acqname != last_acq_started);
+    //last_acq_started = acqname;
+
+    args = {};
+    args['acqname'] = acqname;
+    args['acqdev'] = acqdev;
+    args['acqmeta'] = jmeta;
+    args['acqbeams'] = beamstring;
+    // args['acqnew'] = last_acq_started;
+    args['acqnew'] = false; // allow updates
+    jargs = JSON.stringify(args);
+
+    $('#acq_status').html('Sending request...');
+    
+    d3.request('/acq-start')
+        .mimeType("application/json")
+    	.header('Content-Type', 'application/json')
+        .response(function(xhr) { return JSON.parse(xhr.responseText); })
+        .post(jargs, function(err,X) { acq_callback(err, X, 'Started'); });
+}
+
+//function stopAcq() {
+//}
+
+function acq_callback(err, X, oktxt) {
+    if (X == null) {
+        $('#acq_status').html('Request failed'); // + err);
+        //console.log('error: ' + err);
+        //for (k in err) {
+        //console.log(' k ' + k);
+        //}
+        return;
+    } else {
+        $('#acq_status').html('Request finished');
+    }
+    for (var i=0; i<X.length; i++) {
+        var ok = (X[i] != null) && X[i][0];
+        console.log('ok: ' + ok);
+        var sel = '#node_status_' + i;
+        if (ok) {
+            $(sel).html(oktxt);
+        } else {
+            if (X[i] != null) {
+                $(sel).html(X[i][1]);
+            } else {
+                $(sel).html('Timed out');
+            }
+        }
+    }
+    json_update(false);
+}
+
+$(document).ready(function() {
+    // Fetch first data set!
+    setTimeout('json_update(true)', 1000);
+});
+
+</script>
+
+</body>
+</html>
