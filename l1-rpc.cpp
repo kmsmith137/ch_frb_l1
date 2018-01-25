@@ -624,7 +624,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         vector<double> times;
         vector<vector<double> > rates;
 
-        for (int i=0; i<l0.size(); i++)
+        for (size_t i=0; i<l0.size(); i++)
             rates.push_back(vector<double>());
 
         //for (int i=0; i<l0.size(); i++)

@@ -180,6 +180,16 @@ and postprocessing the captured data with the offline pipeline.
   5120-5129 = Dustin
   5130-5139 = Kendrick
   5140-5149 = Alex
+  5150-5159 = Utkarsh
+
+  5555 = L1 RPC  
+  UDP 1313 = used by correlator to send real data packets
+  UDP 6677 = used for simulated data packets in examples in MANUAL.md
+
+  9090 = Prometheus
+  9100 = node_exporter
+  9116 = snmp_exporter
+  9093 = alertmanager
   ```
 
 <a name="analyzing-acquisitions"></a>
@@ -201,9 +211,12 @@ There is a lot more to say here!
   a lot of CPU and RAM, so you can't run it at the same time as an
   L1 server instance!  (Use `htop` to check`.)
 
-- After acquiring a new acquisition, you should run the script
-  `ch-frb-make-acq-inventory`, which will populate `/local/acq_json`
-  with json files corresponding to the acquisitions on the node.
+- After acquiring a new acquisition, you should run the command:
+  ```
+  ch-frb-make-acq-inventory ssd
+  ```
+  which will populate `/local/$(USER)/acq_json` with json files
+  corresponding to the acquisitions on the node.
 
   Note that this won't work if the SSD is 100% full!  If this situation
   arises, you'll need to delete a few acqusition data files by hand to 
@@ -213,8 +226,9 @@ There is a lot more to say here!
   to run instances of the offline pipeline.  An rfp-run invocation
   looks something like this:
   ```
-  # Use 20 threads, since the L1 nodes have 20 cores
-  rfp-run -w WEB_VIEWER_RUN_NAME -t 20 <acq_file.json> <rfi_file.json> <bonsai_file.json>
+  # Use 20 threads, since the L1 nodes have 20 cores.
+  # The -W flag makes plots for the web viewer.
+  rfp-run -W -t 20 <acq_file.json> <rfi_file.json> <bonsai_file.json>
   ```
   where any of the three json files can be a "run-list" pointing to multiple
   json files which are looped over.
@@ -229,7 +243,7 @@ There is a lot more to say here!
   Here is an example rfp-run invocation which analyzes all acquisitions on the node's SSD.
   (This assumes that `~/git/ch_frb_l1` and `~/git/ch_frb_rfi` contain the appropriate repos!)
   ```
-  rfp-run -w testrun -t 20 /local/acq_json/master_runlist.json ~/git/ch_frb_l1/rfi_configs/rfi_placeholder.json ~/git/ch_frb_rfi/json_files/bonsai_16k/bonsai_production_noups_nbeta1_v2.json
+  rfp-run -W -t 20 /local/acq_json/$(USER)/master_runlist.json ~/git/ch_frb_l1/rfi_configs/rfi_placeholder.json ~/git/ch_frb_rfi/json_files/bonsai_16k/bonsai_production_noups_nbeta1_v2.json
   ```
   This may take a while to run, depending on how much data has been captured!
 
@@ -245,7 +259,7 @@ There is a lot more to say here!
       to make your own RFI removal strategy and serialize it to a json file!
 
     - Replace `master_runlist.json` by another json file in the
-      `/local/acq_json` tree, to analyze specific acqusitions,
+      `/local/$(USER)/acq_json` tree, to analyze specific acqusitions,
       rather than analyzing everything on the SSD.
 
 - To delete an acquisition, just `rm -rf` the appropriate subdirectory of `/local/acq_data`,

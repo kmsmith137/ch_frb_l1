@@ -28,34 +28,6 @@ def get_rpc_client():
         from collections import OrderedDict
         servers = OrderedDict([(''+str(i), k) for i,k in enumerate(app.nodes)])
         _rpc_client = RpcClient(servers)
-
-    ## Make RPC calls to the nodes to ask what beams they are handling.
-    # If we're missing any of the beams, update them.  
-    # 
-    # (disabled for now... not actually required at the moment)
-    #
-    ## FIXME -- this has a 1-second timeout on each call to
-    ## get_rpc_client, until we fetch all the beam numbers.
-    ## Otherwise, a single L1 node being down could incur this delay
-    ## on every web request that makes an RPC.  Run this in a thread,
-    ## if necessary?  Need to figure out what magic Flask does for
-    ## multi requests -- threads, app & request state.
-    # ii = []
-    # servers = []
-    # for i,b in enumerate(app.beams):
-    #     if b is None:
-    #         ii.append(i)
-    #         servers.append(str(i))
-    # if len(ii):
-    #     print('Trying to update beam list for', len(ii), 'nodes')
-    #     stats = _rpc_client.get_statistics(servers=servers, timeout=1)
-    #     for i,s in zip(ii, stats):
-    #         if s is not None:
-    #             app.beams[i] = [si['beam_id'] for si in s[2:]]
-    #             print('Updated beams:', app.beams[i])
-    #         else:
-    #             print('Failed to get beam list from', app.nodes[i])
-
     return _rpc_client
 
 def parse_config():

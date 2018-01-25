@@ -251,7 +251,8 @@ int main(int argc, char** argv) {
     ini.nt_per_packet = nt_per;
     ini.fpga_counts_per_sample = fpga_per;
     //ini.force_fast_kernels = HAVE_AVX2;
-
+    ini.force_reference_kernels = true;
+    
     ini.telescoping_ringbuf_capacity.push_back(4);
     ini.telescoping_ringbuf_capacity.push_back(4);
     ini.telescoping_ringbuf_capacity.push_back(4);
@@ -299,8 +300,8 @@ int main(int argc, char** argv) {
     int backlog = 0;
     int failed_push = 0;
 
-    for (int i=0; i<nchunks; i++) {
-	assembled_chunk::initializer ini_params;
+    for (int ichunk=0; ichunk<nchunks; ichunk++) {
+    	  assembled_chunk::initializer ini_params;
         for (int b: beams) {
             ini_params.beam_id = b;
             ini_params.nupfreq = nupfreq;
@@ -309,6 +310,17 @@ int main(int argc, char** argv) {
             ini_params.ichunk = i;
 
             unique_ptr<assembled_chunk> uch = assembled_chunk::make(ini_params);
+            // Set all the data of this chunk to its chunk number.
+            if (1) { //(chunk_data_ichunk) {
+                for (int i=0; i<ch->nscales; i++) {
+                    ch->scales[i] = 1.0;
+                    ch->offsets[i] = 0.0;
+                }
+                for (int i=0; i<ch->ndata; i++) {
+                    ch->data[i] = ichunk % 256;
+                }
+            }
+
             assembled_chunk* ch = uch.release();
             chlog("Injecting " << i);
             if (stream->inject_assembled_chunk(ch))

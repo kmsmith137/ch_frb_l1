@@ -1,3 +1,16 @@
+- v10
+
+  - Changes to ch-make-acq-inventory script:
+     - add new argument [ssd|nfs], implement nfs load-balancing
+     - acq_json dirs are per-(device,user) not per-device
+      
+  - MANUAL.md: add example ("example 5") on 8-node DRAO backend
+   
+  - From Dustin: allow network interface names eno* to be
+    specified in config file instead of IP addresses (aiming
+    toward having a single config file for all nodes, but
+    not quite there yet)		                                                     
+  
 - v9
   - Add new params 'stream_devname', 'stream_beam_ids'
 

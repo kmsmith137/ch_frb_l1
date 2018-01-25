@@ -24,6 +24,10 @@
 #include <fstream>
 #include <iomanip>
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <ifaddrs.h>
+
 #include <ch_frb_io_internals.hpp>
 #include <rf_pipelines.hpp>
 #include <bonsai.hpp>
@@ -291,6 +295,72 @@ l1_config::l1_config(int argc, char **argv)
     this->force_asynchronous_dedispersion = p.read_scalar<bool> ("force_asynchronous_dedispersion", false);
     this->track_global_trigger_max = p.read_scalar<bool> ("track_global_trigger_max", false);
 
+    // Create the map from network interface names ("eno2") to IP address.
+    unordered_map<string, string> interfaces;
+    // Get list of network interfaces...
+    {
+        struct ifaddrs *ifaces, *iface;
+        if (getifaddrs(&ifaces)) {
+            throw runtime_error("Failed to get network interfaces -- getifaddrs(): " + string(strerror(errno)));
+        }
+        for (iface = ifaces; iface; iface = iface->ifa_next) {
+            //chlog("Network interface: " << iface->ifa_name);
+            //if (string(iface->ifa_name) != ipaddr[i]) {
+            //continue;
+            //}
+            struct sockaddr* address = iface->ifa_addr;
+            if (address->sa_family != AF_INET) {
+                //chlog("not INET");
+                continue;
+            }
+            struct sockaddr_in* inaddress = reinterpret_cast<struct sockaddr_in*>(address);
+            struct in_addr addr = inaddress->sin_addr;
+            char* addrstring = inet_ntoa(addr);
+            chlog("Network interface: " << iface->ifa_name << " has IP " << addrstring);
+            //chlog("Found match with IP address: " << addrstring);
+            interfaces[string(iface->ifa_name)] = string(addrstring);
+            //ipaddr[i] = string(addrstring);
+            //break;
+        }
+        freeifaddrs(ifaces);
+    }
+
+    // Convert network interface names in "ipaddr", eg, "eno2", into the interface's IP address.
+    for (size_t i=0; i<ipaddr.size(); i++) {
+        // Try to parse as dotted-decimal IP address
+        struct in_addr inaddr;
+        if (inet_aton(ipaddr[i].c_str(), &inaddr) == 1) {
+            // Correctly parsed as dotted-decimal IP address.
+            continue;
+        }
+        // If doesn't parse as dotted-decimal, lookup in interfaces mapping.
+        auto val = interfaces.find(ipaddr[i]);
+        if (val == interfaces.end()) {
+            throw runtime_error("Config file ipaddr entry \"" + ipaddr[i] + "\" was not dotted IP address and was not one of the known network interfaces");
+        }
+        chlog("Mapped IP addr " << ipaddr[i] << " to " << val->second);
+        ipaddr[i] = val->second;
+    }
+
+    // Convert network interface names in "rpc_address" entries.
+    for (size_t i=0; i<rpc_address.size(); i++) {
+        // "tcp://eno2:5555" -> "tcp://10.7.100.15:5555"
+        size_t proto = rpc_address[i].find("//");
+        if (proto == std::string::npos)
+            continue;
+        size_t port = rpc_address[i].rfind(":");
+        if (port == std::string::npos)
+            continue;
+        string host = rpc_address[i].substr(proto + 2, port - (proto+2));
+        //chlog("RPC address host: \"" << host << "\"");
+        auto val = interfaces.find(host);
+        if (val != interfaces.end()) {
+            string new_addr = rpc_address[i].substr(0, proto+2) + val->second + rpc_address[i].substr(port);
+            chlog("Mapping RPC address " << rpc_address[i] << " to " << new_addr);
+            rpc_address[i] = new_addr;
+        }
+    }
+
     // Lots of sanity checks.
     // First check that we have a consistent 'nstreams'.
 
@@ -508,7 +578,6 @@ l1_config::l1_config(int argc, char **argv)
 
     // I put this last, since it creates directories.
     this->stream_filename_pattern = ch_frb_l1::acqname_to_filename_pattern(stream_devname, stream_acqname, stream_beam_ids);
-    cout << "XXX stream_filename_pattern = " << stream_filename_pattern << endl;
 }
 
 
