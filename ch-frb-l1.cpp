@@ -32,6 +32,7 @@
 #include <rf_pipelines.hpp>
 #include <bonsai.hpp>
 #include <l1-rpc.hpp>
+#include <l1-prometheus.hpp>
 
 #include "ch_frb_l1.hpp"
 #include "chlog.hpp"
@@ -119,6 +120,8 @@ struct l1_config
 
     // One L1-RPC per stream
     vector<string> rpc_address;
+    // One L1-prometheus per stream
+    vector<string> prometheus_address;
 
     // A vector of length nbeams, containing the beam_ids that will be processed on this L1 server.
     // It is currently assumed that these are known in advance and never change!
@@ -288,6 +291,7 @@ l1_config::l1_config(int argc, char **argv)
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
     this->rpc_address = p.read_vector<string> ("rpc_address");
+    this->prometheus_address = p.read_vector<string> ("prometheus_address");
     this->slow_kernels = p.read_scalar<bool> ("slow_kernels", false);
     this->unassembled_ringbuf_nsamples = p.read_scalar<int> ("unassembled_ringbuf_nsamples", 4096);
     this->assembled_ringbuf_nsamples = p.read_scalar<int> ("assembled_ringbuf_nsamples", 8192);
@@ -368,6 +372,23 @@ l1_config::l1_config(int argc, char **argv)
         }
     }
 
+    // Convert network interface names in "prometheus_address" entries.
+    for (size_t i=0; i<prometheus_address.size(); i++) {
+        // "eno2:8888" -> "10.7.100.15:8888"
+        // "8888" -> "8888"
+        size_t port = prometheus_address[i].find(":");
+        if (port == std::string::npos)
+            continue;
+        string host = prometheus_address[i].substr(0, port);
+        chlog("Prometheus address host: \"" << host << "\"");
+        auto val = interfaces.find(host);
+        if (val != interfaces.end()) {
+            string new_addr = val->second + prometheus_address[i].substr(port);
+            chlog("Mapping Prometheus address " << prometheus_address[i] << " to " << new_addr);
+            prometheus_address[i] = new_addr;
+        }
+    }
+
     // Lots of sanity checks.
     // First check that we have a consistent 'nstreams'.
 
@@ -401,6 +422,8 @@ l1_config::l1_config(int argc, char **argv)
 	throw runtime_error(l1_config_filename + ": 'fpga_counts_per_sample' must be >= 1");
     if (rpc_address.size() != (unsigned int)nstreams)
 	throw runtime_error(l1_config_filename + ": 'rpc_address' must be a list whose length is the number of (ip_addr,port) pairs");
+    if (prometheus_address.size() != (unsigned int)nstreams)
+	throw runtime_error(l1_config_filename + ": 'prometheus_address' must be a list whose length is the number of (ip_addr,port) pairs");
     if (!slow_kernels && (nt_per_packet != 16))
 	throw runtime_error(l1_config_filename + ": fast kernels (slow_kernels=false) currently require nt_per_packet=16");
     if (!slow_kernels && (nfreq % (2*nfreq_c)))
@@ -788,6 +811,7 @@ struct l1_server {
     vector<shared_ptr<ch_frb_io::memory_slab_pool>> memory_slab_pools;
     vector<shared_ptr<ch_frb_io::intensity_network_stream>> input_streams;
     vector<shared_ptr<L1RpcServer>> rpc_servers;
+    vector<shared_ptr<L1PrometheusServer>> prometheus_servers;
     vector<std::thread> rpc_threads;
     vector<std::thread> dedispersion_threads;
 
@@ -801,6 +825,7 @@ struct l1_server {
     void make_memory_slab_pools();
     void make_input_streams();
     void make_rpc_servers();
+    void make_prometheus_servers();
     void spawn_dedispersion_threads();
 
     // These methods wait for the server to exit, and print some summary info.
@@ -1095,6 +1120,19 @@ void l1_server::make_rpc_servers()
     }
 }
 
+void l1_server::make_prometheus_servers()
+{
+    if (prometheus_servers.size())
+	throw("ch-frb-l1 internal error: double call to make_prometheus_servers()");
+    if (input_streams.size() != size_t(config.nstreams))
+	throw("ch-frb-l1 internal error: make_prometheus_servers() was called, without first calling make_input_streams()");
+
+    this->prometheus_servers.resize(config.nstreams);
+    for (int istream = 0; istream < config.nstreams; istream++) {
+	prometheus_servers[istream] = start_prometheus_server(config.prometheus_address[istream], input_streams[istream]);
+    }
+}
+
        
 void l1_server::spawn_dedispersion_threads()
 {
@@ -1152,6 +1190,9 @@ void l1_server::join_all_threads()
 	rpc_servers[istream]->do_shutdown();
     for (size_t istream = 0; istream < rpc_threads.size(); istream++)
 	rpc_threads[istream].join();
+
+    for (size_t istream = 0; istream < prometheus_servers.size(); istream++)
+        prometheus_servers[istream].reset();
 }
 
 
@@ -1210,6 +1251,7 @@ int main(int argc, char **argv)
     server.make_memory_slab_pools();
     server.make_input_streams();
     server.make_rpc_servers();
+    server.make_prometheus_servers();
     server.spawn_dedispersion_threads();
 
     server.join_all_threads();
