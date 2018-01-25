@@ -408,6 +408,8 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         } else {
             chime_log_remove_server(addr);
         }
+        usleep(100000);
+        chlog("chlog remote logging request received.  Hello!");
         return 0;
 
     } else if (funcname == "stream") {

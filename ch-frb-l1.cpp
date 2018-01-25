@@ -176,6 +176,8 @@ struct l1_config
     vector<int> stream_beam_ids;      // specified in config file, defaults to all beam ID's on node
     string stream_filename_pattern;   // derived from 'stream_devname' and 'stream_acqname'
 
+    string logger_address;
+
     void _have_warnings() const;
 };
 
@@ -301,6 +303,7 @@ l1_config::l1_config(int argc, char **argv)
     this->l1b_pipe_blocking = p.read_scalar<bool> ("l1b_pipe_blocking", false);
     this->force_asynchronous_dedispersion = p.read_scalar<bool> ("force_asynchronous_dedispersion", false);
     this->track_global_trigger_max = p.read_scalar<bool> ("track_global_trigger_max", false);
+    this->logger_address = p.read_scalar<string>("logger_address", "");
 
     // Create the map from network interface names ("eno2") to IP address.
     unordered_map<string, string> interfaces;
@@ -796,6 +799,7 @@ struct l1_server {
     l1_server(int argc, char **argv);
 
     // These methods incrementally construct the "heavyweight" data structures.
+    void start_logging();
     void spawn_l1b_subprocesses();
     void make_output_devices();
     void make_memory_slab_pools();
@@ -930,6 +934,16 @@ void l1_server::_init_20cores_8beams()
 	    this->dedispersion_cores[4*i+j] = { 10*i+2*j, 10*i+2*j+1, 10*i+j+20, 10*i+j+21 };
 }
 
+void l1_server::start_logging()
+{
+    // start network logging sender
+    ch_frb_io::chime_log_open_socket();
+    // send to network log collector if specified in config file.
+    if (config.logger_address.size()) {
+        cout << "Logging to " << config.logger_address << endl;
+        ch_frb_io::chime_log_add_server(config.logger_address);
+    }
+}
 
 void l1_server::spawn_l1b_subprocesses()
 {
@@ -1204,7 +1218,7 @@ void l1_server::print_statistics()
 int main(int argc, char **argv)
 {
     l1_server server(argc, argv);
-
+    server.start_logging();
     server.spawn_l1b_subprocesses();
     server.make_output_devices();
     server.make_memory_slab_pools();
