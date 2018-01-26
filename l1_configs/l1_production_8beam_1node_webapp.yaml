@@ -1,0 +1,9 @@
+# This is for the mode where we're only running cf0g0 (eg, coherent beam)
+
+rpc_address:
+  - "tcp://10.6.200.10:5555" 
+  - "tcp://10.7.200.10:5555"
+
+cnc_address:
+  - "tcp://10.6.200.10:9999" 
+
