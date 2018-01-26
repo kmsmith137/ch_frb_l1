@@ -53,7 +53,7 @@ L1_OBJS := l1-rpc.o
 CPP_CFLAGS ?=
 CPP_CFLAGS += -I$(CPPZMQ_INC_DIR) -I$(MSGPACK_INC_DIR)
 
-CIVET_OBJS := civetweb/CivetServer.o civetweb/civetweb.o
+CIVET_OBJS := l1-prometheus.o civetweb/CivetServer.o civetweb/civetweb.o
 CPP_CFLAGS += -Icivetweb
 
 doc/dependencies.png: doc/dependencies.dot
@@ -68,8 +68,8 @@ civetweb/civetweb.o: civetweb/civetweb.c
 rpc-client: rpc_client.o
 	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lch_frb_io -lzmq
 
-ch-frb-l1: ch-frb-l1.o file_utils.o yaml_paramfile.o $(L1_OBJS)
-	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lrf_pipelines -lbonsai -lch_frb_io -lrf_kernels -lzmq -lyaml-cpp -ljsoncpp
+ch-frb-l1: ch-frb-l1.o file_utils.o yaml_paramfile.o $(L1_OBJS) $(CIVET_OBJS)
+	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lrf_pipelines -lbonsai -lch_frb_io -lrf_kernels -lzmq -lyaml-cpp -ljsoncpp -ldl
 
 sim-l0-set: sim-l0-set.cpp l0-sim.cpp
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io

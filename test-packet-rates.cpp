@@ -1,3 +1,4 @@
+#include <sys/time.h>
 #include <unistd.h>
 #include <iostream>
 #include <sstream>
@@ -146,6 +147,9 @@ int main(int argc, char** argv) {
     int ndropped = 0;
     int nsent = 0;
 
+    struct timeval tv0, tv1;
+    gettimeofday(&tv0, NULL);
+
     for (int k=0;; k++) {
 
         for (int i=0; i<nstreams; i++) {
@@ -167,6 +171,11 @@ int main(int argc, char** argv) {
         }
         if (k && (k % 64 == 0)) {
             cout << "Sent " << nsent << ", dropped " << ndropped << endl;
+            gettimeofday(&tv1, NULL);
+            double dt = (tv1.tv_sec - tv0.tv_sec + 1e-6*(tv1.tv_usec - tv0.tv_usec));
+            cout << "Average packet rate from one L0 to one L1 port: " << (double(nsent) / (dt * nstreams * nsenders))
+                 << " out of target " << ((double)(nsent + ndropped) / (dt * nstreams * nsenders)) << endl;
+            tv0 = tv1;
             nsent = ndropped = 0;
         }
     }

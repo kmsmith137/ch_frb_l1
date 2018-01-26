@@ -23,13 +23,16 @@ beam_ids: [96, 97, 98, 99, 100, 101, 102, 103]
 # i.e. four beams will be sent to each NIC.  All NIC's use TCP port 5555 for
 # their RPC server.
 
-ipaddr: [ "10.6.200.16",
-	  "10.7.200.16" ]
+ipaddr: [ "eno1",
+          "eno2" ]
 
 port: 1313
 
-rpc_address: [ "tcp://10.6.200.16:5555", 
-	       "tcp://10.7.200.16:5555" ]
+rpc_address: [ "tcp://eno1:5555", 
+	       "tcp://eno2:5555" ]
+
+prometheus_address: [ "eno1:8888",
+                      "eno2:8888" ]
 
 # The L1 node is configured so that it "thinks" the NFS server is four different
 # servers, mounted on directories /frb-archiver1, /frb-archiver2, /frb-archiver3,

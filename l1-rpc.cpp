@@ -1,6 +1,7 @@
 #include <fstream>
 #include <unistd.h>
 #include <sys/time.h>
+#include <sys/statvfs.h>
 #include <stdio.h>
 #include <thread>
 #include <queue>
@@ -222,7 +223,9 @@ void l1_write_request::write_callback(const string &error_message)
 
 L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
                          const string &port,
+                         const string &cmdline,
                          zmq::context_t *ctx) :
+    _command_line(cmdline),
     _ctx(ctx ? ctx : new zmq::context_t()),
     _created_ctx(ctx == NULL),
     _frontend(*_ctx, ZMQ_ROUTER),
@@ -411,21 +414,37 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         return 0;
 
     } else if (funcname == "stream") {
-        // grab arguments: [ "acq_name", "acqdir_base", "acq_meta.json",
+        // grab arguments: [ "acq_name", "acq_dev", "acq_meta.json",
         //                   [ beam ids ] ]
         msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
-        if (oh.get().via.array.size != 4) {
-            chlog("stream RPC: failed to parse input arguments: expected array of size 4");
+        if (oh.get().via.array.size != 5) {
+            chlog("stream RPC: failed to parse input arguments: expected array of size 5");
             return -1;
         }
         string acq_name = oh.get().via.array.ptr[0].as<string>();
         string acq_dev = oh.get().via.array.ptr[1].as<string>();
         string acq_meta = oh.get().via.array.ptr[2].as<string>();
+        bool acq_new = oh.get().via.array.ptr[4].as<bool>();
         // grab beam_ids
         vector<int> beam_ids;
-        for (size_t i=0; i<oh.get().via.array.ptr[3].via.array.size; i++) {
+        int nbeams = oh.get().via.array.ptr[3].via.array.size;
+        for (size_t i=0; i<nbeams; i++) {
             int beam = oh.get().via.array.ptr[3].via.array.ptr[i].as<int>();
-            beam_ids.push_back(beam);
+            // Be forgiving about requests to stream beams that we
+            // aren't handling -- otherwise the client has to keep
+            // track of which L1 server has which beams, which is a
+            // pain.
+            bool found = false;
+            for (int b : _stream->ini_params.beam_ids) {
+                if (b == beam) {
+                    found = true;
+                    break;
+                }
+            }
+            if (found)
+                beam_ids.push_back(beam);
+            else
+                chlog("Stream request for beam " << beam << " which isn't being handled by this node.  Ignoring.");
         }
 
         chlog("Stream request: \"" << acq_name << "\", device=\"" << acq_dev << "\", " << beam_ids.size() << " beams.");
@@ -433,9 +452,15 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             for (size_t i=0; i<beam_ids.size(); i++)
                 chlog("  beam " << beam_ids[i]);
         }
-        // Default to all beams
-        if (beam_ids.size() == 0)
+        // Default to all beams if no beams were specified.
+        // (note that we use nbeams: the number of specified beams, even if
+        // none of them are owned by this node.  The beams owned by this node
+        // that aren't in the specified set will have streaming turned off.)
+        if (nbeams == 0)
             beam_ids = _stream->ini_params.beam_ids;
+        // Default to acq_dev = "ssd"
+        if (acq_dev.size() == 0)
+            acq_dev = "ssd";
         pair<bool, string> result;
         string pattern;
         if (acq_name.size() == 0) {
@@ -443,44 +468,30 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             pattern = "";
             chlog("Turning off streaming");
             _stream->stream_to_files(pattern, { }, 0);
-            _last_stream_to_files = pattern;
             result.first = true;
             result.second = pattern;
         } else {
             try {
-                pattern = ch_frb_l1::acqname_to_filename_pattern(acq_dev, acq_name, _stream->ini_params.beam_ids);
+                pattern = ch_frb_l1::acqname_to_filename_pattern(acq_dev, acq_name, _stream->ini_params.beam_ids, acq_new);
                 chlog("Streaming to filename pattern: " << pattern);
-                if (acq_meta.size()) {
+                if (acq_new && acq_meta.size()) {
                     // write metadata file in acquisition dir.
-                    // HACK -- assume the pattern is like '/local/acq_data/mine/beam_(BEAM)/chunk_(CHUNK).msg'
-                    // and drop two path components.
-                    //string basedir =
-                    size_t ind1 = pattern.rfind("/");
-                    if (ind1 == std::string::npos || ind1 == 0) {
-                        chlog("Failed to find '/' in pattern " << pattern << "!");
+                    string acqdir = ch_frb_l1::acq_pattern_to_dir(pattern);
+                    string fn = acqdir + "/metadata.json";
+                    chlog("Writing acquisition metadata to " << fn);
+                    FILE* fout = std::fopen(fn.c_str(), "w");
+                    if (!fout) {
+                        chlog("Failed to open metadata file for writing: " << fn << ": " << strerror(errno));
                     } else {
-                        size_t ind2 = pattern.rfind("/", ind1-1);
-                        if (ind2 == std::string::npos || ind2 == 0) {
-                            chlog("Failed to find second-last '/' in pattern " << pattern << "!");
-                        } else {
-                            string fn = pattern.substr(0, ind2+1) + "metadata.json";
-                            chlog("Writing acquisition metadata to " << fn);
-                            FILE* fout = std::fopen(fn.c_str(), "w");
-                            if (!fout) {
-                                chlog("Failed to open metadata file for writing: " << fn << ": " << strerror(errno));
-                            } else {
-                                if (std::fwrite(acq_meta.c_str(), 1, acq_meta.size(), fout) != acq_meta.size()) {
-                                    chlog("Failed to write " << acq_meta.size() << " bytes of metadata to " << fn << ": " << strerror(errno));
-                                }
-                                if (std::fclose(fout)) {
-                                    chlog("Failed to close metadata file: " << fn << ": " << strerror(errno));
-                                }
-                            }
+                        if (std::fwrite(acq_meta.c_str(), 1, acq_meta.size(), fout) != acq_meta.size()) {
+                            chlog("Failed to write " << acq_meta.size() << " bytes of metadata to " << fn << ": " << strerror(errno));
+                        }
+                        if (std::fclose(fout)) {
+                            chlog("Failed to close metadata file: " << fn << ": " << strerror(errno));
                         }
                     }
                 }
                 _stream->stream_to_files(pattern, beam_ids, 0);
-                _last_stream_to_files = pattern;
                 result.first = true;
                 result.second = pattern;
             } catch (const std::exception& e) {
@@ -500,8 +511,60 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
     } else if (funcname == "stream_status") {
 
         unordered_map<string, string> dict;
-        dict["stream_filename"] = _last_stream_to_files;
 
+        string stream_filename;
+        vector<int> stream_beams;
+        int stream_priority;
+        int chunks_written;
+        size_t bytes_written;
+        _stream->get_streaming_status(stream_filename, stream_beams, stream_priority,
+                                      chunks_written, bytes_written);
+
+        dict["stream_filename"] = stream_filename;
+        dict["stream_priority"] = std::to_string(stream_priority);
+        dict["stream_chunks_written"] = std::to_string(chunks_written);
+        dict["stream_bytes_written"] = std::to_string(bytes_written);
+        
+        // df for "ssd" and "nfs"
+        struct statvfs vfs;
+        if (statvfs("/frb-archiver-1", &vfs) == 0) {
+            size_t gb = vfs.f_bsize * vfs.f_bavail / (1024 * 1024 * 1024);
+            dict["nfs_gb_free"] = std::to_string((int)gb);
+        }
+        if (statvfs("/local", &vfs) == 0) {
+            size_t gb = ((size_t)vfs.f_frsize * (size_t)vfs.f_bavail) / (size_t)(1024 * 1024 * 1024);
+            dict["ssd_gb_free"] = std::to_string((int)gb);
+        }
+
+        // du in _last_stream_to_files
+        /*
+         if (_last_stream_to_files.size()) {
+         // drop two directory components
+         string acqdir = ch_frb_l1::acq_pattern_to_dir(_last_stream_to_files);
+         try {
+         size_t gb = ch_frb_l1::disk_space_used(acqdir) / (1024 * 1024 * 1024);
+         dict["stream_gb_used"] = std::to_string((int)gb);
+         } catch (const std::exception& e) {
+         chlog("disk_space_used " << _last_stream_to_files << ": " << e.what());
+         }
+         }
+         */
+
+        // all my beams, as a comma-separated string
+        string allbeams = "";
+        for (int i=0; i<_stream->ini_params.beam_ids.size(); i++) {
+            if (i) allbeams += ",";
+            allbeams += std::to_string(_stream->ini_params.beam_ids[i]);
+        }
+        dict["all_beams"] = allbeams;
+        // beams being streamed
+        string strbeams = "";
+        for (int i=0; i<stream_beams.size(); i++) {
+            if (i) strbeams += ",";
+            strbeams += std::to_string(stream_beams[i]);
+        }
+        dict["stream_beams"] = strbeams;
+        
         // Pack return value into msgpack buffer
         msgpack::sbuffer buffer;
         msgpack::pack(buffer, dict);
@@ -561,7 +624,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         vector<double> times;
         vector<vector<double> > rates;
 
-        for (int i=0; i<l0.size(); i++)
+        for (size_t i=0; i<l0.size(); i++)
             rates.push_back(vector<double>());
 
         //for (int i=0; i<l0.size(); i++)
@@ -612,7 +675,6 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
         // Gather stats...
         vector<unordered_map<string, uint64_t> > stats = _stream->get_statistics();
-
         {
             // This is a bit of a HACK!
             // read and parse /proc/stat, add to stats[0].

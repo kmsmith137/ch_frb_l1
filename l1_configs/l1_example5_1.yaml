@@ -2,34 +2,31 @@
 
 # This is a production-scale example which will monopolize 4 x 20-core
 # nodes cf0g[0-3] acting as receivers and cf0g[4-7] acting as senders.
-# The L1 server will dedisperse 16 beams, with 16384 frequency
-# channels.
+# The L1 server will dedisperse 8 beams, with 16384 frequency channels,
+# and use real RFI removal (as in example 4).
 #
+# We currently need a separate config file for each node (i.e. node cf0g0
+# uses l1_example5_0, node cf0g1 uses l1_example5_1, etc.)
+#
+# Note that node cf0g0 gets all of its packets from cf0g4, node cf0g1 gets
+# all of its packets from cf0g5, etc.  This does not reflect what happens
+# on the real backend, where every L0 node sends packets to every L1 node.
+# However it's all we can script with our existing tools!  
+
+
 # nt_per_packet=16 is important here, since the 'fast' kernels are hardcoded to
 # use nt_per_packet=16.  See MANUAL.md for more dicussion!
 
-nbeams: 16
+nbeams: 8
 nfreq: 16384
 nt_per_packet: 16
 
+# With 8 beams/node, we only use two out of four NIC's.
 
-# This example assumes the nodes are in a non-link-bonded configuration, where
-# each of the four 1 Gbps NIC's is on an independent /24 network.  We use UDP
-# port 6677 on all four NIC's.  Traffic is divided between NIC's "per beam", 
-# i.e. four beams will be sent to each NIC.  All NIC's use TCP port 5555 for
-# their RPC server.
-
-ipaddr: [ "10.6.200.11",
-	  "10.7.200.11",
-	  "10.8.200.11",
-	  "10.9.200.11" ]
-
+ipaddr: [ "eno1", "eno2" ]
 port: 6677
 
-rpc_address: [ "tcp://10.6.200.11:5555", 
-	       "tcp://10.7.200.11:5555", 
-	       "tcp://10.8.200.11:5555", 
-	       "tcp://10.9.200.11:5555" ]
+rpc_address: [ "tcp://eno1:5555", "tcp://eno2:5555" ]
 
 # The L1 node is configured so that it "thinks" the NFS server is four different
 # servers, mounted on directories /frb-archiver1, /frb-archiver2, /frb-archiver3,
@@ -37,11 +34,11 @@ rpc_address: [ "tcp://10.6.200.11:5555",
 # the corresponding NIC.  The node is responsible for load-balancing file writes 
 # between these filesystems.
 #
-# Here, we define 5 output_devices, corresponding to (4 NIC's) + (1 SSD).
+# Here, we define 3 output_devices, corresponding to (2 NIC's) + (1 SSD).
 # Each output device will get a separate file I/O thread.  This allows file
 # I/O on each device to proceed independently.
 
-output_devices: [ "/local", "/frb-archiver-1", "/frb-archiver-2", "/frb-archiver-3", "/frb-archiver-4" ]
+output_devices: [ "/local", "/frb-archiver-1", "/frb-archiver-2" ]
 
 # Need to use fast kernels in this example (slow kernels are too slow.)
 slow_kernels: False
@@ -50,12 +47,14 @@ slow_kernels: False
 # Buffer configuration.  For documentation on these parameters, see 
 # "Config file reference: L1 server" in MANUAL.md.
 #
-# Note: with write_staging_area_gb=64, the L1 server will use 
-# ~231 GB memory (the L1 node has 256 GB available).
 
+# Following example 4 here.
 assembled_ringbuf_nsamples: 10000
-telescoping_ringbuf_nsamples: [ 30000, 60000, 60000 ]
-write_staging_area_gb: 64.0
+telescoping_ringbuf_nsamples: [ 120000, 120000, 120000 ]
+write_staging_area_gb: 96.0
+# For quicker startup:
+# telescoping_ringbuf_nsamples: [ 10000, 10000, 10000 ]
+# write_staging_area_gb: 1.0
 
 
 # L1b configuration.
@@ -74,11 +73,34 @@ l1b_buffer_nsamples: 4000
 l1b_pipe_timeout: 0
 
 
-# stream_acqname.
-#
-# If the line below is uncommented, the node will continuously stream all incoming data
-# to its local SSD.  The stream_acqname should be a unique identifying string which is
-# not the same as any existing acquisition on the node.  The data will be written to
-# /local/acq_data/$(stream_acqname).
 
+# If "streaming" is enabled, the node will continuously stream all incoming data
+# to either its local SSD or NFS.
+#
+# 'stream_devname': Either "ssd" (the default) or "nfs".
+#
+#     NFS bandwidth is limited, so if you're writing to NFS then you probably want to reduce the
+#     number of beam_ids, by assigning a value to 'stream_beam_ids'.
+#
+# 'stream_acqname': Unique identifying directory names for the acqisition
+#
+#     If the given acquisition already exists (probably from a previous run)
+#     the L1 server will abort.
+#
+# 'stream_beam_ids': A list of beam_ids to stream to disk.
+#
+#     Must be a subset of 'beam_ids', the set of all beam_ids processed by the server.
+#     If unspecified, every beam_id processed by the server will be streamed.
+#
+# Example 1: to stream all beams to SSD, just do
+#   stream_acqname: ACQNAME
+#
+# Example 2: to stream beam 0 to NFS, do
+#   stream_devname: "nfs"
+#   stream_acqname: ACQNAME
+#   stream_bema_ids: [ 0 ] 
+
+
+# stream_devname: "ssd"
 # stream_acqname: "test_acq"
+# stream_beam_ids: [ 0 ]
