@@ -13,10 +13,14 @@ from flask import Flask, render_template, jsonify, request, redirect
 
 import os
 import sys
+from datetime import datetime, timedelta
 import json
 import yaml
 import msgpack
 import numpy as np
+import sqlalchemy
+from sqlalchemy.orm import sessionmaker, scoped_session
+from chlog_database import LogMessage
 
 app = Flask(__name__)
 
@@ -30,7 +34,10 @@ def get_rpc_client():
         _rpc_client = RpcClient(servers)
     return _rpc_client
 
-def parse_config():
+def get_db_session():
+    return app.make_db_session()
+
+def parse_config(app):
     """
     The webapp assumes that the WEBAPP_CONFIG environment variables
     are set to the names of a yaml config file.
@@ -51,19 +58,19 @@ def parse_config():
         print("  'run-webapp.sh' in the toplevel ch_frb_l1 directory, which")
         print("  automatically sets this variable?")
         sys.exit(1)
-    config_filename_1 = os.environ['WEBAPP_CONFIG']
-    if not os.path.exists(config_filename_1):
-        print("webapp: config file '%s' not found" % config_filename_1)
+    config_filename = os.environ['WEBAPP_CONFIG']
+    if not os.path.exists(config_filename):
+        print("webapp: config file '%s' not found" % config_filename)
         sys.exit(1)
 
     try:
-        y = yaml.load(open(config_filename_1))
+        y = yaml.load(open(config_filename))
     except:
-        print("webapp: couldn't parse yaml config file '%s'" % config_filename_1)
+        print("webapp: couldn't parse yaml config file '%s'" % config_filename)
         sys.exit(1)
 
     if not isinstance(y,dict) or not 'rpc_address' in y:
-        print("webapp: no 'rpc_address' field found in yaml file '%s'" % config_filename_1)
+        print("webapp: no 'rpc_address' field found in yaml file '%s'" % config_filename)
         sys.exit(1)
 
     nodes = y['rpc_address']
@@ -73,7 +80,8 @@ def parse_config():
     if not isinstance(nodes,list) or not all(isinstance(x, basestring) for x in nodes):
         print("%s: expected 'rpc_address' field to be a list of strings" % config_filename)
         sys.exit(1)
-
+    app.nodes = nodes
+        
     if not 'cnc_address' in y:
         print('No cnc_address item in YAML file; not sending command-n-control')
         cnc_nodes = []
@@ -85,13 +93,15 @@ def parse_config():
         if not isinstance(cnc_nodes,list) or not all(isinstance(x, basestring) for x in cnc_nodes):
             print("%s: expected 'cnc_address' field to be a list of strings" % config_filename)
             sys.exit(1)
-
+    app.cnc_nodes = cnc_nodes
     # FIXME(?): check the format of the node strings here?
     # (Should be something like 'tcp://10.0.0.101:5555')
-    return nodes, cnc_nodes
 
-app.nodes, app.cnc_nodes = parse_config()
-#app.beams = [None for n in app.nodes]
+    database = y.get('log_database', 'sqlite:///log.sqlite3')
+    engine = sqlalchemy.create_engine(database)
+    app.make_db_session = scoped_session(sessionmaker(bind=engine))
+
+parse_config(app)
 
 import zmq
 app.zmq = zmq.Context()
@@ -151,6 +161,49 @@ def acq_start():
     print('Start stream status:', stat)
     return jsonify(stat)
 
+@app.route('/l1-logs-stdout')
+def l1_logs_stdout():
+    # Retrieve systemd/journalctl logs for ch-frb-l1 systemd processes.
+    from webapp.cnc_client import CncClient
+    client = CncClient(ctx=app.zmq)
+    results = client.run('journalctl -u ch-frb-l1', app.cnc_nodes,
+                         timeout=3000)
+    rr = []
+    for r in results:
+        print('  ', r)
+        if r is None:
+            rr.append(None)
+        else:
+            (rtn, out, err) = r
+            out = out.decode()
+            err = err.decode()
+            rr.append((rtn, out, err))
+    results = rr
+    print('Results:', results)
+    print('CNC nodes:', app.cnc_nodes)
+    #return jsonify(results)
+
+    #    {% for node,logs in zip(nodes, logmsgs) %}
+
+    return render_template('l1-logs-stdout.html',
+                           logmsgs = list(zip(app.cnc_nodes,
+                                              [['x','y','z']
+                                               for n in app.cnc_nodes])),
+        )
+#nodes=app.cnc_nodes,
+#logmsgs=[['x','y','z']
+#for n in app.cnc_nodes],
+
+@app.route('/l1-logs-recent')
+def l1_logs_recent():
+    session = get_db_session()
+    datecut = datetime.now() - timedelta(0, 60)
+    logs = session.query(LogMessage).filter(LogMessage.date >= datecut)
+    filters = [('date after ' + str(datecut), 'date_gt_%s' % str(datecut).replace(' ','_'))]
+    return render_template('l1-logs-recent.html',
+                           logs=logs,
+                           logfilters=filters)
+
 @app.route('/l0-node-map')
 def l0_node_map():
     return render_template('l0-node-map.html',
@@ -165,7 +218,7 @@ def cnc_kill():
     pids = request.get_json()
     print('CNC_kill:', pids)
     pids = dict(pids)
-    from cnc_client import CncClient
+    from webapp.cnc_client import CncClient
     client = CncClient(ctx=app.zmq)
     results = client.kill(pids, timeout=3000)
     return jsonify(results)
@@ -183,20 +236,30 @@ def cnc_run():
         launch = request.args.get('launch', False)
         captive = request.args.get('captive', False)
     print('Launch', launch, 'Captive', captive, 'Command:', cmd)
-    from cnc_client import CncClient
+    from webapp.cnc_client import CncClient
     client = CncClient(ctx=app.zmq)
 
     results = client.run(cmd, app.cnc_nodes, timeout=5000, launch=launch,
                          captive=captive)
-    # print('Got results:')
-    # for r in results:
-    #     print('  ', r)
+    print('Got results:')
+    rr = []
+    for r in results:
+        print('  ', r)
+        if r is None:
+            rr.append(None)
+        else:
+            (rtn, out, err) = r
+            out = out.decode()
+            err = err.decode()
+            rr.append((rtn, out, err))
+    results = rr
+
     results = list(zip(app.cnc_nodes, results))
     return jsonify(results)
 
 @app.route('/cnc-poll/<name>/<pid>')
 def cnc_poll(name=None, pid=None):
-    from cnc_client import CncClient
+    from webapp.cnc_client import CncClient
     client = CncClient(ctx=app.zmq)
     res = client.poll(int(pid), 'tcp://' + name)
     return jsonify(res)

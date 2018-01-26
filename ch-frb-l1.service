@@ -1,0 +1,16 @@
+# systemd config file for ch-frb-l1 -- copy to /etc/systemd/system/
+
+[Unit]
+Description=ch-frb-l1 - CHIME/FRB L1 server
+After=network.target
+
+[Service]
+Type=simple
+
+User=frbl1
+WorkingDirectory=/home/frbl1/chime/ch_frb_l1
+ExecStart=/home/frbl1/chime/ch_frb_l1/ch-frb-l1-dispatch.sh
+Restart=on-abnormal
+
+# [Install]
+# WantedBy=multi-user.target
