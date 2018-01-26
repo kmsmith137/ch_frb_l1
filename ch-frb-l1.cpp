@@ -850,7 +850,7 @@ l1_server::l1_server(int argc, char **argv) :
 {
     command_line = "";
     for (int i=0; i<argc; i++)
-        command_line += (i ? " " : "") + argv[i];
+        command_line += string(i ? " " : "") + string(argv[i]);
 
     // Factor of 2 is from hyperthreading.
     int num_cores = std::thread::hardware_concurrency() / 2;

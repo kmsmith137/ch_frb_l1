@@ -138,15 +138,16 @@ int main(int argc, char** argv) {
     int failed_push = 0;
 
     for (int ichunk=0; ichunk<nchunks; ichunk++) {
-    	  assembled_chunk::initializer ini_params;
+        assembled_chunk::initializer ini_params;
         for (int b: beams) {
             ini_params.beam_id = b;
             ini_params.nupfreq = nupfreq;
             ini_params.nt_per_packet = nt_per;
             ini_params.fpga_counts_per_sample = fpga_per;
-            ini_params.ichunk = i;
+            ini_params.ichunk = ichunk;
 
             unique_ptr<assembled_chunk> uch = assembled_chunk::make(ini_params);
+            assembled_chunk* ch = uch.release();
             // Set all the data of this chunk to its chunk number.
             if (1) { //(chunk_data_ichunk) {
                 for (int i=0; i<ch->nscales; i++) {
@@ -158,17 +159,16 @@ int main(int argc, char** argv) {
                 }
             }
 
-            assembled_chunk* ch = uch.release();
-            chlog("Injecting " << i);
+            chlog("Injecting " << ichunk);
             if (stream->inject_assembled_chunk(ch))
-                chlog("Injected " << i);
+                chlog("Injected " << ichunk);
             else {
                 chlog("Inject failed (ring buffer full)");
                 failed_push++;
             }
 
             // downstream thread consumes with a lag of 2...
-            if (i >= 2) {
+            if (ichunk >= 2) {
                 // Randomly consume 0 to 2 chunks
                 shared_ptr<assembled_chunk> ach;
                 if ((backlog > 0) && rando(rng)) {
