@@ -380,6 +380,15 @@ void L1RpcServer::do_shutdown() {
     _stream->join_threads();
 }
 
+// Replaces all instances of the string "from" to the string "to" in
+// input string "input".
+static string replaceAll(const string &input, const string &from, const string &to) {
+    string s = input;
+    size_t i;
+    while ((i = s.find(from)) != std::string::npos)
+        s.replace(i, from.length(), to);
+    return s;
+}
 
 int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) {
     const char* req_data = reinterpret_cast<const char *>(request->data());
@@ -477,6 +486,8 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
                 if (acq_new && acq_meta.size()) {
                     // write metadata file in acquisition dir.
                     string acqdir = ch_frb_l1::acq_pattern_to_dir(pattern);
+                    acqdir = replaceAll(acqdir, "(STREAM)", stringprintf("%01i", _stream->ini_params.stream_id));
+                    chlog("Substituted (STREAM): writing metadata to dir " << acqdir);
                     string fn = acqdir + "/metadata.json";
                     chlog("Writing acquisition metadata to " << fn);
                     FILE* fout = std::fopen(fn.c_str(), "w");
