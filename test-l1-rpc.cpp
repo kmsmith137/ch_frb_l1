@@ -17,10 +17,11 @@ int main(int argc, char** argv) {
     float chunksleep = 0;
     int nchunks = 100;
     vector<int> beams;
-    int web_port = 8081;
+    int prometheus_port = 8081;
+    string prometheus_ip = "";
     
     int c;
-    while ((c = getopt(argc, argv, "a:p:b:c:u:ws:n:h")) != -1) {
+    while ((c = getopt(argc, argv, "a:p:b:P:c:u:ws:n:h")) != -1) {
         switch (c) {
         case 'a':
             port = string(optarg);
@@ -34,8 +35,12 @@ int main(int argc, char** argv) {
             beams.push_back(atoi(optarg));
             break;
 
+        case 'P':
+            prometheus_ip = string(optarg);
+            break;
+
         case 'c':
-            web_port = atoi(optarg);
+            prometheus_port = atoi(optarg);
             break;
             
         case 'u':
@@ -57,7 +62,7 @@ int main(int argc, char** argv) {
         case 'h':
         case '?':
         default:
-            cout << string(argv[0]) << ": [-a <address>] [-p <port number>] [-b <beam id>] [-c <web port>] [-u <L1 udp-port>] [-w to wait indef] [-s <sleep between chunks>] [-n <N chunks>] [-h for help]" << endl;
+            cout << string(argv[0]) << ": [-a <address>] [-p <port number>] [-b <beam id>] [-P <prometheus IP>] [-c <prometheus port>] [-u <L1 udp-port>] [-w to wait indef] [-s <sleep between chunks>] [-n <N chunks>] [-h for help]" << endl;
             cout << "eg,  -a tcp://127.0.0.1:5555" << endl;
             cout << "     -p 5555" << endl;
             cout << "     -b 78" << endl;
@@ -106,14 +111,13 @@ int main(int argc, char** argv) {
     shared_ptr<intensity_network_stream> stream = intensity_network_stream::make(ini);
     stream->start_stream();
 
-    int prometheus_port = 8081;
-    string prometheus_ip = "";
-    shared_ptr<L1PrometheusServer> prometheus_server = start_prometheus_server
-        (prometheus_ip + to_string(prometheus_port), stream);
+    prometheus_ip = prometheus_ip + to_string(prometheus_port);
+    shared_ptr<L1PrometheusServer> prometheus_server =
+        start_prometheus_server(prometheus_ip, stream);
     if (!prometheus_server) {
         return -1;
     }
-    cout << "Started prometheus server on port " << prometheus_port << endl;
+    cout << "Started prometheus server on " << prometheus_ip << endl;
     
     // listen on localhost only, for local-machine testing (trying to
     // listen on other ports triggers GUI window popup warnings on Mac
