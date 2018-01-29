@@ -89,8 +89,7 @@ public:
         // FIXME -- add output_chunks_queued_X fields (by path prefix)?
         
         for (int i=0; i<sizeof(ms)/sizeof(struct metric_stat); i++) {
-            //const char* metric = ms[i].key.c_str();
-            const char* metric = ms[i].key;
+            const char* metric = ms[i].metric;
             mg_printf(conn,
                       "# HELP %s %s\n" 
                       "# TYPE %s %s\n"
