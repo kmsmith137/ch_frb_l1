@@ -7,6 +7,7 @@ from rpc_client import RpcClient
 
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import scoped_session
+from sqlalchemy import desc
 
 from chlog_database import LogMessage
     
@@ -142,10 +143,9 @@ def main():
     addr = logger.address
     print('Telling L1 processes to log to', addr)
 
-    logger.handle_message(['slinky.local L1-RPC-server INFO l1-rpc.cpp:412 [int L1RpcServer::_handle_request(zmq::message_t *, zmq::message_t *)] 2018-01-09-20:44:27.827 chlog remote logging request received.  Hello!'])
+    #logger.handle_message(['slinky.local L1-RPC-server INFO l1-rpc.cpp:412 [int L1RpcServer::_handle_request(zmq::message_t *, zmq::message_t *)] 2018-01-09-20:44:27.827 chlog remote logging request received.  Hello!'])
 
     client.start_logging(addr)
-
 
     engine = sqlalchemy.create_engine(database)
     session_maker = sessionmaker(bind=engine)
@@ -153,10 +153,10 @@ def main():
     
     while True:
         import time
-        time.sleep(3.)
+        time.sleep(10.)
 
         # Send RPCs
-        client.get_statistics()
+        client.get_statistics(timeout=3.)
 
         time.sleep(3.)
         
@@ -165,9 +165,11 @@ def main():
         #session_maker = sessionmaker(bind=engine)
         #session = session_maker()
         #session = logger.session_maker()
-        print('Log messages:')
-        for logmsg in session.query(LogMessage).order_by(LogMessage.date):
+        print('(Most recent) Log messages:')
+        for logmsg in session.query(LogMessage).order_by(desc(LogMessage.date)).limit(20):
             print('  ', logmsg)
+
+        time.sleep(15.)
     
     #logger.join()
     
