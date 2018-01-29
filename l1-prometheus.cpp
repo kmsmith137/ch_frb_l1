@@ -88,7 +88,7 @@ public:
 
         // FIXME -- add output_chunks_queued_X fields (by path prefix)?
         
-        for (int i=0; i<sizeof(ms)/sizeof(struct metric_stat); i++) {
+        for (size_t i=0; i<sizeof(ms)/sizeof(struct metric_stat); i++) {
             const char* metric = ms[i].metric;
             mg_printf(conn,
                       "# HELP %s %s\n" 
@@ -107,7 +107,7 @@ public:
                   "# HELP %s %s\n"
                   "# TYPE %s gauge\n", key,
                   "Number of invalid packets received on L1 UDP socket", key);
-        for (int i=0; i<sizeof(ms2)/sizeof(struct metric_stat); i++) {
+        for (size_t i=0; i<sizeof(ms2)/sizeof(struct metric_stat); i++) {
             mg_printf(conn,
                       "%s{reason=\"%s\"} %llu\n", key, ms2[i].metric,
                       (unsigned long long)sstats[ms2[i].key]);
@@ -122,7 +122,7 @@ public:
             {"streaming_chunks_written", "l1_streaming_written_chunks",
              "Streaming data to disk: number of chunks of data written"},
         };
-        for (int i=0; i<sizeof(ms4)/sizeof(struct metric_stat); i++) {
+        for (size_t i=0; i<sizeof(ms4)/sizeof(struct metric_stat); i++) {
             const char* name = ms4[i].metric;
             mg_printf(conn,
                       "# HELP %s %s\n"
@@ -146,7 +146,7 @@ public:
              "Current number of chunks of data in the ring buffer"},
         };
 
-        for (int i=0; i<sizeof(ms3)/sizeof(struct metric_stat); i++) {
+        for (size_t i=0; i<sizeof(ms3)/sizeof(struct metric_stat); i++) {
             const char* name = ms3[i].metric;
             mg_printf(conn,
                       "# HELP %s %s\n"
