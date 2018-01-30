@@ -7,9 +7,9 @@ After=network.target
 [Service]
 Type=simple
 
-User=frbl1
-WorkingDirectory=/home/frbl1/chime/ch_frb_l1
-ExecStart=/home/frbl1/chime/ch_frb_l1/ch-frb-l1-dispatch.sh
+User=l1operator
+WorkingDirectory=/home/l1operator/ch_frb_l1
+ExecStart=/home/l1operator/ch_frb_l1/ch-frb-l1-dispatch.sh
 Restart=on-abnormal
 
 # [Install]
