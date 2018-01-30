@@ -32,30 +32,25 @@
 #include <rf_pipelines.hpp>
 #include <bonsai.hpp>
 #include <l1-rpc.hpp>
+#include <l1-prometheus.hpp>
 
 #include "ch_frb_l1.hpp"
 #include "chlog.hpp"
 
+// "cxxopts.hpp" requires G++ >= 4.9
+#if __GNUC__ > 4 ||                             \
+    (__GNUC__ == 4 && __GNUC_MINOR__ >= 9)
+#define HAVE_CXXOPTS 1
+#else
+#define HAVE_CXXOPTS 0
+#endif
+
+#if HAVE_CXXOPTS
+#include "cxxopts.hpp"
+#endif
+
 using namespace std;
 using namespace ch_frb_l1;
-
-
-static void usage()
-{
-    cerr << "Usage: ch-frb-l1 [-fvpmct] <l1_config.yaml> <rfi_config.json> <bonsai_config.hdf5> <l1b_config_file>\n"
-	 << "  -f forces the L1 server to run, even if the config files look fishy\n"
-	 << "  -v increases verbosity of the toplevel ch-frb-l1 logic\n"
-	 << "  -p enables a very verbose debug trace of the pipe I/O between L1a and L1b\n"
-	 << "  -m enables a very verbose debug trace of the memory_slab_pool allocation\n"
-	 << "  -w enables a very verbose debug trace of the logic for writing chunks\n"
-	 << "  -c deliberately crash dedispersion thread (for debugging, obviously)\n"
-	 << "  -t starts a \"toy server\" which assembles packets, but does not run RFI removal,\n"
-	 << "     dedispersion, or L1B (if -t is specified, then the last 3 arguments are optional)\n";
-
-    exit(2);
-}
-
-
 
 // -------------------------------------------------------------------------------------------------
 //
@@ -119,6 +114,8 @@ struct l1_config
 
     // One L1-RPC per stream
     vector<string> rpc_address;
+    // One L1-prometheus per stream
+    vector<string> prometheus_address;
 
     // A vector of length nbeams, containing the beam_ids that will be processed on this L1 server.
     // It is currently assumed that these are known in advance and never change!
@@ -180,6 +177,25 @@ struct l1_config
 };
 
 
+#if HAVE_CXXOPTS
+#else
+static void usage()
+{
+    cerr << "Usage: ch-frb-l1 [-fvpmct] <l1_config.yaml> <rfi_config.json> <bonsai_config.hdf5> <l1b_config_file>\n"
+	 << "  -f forces the L1 server to run, even if the config files look fishy\n"
+	 << "  -v increases verbosity of the toplevel ch-frb-l1 logic\n"
+	 << "  -p enables a very verbose debug trace of the pipe I/O between L1a and L1b\n"
+	 << "  -m enables a very verbose debug trace of the memory_slab_pool allocation\n"
+	 << "  -w enables a very verbose debug trace of the logic for writing chunks\n"
+	 << "  -c deliberately crash dedispersion thread (for debugging, obviously)\n"
+	 << "  -t starts a \"toy server\" which assembles packets, but does not run RFI removal,\n"
+	 << "     dedispersion, or L1B (if -t is specified, then the last 3 arguments are optional)\n";
+
+    exit(2);
+}
+#endif
+
+
 // FIXME: split this monster constructor into multiple functions for readability?
 l1_config::l1_config(int argc, char **argv)
 {
@@ -187,46 +203,94 @@ l1_config::l1_config(int argc, char **argv)
 
     vector<string> args;
 
-    // Low-budget command line parsing
+    vector<int> acq_beams;
+    string acq_name;
 
-    for (int i = 1; i < argc; i++) {
-	if (argv[i][0] != '-') {
-	    args.push_back(argv[i]);
-	    continue;
-	}
+#if HAVE_CXXOPTS
+    cxxopts::Options parser("ch-frb-l1", "CHIME FRB L1 server");
+    parser.positional_help("<l1_config.yaml> [<rfi_config.json> <bonsai_config.hdf5> <l1b_config_file>]");
 
-	for (int j = 1; argv[i][j] != 0; j++) {
-	    if (argv[i][j] == 'v')
-		this->l1_verbosity = 2;
-	    else if (argv[i][j] == 'f')
-		this->fflag = true;
-	    else if (argv[i][j] == 'p')
-		this->l1b_pipe_io_debug = true;
-	    else if (argv[i][j] == 'm')
-		this->memory_pool_debug = true;
-	    else if (argv[i][j] == 'w')
-		this->write_chunk_debug = true;
-	    else if (argv[i][j] == 'c')
-		this->deliberately_crash = true;
-	    else if (argv[i][j] == 't')
-		this->tflag = true;
-	    else
-		usage();
-	}
+    parser.add_options()
+        ("h,help", "Help")
+        ("v,verbose", "Increases verbosity of the toplevel ch-frb-l1 logic")
+        ("f,force", "Forces the L1 server to run, even if the config files look fishy")
+        ("p,pipe", "Enables a very verbose debug trace of the pipe I/O between L1a and L1b")
+        ("m,memory", "Enables a very verbose debug trace of the memory_slab_pool allocation")
+        ("w,write", "Eables a very verbose debug trace of the logic for writing chunks")
+        ("c,crash", "Deliberately crash dedispersion thread (for debugging, obviously)")
+        ("t,toy", "Starts a \"toy server\" which assembles packets, but does not run RFI removal, dedispersion, or L1B (if -t is specified, then the last 3 arguments are optional)")
+        ("a,acq", "Stream data to disk, saving it to this acquisition directory name", cxxopts::value<std::string>(acq_name))
+        ("n,nfs", "For streaming data acquisition, stream to NFS, not SSD")
+        ("b,beam", "For streaming data acquisition, beam number to capture (can be repeated; default is all beams)", cxxopts::value<vector<int> >(acq_beams), "<beam number>")
+        ("positional", "Positional parameters", cxxopts::value<std::vector<std::string>>(args))
+        ;
+    parser.parse_positional({"positional"});
+    auto opts = parser.parse(argc, argv);
+
+    if (opts.count("v"))
+        this->l1_verbosity = 2;
+    if (opts.count("f"))
+        this->fflag = true;
+    if (opts.count("p"))
+        this->l1b_pipe_io_debug = true;
+    if (opts.count("m"))
+        this->memory_pool_debug = true;
+    if (opts.count("w"))
+        this->write_chunk_debug = true;
+    if (opts.count("c"))
+        this->deliberately_crash = true;
+    if (opts.count("t"))
+        this->tflag = true;
+
+    if (opts.count("help") || (args.size() == 0) || (!((args.size() == 4) || ((args.size() == 1) && (this->tflag)))) ){
+        std::cout << parser.help({""}) << endl;
+        exit(0);
     }
 
+    this->l1_config_filename = args[0];
     if (args.size() == 4) {
-	this->l1_config_filename = args[0];
 	this->rfi_config_filename = args[1];
 	this->bonsai_config_filename = args[2];
 	this->l1b_config_filename = args[3];
+    }
+#else
+    // Low-budget command line parsing
+    for (int i = 1; i < argc; i++) {
+    	if (argv[i][0] != '-') {
+    	    args.push_back(argv[i]);
+    	    continue;
+    	}
+        for (int j = 1; argv[i][j] != 0; j++) {
+    	    if (argv[i][j] == 'v')
+    		this->l1_verbosity = 2;
+    	    else if (argv[i][j] == 'f')
+    		this->fflag = true;
+    	    else if (argv[i][j] == 'p')
+    		this->l1b_pipe_io_debug = true;
+    	    else if (argv[i][j] == 'm')
+    		this->memory_pool_debug = true;
+    	    else if (argv[i][j] == 'w')
+    		this->write_chunk_debug = true;
+    	    else if (argv[i][j] == 'c')
+    		this->deliberately_crash = true;
+    	    else if (argv[i][j] == 't')
+    		this->tflag = true;
+    	    else
+    		usage();
+    	}
+    }
+    if (args.size() == 4) {
+	this->l1_config_filename = args[0];
+ 	this->rfi_config_filename = args[1];
+ 	this->bonsai_config_filename = args[2];
+ 	this->l1b_config_filename = args[3];
     }
     else if (tflag && (args.size() == 1))
 	this->l1_config_filename = args[0];
     else
 	usage();
-
-
+#endif
+    
     if (!tflag) {
 	// Open rfi_config file.
 	std::ifstream rfi_config_file(rfi_config_filename);
@@ -288,6 +352,7 @@ l1_config::l1_config(int argc, char **argv)
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
     this->rpc_address = p.read_vector<string> ("rpc_address");
+    this->prometheus_address = p.read_vector<string> ("prometheus_address");
     this->slow_kernels = p.read_scalar<bool> ("slow_kernels", false);
     this->unassembled_ringbuf_nsamples = p.read_scalar<int> ("unassembled_ringbuf_nsamples", 4096);
     this->assembled_ringbuf_nsamples = p.read_scalar<int> ("assembled_ringbuf_nsamples", 8192);
@@ -368,6 +433,23 @@ l1_config::l1_config(int argc, char **argv)
         }
     }
 
+    // Convert network interface names in "prometheus_address" entries.
+    for (size_t i=0; i<prometheus_address.size(); i++) {
+        // "eno2:8888" -> "10.7.100.15:8888"
+        // "8888" -> "8888"
+        size_t port = prometheus_address[i].find(":");
+        if (port == std::string::npos)
+            continue;
+        string host = prometheus_address[i].substr(0, port);
+        chlog("Prometheus address host: \"" << host << "\"");
+        auto val = interfaces.find(host);
+        if (val != interfaces.end()) {
+            string new_addr = val->second + prometheus_address[i].substr(port);
+            chlog("Mapping Prometheus address " << prometheus_address[i] << " to " << new_addr);
+            prometheus_address[i] = new_addr;
+        }
+    }
+
     // Lots of sanity checks.
     // First check that we have a consistent 'nstreams'.
 
@@ -401,6 +483,8 @@ l1_config::l1_config(int argc, char **argv)
 	throw runtime_error(l1_config_filename + ": 'fpga_counts_per_sample' must be >= 1");
     if (rpc_address.size() != (unsigned int)nstreams)
 	throw runtime_error(l1_config_filename + ": 'rpc_address' must be a list whose length is the number of (ip_addr,port) pairs");
+    if (prometheus_address.size() != (unsigned int)nstreams)
+	throw runtime_error(l1_config_filename + ": 'prometheus_address' must be a list whose length is the number of (ip_addr,port) pairs");
     if (!slow_kernels && (nt_per_packet != 16))
 	throw runtime_error(l1_config_filename + ": fast kernels (slow_kernels=false) currently require nt_per_packet=16");
     if (!slow_kernels && (nfreq % (2*nfreq_c)))
@@ -439,9 +523,26 @@ l1_config::l1_config(int argc, char **argv)
 
     // Read stream params (postponed to here, so we get 'beam_ids' first).
 
+    // If a stream is specified on the command-line, override the config file.
+#if HAVE_CXXOPTS
+    if (opts.count("acq")) {
+        if (acq_name == "none") {
+            // no streaming!
+        } else {
+            this->stream_devname = opts.count("nfs") ? "nfs" : "ssd";
+            this->stream_acqname = acq_name;
+            this->stream_beam_ids = acq_beams;
+        }
+    } else {
+        this->stream_devname = p.read_scalar<string> ("stream_devname", "ssd");
+        this->stream_acqname = p.read_scalar<string> ("stream_acqname", "");
+        this->stream_beam_ids = p.read_vector<int> ("stream_beam_ids", this->beam_ids);
+    }
+#else
     this->stream_devname = p.read_scalar<string> ("stream_devname", "ssd");
     this->stream_acqname = p.read_scalar<string> ("stream_acqname", "");
     this->stream_beam_ids = p.read_vector<int> ("stream_beam_ids", this->beam_ids);
+#endif
 
     for (int b: stream_beam_ids)
 	if (!vcontains(beam_ids, b))
@@ -782,12 +883,15 @@ struct l1_server {
     bool asynchronous_dedispersion = false;     // run RFI and dedispersion in separate threads?
     double sleep_hack = 0.0;                    // a temporary kludge that will go away soon
 
+    string command_line;
+
     // "Heavyweight" data structures.
     vector<shared_ptr<bonsai::trigger_pipe>> l1b_subprocesses;   // can be vector of empty pointers, if L1B is not being run.
     vector<shared_ptr<ch_frb_io::output_device>> output_devices;
     vector<shared_ptr<ch_frb_io::memory_slab_pool>> memory_slab_pools;
     vector<shared_ptr<ch_frb_io::intensity_network_stream>> input_streams;
     vector<shared_ptr<L1RpcServer>> rpc_servers;
+    vector<shared_ptr<L1PrometheusServer>> prometheus_servers;
     vector<std::thread> rpc_threads;
     vector<std::thread> dedispersion_threads;
 
@@ -801,6 +905,7 @@ struct l1_server {
     void make_memory_slab_pools();
     void make_input_streams();
     void make_rpc_servers();
+    void make_prometheus_servers();
     void spawn_dedispersion_threads();
 
     // These methods wait for the server to exit, and print some summary info.
@@ -817,6 +922,10 @@ struct l1_server {
 l1_server::l1_server(int argc, char **argv) :
     config(argc, argv)
 {
+    command_line = "";
+    for (int i=0; i<argc; i++)
+        command_line += string(i ? " " : "") + string(argv[i]);
+
     // Factor of 2 is from hyperthreading.
     int num_cores = std::thread::hardware_concurrency() / 2;
 
@@ -1090,8 +1199,21 @@ void l1_server::make_rpc_servers()
     this->rpc_threads.resize(config.nstreams);
     
     for (int istream = 0; istream < config.nstreams; istream++) {
-	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], config.rpc_address[istream]);
+	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], config.rpc_address[istream], command_line);
 	rpc_threads[istream] = rpc_servers[istream]->start();
+    }
+}
+
+void l1_server::make_prometheus_servers()
+{
+    if (prometheus_servers.size())
+	throw("ch-frb-l1 internal error: double call to make_prometheus_servers()");
+    if (input_streams.size() != size_t(config.nstreams))
+	throw("ch-frb-l1 internal error: make_prometheus_servers() was called, without first calling make_input_streams()");
+
+    this->prometheus_servers.resize(config.nstreams);
+    for (int istream = 0; istream < config.nstreams; istream++) {
+	prometheus_servers[istream] = start_prometheus_server(config.prometheus_address[istream], input_streams[istream]);
     }
 }
 
@@ -1152,6 +1274,9 @@ void l1_server::join_all_threads()
 	rpc_servers[istream]->do_shutdown();
     for (size_t istream = 0; istream < rpc_threads.size(); istream++)
 	rpc_threads[istream].join();
+
+    for (size_t istream = 0; istream < prometheus_servers.size(); istream++)
+        prometheus_servers[istream].reset();
 }
 
 
@@ -1210,6 +1335,7 @@ int main(int argc, char **argv)
     server.make_memory_slab_pools();
     server.make_input_streams();
     server.make_rpc_servers();
+    server.make_prometheus_servers();
     server.spawn_dedispersion_threads();
 
     server.join_all_threads();

@@ -22,6 +22,7 @@ public:
     // from the ring buffers of the given stream.
     L1RpcServer(std::shared_ptr<ch_frb_io::intensity_network_stream> stream,
                 const std::string &port = "",
+                const std::string &cmdline = "",
                 zmq::context_t* ctx = NULL);
                 
     ~L1RpcServer();
@@ -66,6 +67,9 @@ protected:
                                zmq::message_t& contentmsg);
 
 private:
+    // The command line that launched this L1 process
+    std::string _command_line;
+
     // ZeroMQ context
     zmq::context_t* _ctx;
 
@@ -102,9 +106,6 @@ private:
 
     // server start time
     struct timeval _time0;
-
-    // the last value we set for _stream.stream_to_files.
-    std::string _last_stream_to_files;
 };
 
 
