@@ -114,22 +114,64 @@ public:
         key = "l1_write_queued_chunks";
         mg_printf(conn,
                   "# HELP %s %s\n"
-                  "# TYPE %s gauge\n", key,
-                  "Number of chunks of data queued for writing to a filesystem", key);
+                  "# TYPE %s gauge\n",
+                  key, "Number of chunks of data queued for writing to a filesystem", key);
         for (auto it = sstats.begin(); it != sstats.end(); it++) {
-            chlog("Stat: " << it->first);
             string prefix = "output_chunks_queued_";
-            string kpre = it->first.substr(0, prefix.size());
-            chlog("Key prefix: \"" << kpre << "\"");
             if (it->first.substr(0, prefix.size()) != prefix)
                 continue;
             string device = it->first.substr(prefix.size());
-            chlog("--> Device " << device);
             mg_printf(conn,
                       "%s{device=\"%s\"} %llu\n", key, device.c_str(),
                       (unsigned long long)it->second);
         }
+
+        // Retrieve and summarize the packet rate history.
+        // How many seconds of history to retrieve--should match the
+        // prometheus polling interval.
+        double period = 15.;
+        shared_ptr<packet_counts> packets = _stream->get_packet_rates(-period, period);
+        double total_packets = 0;
+        int n_nodes = 0;
+        if (packets) {
+            for (auto it=packets->counts.begin(); it!=packets->counts.end(); it++) {
+                if (it->second == 0)
+                    continue;
+                total_packets += it->second;
+                n_nodes++;
+            }
+            period = packets->period;
+        }
+        key = "l1_l0_senders_nodes";
+        mg_printf(conn,
+                  "# HELP %s %s\n"
+                  "# TYPE %s gauge\n"
+                  "%s %llu\n",
+                  key, "Number of L0 nodes that are sending data to this L1 node",
+                  key, key, (unsigned long long)n_nodes);
         
+        key = "l1_l0_senders_packets";
+        mg_printf(conn,
+                  "# HELP %s %s\n"
+                  "# TYPE %s gauge\n"
+                  "%s %llu\n",
+                  key, "Total number of packets sent by L0 nodes to this L1 node in this sampling period",
+                  key, key, (unsigned long long)total_packets);
+        key = "l1_l0_senders_period";
+        mg_printf(conn,
+                  "# HELP %s %s\n"
+                  "# TYPE %s gauge\n"
+                  "%s %f\n",
+                  key, "Sampling period for packets sent by L0 nodes to this L1 node",
+                  key, key, period);
+        key = "l1_l0_senders_packetrate";
+        mg_printf(conn,
+                  "# HELP %s %s\n"
+                  "# TYPE %s gauge\n"
+                  "%s %f\n",
+                  key, "Total number of packets per second sent from L0 nodes to this L1 node in this sampling period",
+                  key, key, total_packets / period);
+
         // Stats per beam.
 
         // Per-beam stats

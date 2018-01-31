@@ -1,11 +1,12 @@
 #include <sys/time.h>
+#include <arpa/inet.h>
 #include <unistd.h>
 #include <iostream>
 #include <sstream>
 #include <ch_frb_io.hpp>
-#include <l1-rpc.hpp>
 #include <chlog.hpp>
-#include <arpa/inet.h>
+#include <l1-rpc.hpp>
+#include <l1-prometheus.hpp>
 
 using namespace std;
 using namespace ch_frb_io;
@@ -15,13 +16,14 @@ int main(int argc, char** argv) {
     int nbeams = 1;
     int nsenders = 256;
     
-    int portnum = 5555;
-    int udpport = 6677;
-
+    int rpc_port = 5555;
+    int udp_port = 6677;
+    int prometheus_port = 8888;
+    
     float drop_rate = 0.01;
     
     int c;
-    while ((c = getopt(argc, argv, "a:p:b:u:ws:n:h")) != -1) {
+    while ((c = getopt(argc, argv, "a:p:P:b:u:ws:n:h")) != -1) {
         switch (c) {
         case 'n':
             nstreams = atoi(optarg);
@@ -30,10 +32,13 @@ int main(int argc, char** argv) {
             nsenders = atoi(optarg);
             break;
         case 'p':
-            portnum = atoi(optarg);
+            rpc_port = atoi(optarg);
+            break;
+        case 'P':
+            prometheus_port = atoi(optarg);
             break;
         case 'u':
-            udpport = atoi(optarg);
+            udp_port = atoi(optarg);
             break;
         case 'd':
             drop_rate = atof(optarg);
@@ -41,7 +46,7 @@ int main(int argc, char** argv) {
         case 'h':
         case '?':
         default:
-            cout << string(argv[0]) << ": [-n <N streams/NICs/RPC endpoints, default 32>] [-p <RPC port number start>] [-u <L1 udp-port start>] [-s <N> to fake receiving packets from N senders (default 256)] [-h for help]" << endl;
+            cout << string(argv[0]) << ": [-n <N streams/NICs/RPC endpoints, default 32>] [-p <RPC port number start>] [-P <prometheus port number start] [-u <L1 udp-port start>] [-s <N> to fake receiving packets from N senders (default 256)] [-h for help]" << endl;
             cout << "eg,  -a tcp://127.0.0.1:5555" << endl;
             cout << "     -p 5555" << endl;
             cout << "     -b 78" << endl;
@@ -66,6 +71,7 @@ int main(int argc, char** argv) {
 
     std::vector<std::shared_ptr<intensity_network_stream> > streams;
     std::vector<std::shared_ptr<L1RpcServer> > rpcs;
+    std::vector<std::shared_ptr<L1PrometheusServer> > promethei;
     std::vector<std::thread> rpc_threads(nstreams);
 
     FILE* fout = fopen("test-packet-rates.yaml", "w");
@@ -85,7 +91,7 @@ int main(int argc, char** argv) {
         ini.telescoping_ringbuf_capacity.push_back(4);
         ini.telescoping_ringbuf_capacity.push_back(4);
     
-        ini.udp_port = udpport + i;
+        ini.udp_port = udp_port + i;
         ini.output_devices.push_back(outdev);
 
         shared_ptr<intensity_network_stream> stream = intensity_network_stream::make(ini);
@@ -93,14 +99,22 @@ int main(int argc, char** argv) {
 
         streams.push_back(stream);
         
-        string rpc_addr = "tcp://127.0.0.1:" + to_string(portnum + i);
+        string rpc_addr = "tcp://127.0.0.1:" + to_string(rpc_port + i);
         shared_ptr<L1RpcServer> rpc = make_shared<L1RpcServer>(stream, rpc_addr);
         rpcs.push_back(rpc);
         rpc_threads[i] = rpc->start();
-
+        
         fprintf(fout, "%s\"%s\"", (i>0 ? ", " : ""), rpc_addr.c_str());
         
         chlog("Starting RPC server on port " << rpc_addr);
+
+        string pro_addr = to_string(prometheus_port + i);
+        shared_ptr<L1PrometheusServer> pro = start_prometheus_server(pro_addr, stream);
+        if (!pro) {
+            return -1;
+        }
+        cout << "Started prometheus server on " << pro_addr << endl;
+        promethei.push_back(pro);
     }
 
     fprintf(fout, " ]\n");
