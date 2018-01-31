@@ -101,11 +101,10 @@ int main(int argc, char** argv) {
         ini.udp_port = udpport;
 
     output_device::initializer out_params;
-    out_params.device_name = "";
+    out_params.device_name = "/tmp";
     // debug
     out_params.verbosity = 3;
     std::shared_ptr<output_device> outdev = output_device::make(out_params);
-
     ini.output_devices.push_back(outdev);
 
     shared_ptr<intensity_network_stream> stream = intensity_network_stream::make(ini);

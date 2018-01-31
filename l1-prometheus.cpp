@@ -17,7 +17,6 @@ public:
         _stream(stream) {}
 
     bool handleGet(CivetServer *server, struct mg_connection *conn) {
-        //cout << "test-l1-rpc: serving metrics" << endl;
         mg_printf(conn,
                   "HTTP/1.1 200 OK\r\n"
                   "Content-Type: text/plain\r\n"
@@ -74,8 +73,8 @@ public:
              "Number of data chunks sent downstream by the L1 assembler"},
             {"streaming_n_beams", "l1_streaming_beams_count",
              "Streaming data to disk: number of beams being written"},
-            {"output_chunks_queued", "l1_output_queued_chunks",
-             "Number of chunks of data queued for writing"},
+            //{"output_chunks_queued", "l1_write_queued_chunks",
+            //"Number of chunks of data queued for writing"},
             {"memory_pool_slab_size_bytes", "l1_memorypool_capacity_bytes",
              "Number of bytes total capacity in memory pool"},
             {"memory_pool_slab_avail_bytes", "l1_memorypool_avail_bytes",
@@ -85,8 +84,6 @@ public:
             {"memory_pool_slab_avail", "l1_memorypool_avail_slabs",
              "Available number in memory pool, in 'slabs'"},
         };
-
-        // FIXME -- add output_chunks_queued_X fields (by path prefix)?
         
         for (size_t i=0; i<sizeof(ms)/sizeof(struct metric_stat); i++) {
             const char* metric = ms[i].metric;
@@ -113,6 +110,26 @@ public:
                       (unsigned long long)sstats[ms2[i].key]);
         }
 
+        // output_chunks_queued_X fields (by path prefix)
+        key = "l1_write_queued_chunks";
+        mg_printf(conn,
+                  "# HELP %s %s\n"
+                  "# TYPE %s gauge\n", key,
+                  "Number of chunks of data queued for writing to a filesystem", key);
+        for (auto it = sstats.begin(); it != sstats.end(); it++) {
+            chlog("Stat: " << it->first);
+            string prefix = "output_chunks_queued_";
+            string kpre = it->first.substr(0, prefix.size());
+            chlog("Key prefix: \"" << kpre << "\"");
+            if (it->first.substr(0, prefix.size()) != prefix)
+                continue;
+            string device = it->first.substr(prefix.size());
+            chlog("--> Device " << device);
+            mg_printf(conn,
+                      "%s{device=\"%s\"} %llu\n", key, device.c_str(),
+                      (unsigned long long)it->second);
+        }
+        
         // Stats per beam.
 
         // Per-beam stats
