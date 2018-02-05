@@ -1084,6 +1084,7 @@ void l1_server::spawn_l1b_subprocesses()
 
 void l1_server::start_logging()
 {
+    chlog("Opening chlog socket.");
     ch_frb_io::chime_log_open_socket();
     if (config.logger_address.size()) {
         chlog("Logging to " << config.logger_address);
