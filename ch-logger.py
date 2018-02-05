@@ -153,20 +153,21 @@ def main():
     
     while True:
         import time
-        time.sleep(10.)
-
-        # Send RPCs
-        client.get_statistics(timeout=3.)
-
-        time.sleep(3.)
+        # time.sleep(10.)
+        # 
+        # # Send RPCs
+        # client.get_statistics(timeout=3.)
+        # 
+        # time.sleep(3.)
         
         # Query DB.
         #engine = logger.engine #sqlalchemy.create_engine(database, echo=True)
         #session_maker = sessionmaker(bind=engine)
         #session = session_maker()
         #session = logger.session_maker()
+        print()
         print('(Most recent) Log messages:')
-        for logmsg in session.query(LogMessage).order_by(desc(LogMessage.date)).limit(20):
+        for logmsg in session.query(LogMessage).order_by(desc(LogMessage.date)).limit(10):
             print('  ', logmsg)
 
         time.sleep(15.)
