@@ -34,6 +34,12 @@ def get_rpc_client():
         _rpc_client = RpcClient(servers)
     return _rpc_client
 
+def get_cnc_client():
+    #from webapp.cnc_client import CncClient
+    from cnc_client import CncClient
+    client = CncClient(ctx=app.zmq)
+    return client
+
 def get_db_session():
     return app.make_db_session()
 
@@ -163,11 +169,14 @@ def acq_start():
     print('Start stream status:', stat)
     return jsonify(stat)
 
+@app.route('/l1-service')
+def l1_service():
+    pass
+
 @app.route('/l1-logs-stdout')
 def l1_logs_stdout():
     # Retrieve systemd/journalctl logs for ch-frb-l1 systemd processes.
-    from webapp.cnc_client import CncClient
-    client = CncClient(ctx=app.zmq)
+    client = get_cnc_client()
     results = client.run('journalctl -u ch-frb-l1', app.cnc_nodes,
                          timeout=3000)
     rr = []
@@ -220,8 +229,7 @@ def cnc_kill():
     pids = request.get_json()
     print('CNC_kill:', pids)
     pids = dict(pids)
-    from webapp.cnc_client import CncClient
-    client = CncClient(ctx=app.zmq)
+    client = get_cnc_client()
     results = client.kill(pids, timeout=3000)
     return jsonify(results)
 
@@ -238,9 +246,7 @@ def cnc_run():
         launch = request.args.get('launch', False)
         captive = request.args.get('captive', False)
     print('Launch', launch, 'Captive', captive, 'Command:', cmd)
-    from webapp.cnc_client import CncClient
-    client = CncClient(ctx=app.zmq)
-
+    client = get_cnc_client()
     results = client.run(cmd, app.cnc_nodes, timeout=5000, launch=launch,
                          captive=captive)
     print('Got results:')
@@ -261,8 +267,7 @@ def cnc_run():
 
 @app.route('/cnc-poll/<name>/<pid>')
 def cnc_poll(name=None, pid=None):
-    from webapp.cnc_client import CncClient
-    client = CncClient(ctx=app.zmq)
+    client = get_cnc_client()
     res = client.poll(int(pid), 'tcp://' + name)
     return jsonify(res)
 
