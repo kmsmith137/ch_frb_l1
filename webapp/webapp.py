@@ -193,13 +193,23 @@ def l1_service():
     rr = []
     for node,r in zip(app.cnc_nodes, results):
         if r is None:
-            rr.append((node, '(failed to retrieve status)'))
+            err = '(failed to retrieve status)'
+            rr.append((node, err, err))
         else:
             (rtn, out, err) = r
             print(rtn, out, err)
             out = out.decode('utf-8')
             err = err.decode('utf-8')
-            rr.append((node, out + err))
+
+            lines = (out + err).split('\n')
+            # Look for "Active:" line.
+            summary = '(status not found)'
+            for l in lines:
+                if 'Active:' in l:
+                    summary = l
+                    break
+            
+            rr.append((node, summary, out + err))
     results = rr
     return render_template('l1-service.html',
                            status=results,

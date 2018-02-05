@@ -39,7 +39,21 @@ th {
 
 	<hr>
 
-  {% for node,stat in status %}
+	<h3>Status summary</h3>
+	<table border="1">
+	  <tr><th>Node</th><th>Status</th></tr>
+	  {% for node,summary,stat in status %}
+	  <tr>
+	    <td><a href="#node{{loop.index}}">{{node}}</a></td>
+	    <td>{{summary}}</td>
+	  </tr>
+	  {% endfor %}
+	  </table>
+
+	<hr>
+
+  {% for node,summary,stat in status %}
+	<a name="node{{loop.index}}">
       <h3>
 	Node {{ node }}
 	<form action="{{ service_url }}/start/{{node}}" style="display: inline;">
