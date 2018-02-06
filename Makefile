@@ -39,7 +39,7 @@ SCRIPTS := ch-frb-make-acq-inventory
 
 # Is this the correct split into installed/non-installed?
 INSTALLED_BINARIES := ch-frb-l1 ch-frb-simulate-l0
-NON_INSTALLED_BINARIES := rpc-client test-l1-rpc sim-l0-set
+NON_INSTALLED_BINARIES := rpc-client test-l1-rpc sim-l0-set test-packet-rates
 
 all: $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES)
 

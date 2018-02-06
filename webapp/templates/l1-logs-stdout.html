@@ -29,9 +29,15 @@ th {
   Node {{ node }}
   </h4>
   <table border="1">
+    <tr><td><pre>
+      {% for log in logs %}
+{{ log }}{% endfor %}
+      </pre></td></tr>
+    {#
   {% for log in logs %}
   <tr><td>{{ log }}</td></tr>
   {% endfor %}
+  #}
   </table>
   {% endfor %}
   

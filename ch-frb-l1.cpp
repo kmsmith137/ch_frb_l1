@@ -116,6 +116,8 @@ struct l1_config
     vector<string> rpc_address;
     // One L1-prometheus per stream
     vector<string> prometheus_address;
+    // Optional chlog logging server address
+    string logger_address;
 
     // A vector of length nbeams, containing the beam_ids that will be processed on this L1 server.
     // It is currently assumed that these are known in advance and never change!
@@ -353,6 +355,7 @@ l1_config::l1_config(int argc, char **argv)
     this->port = p.read_vector<int> ("port");
     this->rpc_address = p.read_vector<string> ("rpc_address");
     this->prometheus_address = p.read_vector<string> ("prometheus_address");
+    this->logger_address = p.read_scalar<string> ("logger_address", "");
     this->slow_kernels = p.read_scalar<bool> ("slow_kernels", false);
     this->unassembled_ringbuf_nsamples = p.read_scalar<int> ("unassembled_ringbuf_nsamples", 4096);
     this->assembled_ringbuf_nsamples = p.read_scalar<int> ("assembled_ringbuf_nsamples", 8192);
@@ -900,6 +903,7 @@ struct l1_server {
     l1_server(int argc, char **argv);
 
     // These methods incrementally construct the "heavyweight" data structures.
+    void start_logging();
     void spawn_l1b_subprocesses();
     void make_output_devices();
     void make_memory_slab_pools();
@@ -1074,6 +1078,17 @@ void l1_server::spawn_l1b_subprocesses()
     
 	// The trigger_pipe constructor will spawn the L1b child process.
 	this->l1b_subprocesses[ibeam] = make_shared<bonsai::trigger_pipe> (l1b_command_line, l1b_initializer);
+    }
+}
+
+
+void l1_server::start_logging()
+{
+    chlog("Opening chlog socket.");
+    ch_frb_io::chime_log_open_socket();
+    if (config.logger_address.size()) {
+        chlog("Logging to " << config.logger_address);
+        ch_frb_io::chime_log_add_server(config.logger_address);
     }
 }
 
@@ -1330,6 +1345,7 @@ int main(int argc, char **argv)
 {
     l1_server server(argc, argv);
 
+    server.start_logging();
     server.spawn_l1b_subprocesses();
     server.make_output_devices();
     server.make_memory_slab_pools();

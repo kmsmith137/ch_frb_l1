@@ -34,17 +34,26 @@ writing-mode: vertical-lr;
 <li><a href="/acq">Acquisition status</a></li>
 <li><a href="/l1-logs-recent">L1 logs (chlog)</a></li>
 <li><a href="/l1-logs-stdout">L1 stdout/stderr logs</a></li>
+<li><a href="/l1-service">Start/Stop ch-frb-l1 service</a></li>
 </ul>
 
-<h3>CHIME FRB L1 node status</h3>
+<h3>L1 packet rates</h3>
 
+<p>
+    {% for nice,node in nicenodes %}
+    <a href="node/{{node}}">{{nice}}</a>
+    {% endfor %}
+</p>
+
+{#
 <table>
   <tr>
-    <th>Nodes</th>
-    {% for i,node in enodes %}
-    <td><a href="node/{{node}}">{{ i+1 }}</a></td>
+    <th>L1 ports</th>
+    {% for nice,node in nicenodes %}
+    <td><a href="node/{{node}}">{{nice}}</a></td>
     {% endfor %}
   </tr>
+#}
 
 {#
   <tr>
@@ -75,11 +84,14 @@ writing-mode: vertical-lr;
 <span id="cnc_status"></span><br />
 <p id="cnc_output"></p>
 
+{#
 <p>Launch a command on all L1 nodes:</p>
 <input type="text" id="cnc_launch" size="50" value="echo l1_config/l1_production_16beam___INDEX__.yaml" />
 <span id="cnc_launch_status"></span><br />
 <p id="cnc_launch_output"></p>
+#}
 
+{# OFF
 <p>Launch and follow a command on cf0g0:</p>
 <input type="text" id="cnc_follow" size="50" value="for ((i=1;;i++)); do echo $i; sleep 1; done" />
 <span id="cnc_follow_status"></span><br />
@@ -96,12 +108,14 @@ writing-mode: vertical-lr;
 {% endfor %}
 </tr><tr>
 {% for i,n in ecnodes %}
+#}
 {#<td id="cnc_follow_{{ i }}" class="cnc_follow_outs"> </td>
 #}
+{# OFF
 <td valign="top"><pre id="cnc_follow_{{ i }}" class="cnc_follow_outs"> </pre></td>
 {% endfor %}
 </tr></table>
-
+#}
 {#<p id="cnc_follow_0"></p>
 #}
 

@@ -22,6 +22,9 @@ import sqlalchemy
 from sqlalchemy.orm import sessionmaker, scoped_session
 from chlog_database import LogMessage
 
+#print('Python version:', sys.version)
+# 2.7 on cf0g9
+
 app = Flask(__name__)
 
 _rpc_client = None
@@ -33,6 +36,17 @@ def get_rpc_client():
         servers = OrderedDict([(''+str(i), k) for i,k in enumerate(app.nodes)])
         _rpc_client = RpcClient(servers)
     return _rpc_client
+
+def get_cnc_client():
+    # SSH
+    if False:
+        #from webapp.cnc_client import CncClient
+        from cnc_client import CncClient
+        client = CncClient(ctx=app.zmq)
+        return client
+    from cnc_ssh import CncSsh
+    client = CncSsh(ssh_options='-o "User=l1operator" -i ~/.ssh/id_dstn_to_l1operator')
+    return client
 
 def get_db_session():
     return app.make_db_session()
@@ -94,6 +108,11 @@ def parse_config(app):
             print("%s: expected 'cnc_address' field to be a list of strings" % config_filename)
             sys.exit(1)
     app.cnc_nodes = cnc_nodes
+
+    # SSH
+    app.cnc_nodes = [n.replace('tcp://', '').replace(':9999','') for n in cnc_nodes]
+
+
     # FIXME(?): check the format of the node strings here?
     # (Should be something like 'tcp://10.0.0.101:5555')
 
@@ -109,9 +128,11 @@ app.zmq = zmq.Context()
 @app.route('/')
 def index():
     nodes = [n.replace('tcp://','') for n in app.nodes]
+    nicenodes = [(n.replace('tcp://','').replace(':5555',''), n.replace('tcp://',''))
+                 for n in app.nodes]
     return render_template('index-newer.html',
                            nodes = nodes,
-                           enodes = list(enumerate(nodes)),
+                           nicenodes = nicenodes,
                            ecnodes = list(enumerate(app.cnc_nodes)),
                            node_status_url='/node-status',
                            packet_matrix_url='/packet-matrix',
@@ -154,19 +175,66 @@ def acq_start():
         acqbeams = [int(b) for b in acqbeams.split(',')]
     else:
         acqbeams = []
+    print('Sending request to start streaming: name', acqname, 'dev', acqdev,
+          'metadata:', acqmeta)
     print('Beams:', acqbeams)
-    stat = client.stream(acqname, acq_meta=acqmeta, acq_beams=acqbeams,
-                         new_stream=acqnew,
+    stat = client.stream(acqname, acq_dev=acqdev, acq_meta=acqmeta,
+                         acq_beams=acqbeams, new_stream=acqnew,
                          timeout=timeout)
     print('Start stream status:', stat)
     return jsonify(stat)
 
+@app.route('/l1-service')
+def l1_service():
+    # Retrieve systemd/journalctl logs for ch-frb-l1 systemd processes.
+    client = get_cnc_client()
+    results = client.run('sudo -n /bin/systemctl status ch-frb-l1', app.cnc_nodes,
+                         timeout=3000)
+    rr = []
+    for node,r in zip(app.cnc_nodes, results):
+        if r is None:
+            err = '(failed to retrieve status)'
+            rr.append((node, err, err))
+        else:
+            (rtn, out, err) = r
+            print(rtn, out, err)
+            out = out.decode('utf-8')
+            err = err.decode('utf-8')
+
+            lines = (out + err).split('\n')
+            # Look for "Active:" line.
+            summary = '(status not found)'
+            for l in lines:
+                if 'Active:' in l:
+                    summary = l
+                    break
+            
+            rr.append((node, summary, out + err))
+    results = rr
+    return render_template('l1-service.html',
+                           status=results,
+                           service_url='/l1-service-action')
+
+@app.route('/l1-service-action/<action>/<node>')
+def l1_service_action(action=None, node=None):
+    if node == 'all':
+        nodes = app.cnc_nodes
+    else:
+        nodes = [node]
+
+    assert(action in ['start','stop'])
+
+    client = get_cnc_client()
+    cmd = 'sudo -n /bin/systemctl %s ch-frb-l1' % action
+    rtn = client.run(cmd, nodes)
+    print('Return value:', rtn)
+    return redirect('/l1-service')
+
 @app.route('/l1-logs-stdout')
 def l1_logs_stdout():
     # Retrieve systemd/journalctl logs for ch-frb-l1 systemd processes.
-    from webapp.cnc_client import CncClient
-    client = CncClient(ctx=app.zmq)
-    results = client.run('journalctl -u ch-frb-l1', app.cnc_nodes,
+    client = get_cnc_client()
+    results = client.run('/bin/journalctl -u ch-frb-l1 -n 20', app.cnc_nodes,
                          timeout=3000)
     rr = []
     for r in results:
@@ -179,20 +247,22 @@ def l1_logs_stdout():
             err = err.decode()
             rr.append((rtn, out, err))
     results = rr
-    print('Results:', results)
-    print('CNC nodes:', app.cnc_nodes)
-    #return jsonify(results)
+    #print('Results:', results)
+    #print('CNC nodes:', app.cnc_nodes)
 
-    #    {% for node,logs in zip(nodes, logmsgs) %}
-
+    logmsgs = []
+    for node,rr in zip(app.cnc_nodes, results):
+        if rr is None:
+            logmsgs.append((node, ['Failed to retrieve logs']))
+        else:
+            rtn,out,err = rr
+            lines = out.split('\n') + err.split('\n')
+            lines = [x.strip() for x in lines]
+            lines = [x for x in lines if len(x)]
+            logmsgs.append((node, lines))
+    #print('msgs:', logmsgs)
     return render_template('l1-logs-stdout.html',
-                           logmsgs = list(zip(app.cnc_nodes,
-                                              [['x','y','z']
-                                               for n in app.cnc_nodes])),
-        )
-#nodes=app.cnc_nodes,
-#logmsgs=[['x','y','z']
-#for n in app.cnc_nodes],
+                           logmsgs=logmsgs)
 
 @app.route('/l1-logs-recent')
 def l1_logs_recent():
@@ -218,8 +288,7 @@ def cnc_kill():
     pids = request.get_json()
     print('CNC_kill:', pids)
     pids = dict(pids)
-    from webapp.cnc_client import CncClient
-    client = CncClient(ctx=app.zmq)
+    client = get_cnc_client()
     results = client.kill(pids, timeout=3000)
     return jsonify(results)
 
@@ -236,31 +305,27 @@ def cnc_run():
         launch = request.args.get('launch', False)
         captive = request.args.get('captive', False)
     print('Launch', launch, 'Captive', captive, 'Command:', cmd)
-    from webapp.cnc_client import CncClient
-    client = CncClient(ctx=app.zmq)
-
+    client = get_cnc_client()
     results = client.run(cmd, app.cnc_nodes, timeout=5000, launch=launch,
                          captive=captive)
-    print('Got results:')
+    #print('Got results:')
     rr = []
-    for r in results:
-        print('  ', r)
+    for node,r in zip(app.cnc_nodes, results):
+        #print('  ', r)
         if r is None:
-            rr.append(None)
+            rr.append((node, None))
         else:
             (rtn, out, err) = r
             out = out.decode()
             err = err.decode()
-            rr.append((rtn, out, err))
+            rr.append((node, (rtn, out, err)))
     results = rr
-
-    results = list(zip(app.cnc_nodes, results))
+    #print('Results:', results)
     return jsonify(results)
 
 @app.route('/cnc-poll/<name>/<pid>')
 def cnc_poll(name=None, pid=None):
-    from webapp.cnc_client import CncClient
-    client = CncClient(ctx=app.zmq)
+    client = get_cnc_client()
     res = client.poll(int(pid), 'tcp://' + name)
     return jsonify(res)
 
