@@ -742,7 +742,15 @@ void dedispersion_thread_context::_thread_main() const
 
     if (asynchronous_dedispersion) {
 	ini_params.asynchronous = true;
-	ini_params.async_allowed_cores = allowed_cores;  // should be redundant, since bonsai worker thread inherits cpu affinity of parent thread by default
+
+	// The following line is now commented out.
+	//
+	//   ini_params.async_allowed_cores = allowed_cores;
+	//
+	// Previously, I was including this, even though it should be redundant given the call to pin_thread_to_cores() above.
+	// However, it appears that this is not safe, since std::hardware_concurreny() sometimes returns 1 after the first call
+	// to pin_thread_to_cores().  It is very strange that this only happens sometimes!  But commenting out the line above
+	// seems to fix it.
     }
 
     auto dedisperser = make_shared<bonsai::dedisperser> (bonsai_config, ini_params);  // not config.bonsai_config
