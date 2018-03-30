@@ -253,6 +253,9 @@ shared_ptr<L1PrometheusServer> start_prometheus_server(string ipaddr_port,
     // listening_ports = [ipaddr:]port
     options.push_back("listening_ports");
     options.push_back(ipaddr_port);
+    // default is 50, but we're only serving the prometheus poller
+    options.push_back("num_threads");
+    options.push_back(std::to_string(8));
     shared_ptr<L1PrometheusServer> server;
     try {
         server = make_shared<L1PrometheusServer>(options);
