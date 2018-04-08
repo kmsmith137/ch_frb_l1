@@ -24,8 +24,9 @@ compiler:
 
 before_install:
     - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update          ; fi
-    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install lz4 yaml-cpp boost jsoncpp; fi
-    # fftw
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install lz4 yaml-cpp jsoncpp; fi
+    # boost: already installed
+    # fftw: problematic
 
 before_script:
     - if [[ "$TRAVIS_OS_NAME" != "osx" ]]; then cat /proc/cpuinfo; fi
