@@ -3,10 +3,15 @@
 # "trusty" is Ubuntu 14.04.5 LTS
 # gcc 4.8.4
 
+# According to https://github.com/uclouvain/openjpeg/blob/master/.travis.yml
+# "sudo: yes" and "dist: trusty" give us a worker with the AVX2 instruction set
+sudo: yes
 dist: trusty
 
+# Formerly:
 # use containerized infrastructure (for faster startup; no sudo)
-sudo: false
+#sudo: false
+#dist: trusty
 
 language: cpp
 
