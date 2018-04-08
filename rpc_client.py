@@ -237,8 +237,14 @@ class RpcClient(object):
         for k in servers:
             self.token += 1
             req = msgpack.packb(['stream', self.token])
+            # Ensure correct argument types
+            acq_name = str(acq_name)
+            acq_dev = str(acq_dev)
+            acq_meta = str(acq_meta)
+            acq_beams = [int(b) for b in acq_beams]
+            new_stream = bool(new_stream)
             args = msgpack.packb([acq_name, acq_dev, acq_meta, acq_beams,
-                                  new_stream]);
+                                  new_stream])
             tokens.append(self.token)
             self.sockets[k].send(req + args)
         if not wait:
@@ -627,8 +633,8 @@ if __name__ == '__main__':
                         help='Just send list_chunks command and exit.')
     parser.add_argument('--stream', help='Stream to files')
     parser.add_argument('--stream-base', help='Stream base directory')
-    parser.add_argument('--stream-meta', help='Stream metadata')
-    parser.add_argument('--stream-beams', action='append', type=int, default=[], help='Stream a subset of beams')
+    parser.add_argument('--stream-meta', help='Stream metadata', default='')
+    parser.add_argument('--stream-beams', action='append', default=[], help='Stream a subset of beams.  Can be a comma-separated list of integers.  Can be repeated.')
     
     parser.add_argument('--rate', action='store_true', default=False,
                         help='Send packet rate matrix request')
@@ -677,7 +683,13 @@ if __name__ == '__main__':
         doexit = True
 
     if opt.stream:
-        patterns = client.stream(opt.stream, opt.stream_base, opt.stream_meta, opt.stream_beams)
+        beams = []
+        for b in opt.stream_beams:
+            # Parse possible comma-separate list of strings
+            words = b.split(',')
+            for w in words:
+                beams.append(int(w))
+        patterns = client.stream(opt.stream, opt.stream_base, opt.stream_meta, beams)
         print('Streaming to:', patterns)
         doexit = True
 
