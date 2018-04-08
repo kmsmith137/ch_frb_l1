@@ -41,6 +41,8 @@ before_script:
 
     - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then pip2 install numpy; fi
 
+    - find /usr/lib/python2.7/dist-packages/numpy/core/include
+
     - BUILD_DIR=$(pwd)
 
     - cd
