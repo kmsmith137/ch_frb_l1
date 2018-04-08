@@ -35,8 +35,7 @@ def main():
         print("%s: expected 'rpc_address' field to be a list of strings" % config_fn)
         sys.exit(1)
 
-    client = RpcClient(dict([(''+str(i), k) for i,k in enumerate(nodes)]),
-                       identity='packet-rate-recorder.py')
+    client = RpcClient(dict([(''+str(i), k) for i,k in enumerate(nodes)]))
 
     step = 0
     t0 = time.time()

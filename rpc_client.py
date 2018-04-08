@@ -129,8 +129,7 @@ class RpcClient(object):
         *context*: if non-None: the ZeroMQ context in which to create
            my socket.
 
-        *identity*: if non-None: the name to give our ZeroMQ socket
-           (string).
+        *identity*: (ignored; here for backward-compatibility)
         '''
         if context is None:
             self.context = zmq.Context()
@@ -142,8 +141,6 @@ class RpcClient(object):
         self.rsockets = {}
         for k,v in servers.items():
             self.sockets[k] = self.context.socket(zmq.DEALER)
-            if identity is not None:
-                self.sockets[k].set(zmq.IDENTITY, identity)
             self.sockets[k].connect(v)
             self.rsockets[self.sockets[k]] = k
 
@@ -642,8 +639,6 @@ if __name__ == '__main__':
                         help='Send packet rate history request')
     parser.add_argument('--l0', action='append', default=[],
                         help='Request rate history for the list of L0 nodes')
-    parser.add_argument('--identity', default=None,
-                        help='Set ZMQ identity to report to the server')
     parser.add_argument('ports', nargs='*',
                         help='Addresses or port numbers of RPC servers to contact')
     opt = parser.parse_args()
@@ -665,7 +660,7 @@ if __name__ == '__main__':
                        b='tcp://127.0.0.1:5556')
 
     print('Sending to servers:', servers)
-    client = RpcClient(servers, identity=opt.identity)
+    client = RpcClient(servers)
 
     if opt.log:
         logger = ChLogServer()
