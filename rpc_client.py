@@ -628,6 +628,7 @@ if __name__ == '__main__':
         default=[])
     parser.add_argument('--list', action='store_true', default=False,
                         help='Just send list_chunks command and exit.')
+    parser.add_argument('--identity', help='(ignored)')
     parser.add_argument('--stream', help='Stream to files')
     parser.add_argument('--stream-base', help='Stream base directory')
     parser.add_argument('--stream-meta', help='Stream metadata', default='')
