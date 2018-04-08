@@ -35,6 +35,9 @@ before_script:
     - pip2 install --user cpp-coveralls
     - pip2 install --user Cython
 
+    # for cython
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then export PATH=${PATH}:~/Library/Python-2.7/bin; fi
+
     - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then pip2 install numpy; fi
 
     - BUILD_DIR=$(pwd)
