@@ -99,9 +99,12 @@ before_script:
     - mv include/* chime/include/
 
     - cd
-    - git clone https://github.com/kmsmith137/rf_kernels.git
+    #- git clone https://github.com/kmsmith137/rf_kernels.git
+    - git clone https://github.com/dstndstn/rf_kernels.git
     - cd rf_kernels
-    - ln -s site/Makefile.local.frb1 Makefile.local
+    ###
+    - git checkout travis
+    - ln -s site/Makefile.local.travis Makefile.local
     - make install
 
     - cd
