@@ -129,8 +129,7 @@ class RpcClient(object):
         *context*: if non-None: the ZeroMQ context in which to create
            my socket.
 
-        *identity*: if non-None: the name to give our ZeroMQ socket
-           (string).
+        *identity*: (ignored; here for backward-compatibility)
         '''
         if context is None:
             self.context = zmq.Context()
@@ -142,8 +141,6 @@ class RpcClient(object):
         self.rsockets = {}
         for k,v in servers.items():
             self.sockets[k] = self.context.socket(zmq.DEALER)
-            if identity is not None:
-                self.sockets[k].set(zmq.IDENTITY, identity)
             self.sockets[k].connect(v)
             self.rsockets[self.sockets[k]] = k
 
@@ -237,8 +234,14 @@ class RpcClient(object):
         for k in servers:
             self.token += 1
             req = msgpack.packb(['stream', self.token])
+            # Ensure correct argument types
+            acq_name = str(acq_name)
+            acq_dev = str(acq_dev)
+            acq_meta = str(acq_meta)
+            acq_beams = [int(b) for b in acq_beams]
+            new_stream = bool(new_stream)
             args = msgpack.packb([acq_name, acq_dev, acq_meta, acq_beams,
-                                  new_stream]);
+                                  new_stream])
             tokens.append(self.token)
             self.sockets[k].send(req + args)
         if not wait:
@@ -625,10 +628,11 @@ if __name__ == '__main__':
         default=[])
     parser.add_argument('--list', action='store_true', default=False,
                         help='Just send list_chunks command and exit.')
+    parser.add_argument('--identity', help='(ignored)')
     parser.add_argument('--stream', help='Stream to files')
     parser.add_argument('--stream-base', help='Stream base directory')
-    parser.add_argument('--stream-meta', help='Stream metadata')
-    parser.add_argument('--stream-beams', action='append', type=int, default=[], help='Stream a subset of beams')
+    parser.add_argument('--stream-meta', help='Stream metadata', default='')
+    parser.add_argument('--stream-beams', action='append', default=[], help='Stream a subset of beams.  Can be a comma-separated list of integers.  Can be repeated.')
     
     parser.add_argument('--rate', action='store_true', default=False,
                         help='Send packet rate matrix request')
@@ -636,8 +640,6 @@ if __name__ == '__main__':
                         help='Send packet rate history request')
     parser.add_argument('--l0', action='append', default=[],
                         help='Request rate history for the list of L0 nodes')
-    parser.add_argument('--identity', default=None,
-                        help='Set ZMQ identity to report to the server')
     parser.add_argument('ports', nargs='*',
                         help='Addresses or port numbers of RPC servers to contact')
     opt = parser.parse_args()
@@ -659,7 +661,7 @@ if __name__ == '__main__':
                        b='tcp://127.0.0.1:5556')
 
     print('Sending to servers:', servers)
-    client = RpcClient(servers, identity=opt.identity)
+    client = RpcClient(servers)
 
     if opt.log:
         logger = ChLogServer()
@@ -677,7 +679,13 @@ if __name__ == '__main__':
         doexit = True
 
     if opt.stream:
-        patterns = client.stream(opt.stream, opt.stream_base, opt.stream_meta, opt.stream_beams)
+        beams = []
+        for b in opt.stream_beams:
+            # Parse possible comma-separate list of strings
+            words = b.split(',')
+            for w in words:
+                beams.append(int(w))
+        patterns = client.stream(opt.stream, opt.stream_base, opt.stream_meta, beams)
         print('Streaming to:', patterns)
         doexit = True
 
