@@ -51,7 +51,7 @@ before_script:
     # Cached hdf5 source code install
     - cd
     - if [ -d "hdf5" ]; then (cd hdf5 && make all install > hdf5.log 2>&1) || rm -R hdf5; fi
-    - if [ ! -d "hdf5" ]; then (wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.8/src/hdf5-1.8.20/hdf5-1.8.20.tar.gz && tar xzf hdf5-1.8.20.tar.gz && mv hdf5-1.8.20 hdf5 && cd hdf5 && ./configure --prefix=$HOME/chime --enable-cxx && make all install); fi
+    - if [ ! -d "hdf5" ]; then (wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.8/hdf5-1.8.20/src/hdf5-1.8.20.tar.gz && tar xzf hdf5-1.8.20.tar.gz && mv hdf5-1.8.20 hdf5 && cd hdf5 && ./configure --prefix=$HOME/chime --enable-cxx && make all install); fi
 
     - export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:~/chime/lib
 
