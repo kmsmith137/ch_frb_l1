@@ -31,10 +31,10 @@ before_install:
 before_script:
     - if [[ "$TRAVIS_OS_NAME" != "osx" ]]; then cat /proc/cpuinfo; fi
 
-    - pip install --user cpp-coveralls
-    - pip install --user Cython
+    - pip2 install --user cpp-coveralls
+    - pip2 install --user Cython
 
-    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then pip install numpy; fi
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then pip2 install numpy; fi
 
     - BUILD_DIR=$(pwd)
 
@@ -57,8 +57,8 @@ before_script:
     - export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${ZMQ_LIB_DIR}
     - export PKG_CONFIG_DIR=${PKG_CONFIG_DIR}:${ZMQ_LIB_DIR}/pkgconfig
 
-    - pip install --user pyzmq
-    - pip install --user msgpack-python
+    - pip2 install --user pyzmq
+    - pip2 install --user msgpack-python
 
     - cd
     - wget https://raw.githubusercontent.com/zeromq/cppzmq/master/zmq.hpp
