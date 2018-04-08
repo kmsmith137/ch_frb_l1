@@ -5,8 +5,11 @@
 
 # According to https://github.com/uclouvain/openjpeg/blob/master/.travis.yml
 # "sudo: yes" and "dist: trusty" give us a worker with the AVX2 instruction set
-sudo: yes
-dist: trusty
+# (2018-04-08 this does not seem to be the case)
+#sudo: yes
+#dist: trusty
+
+os: osx
 
 # Formerly:
 # use containerized infrastructure (for faster startup; no sudo)
