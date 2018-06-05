@@ -55,7 +55,7 @@ def main():
             node_info = update_beam_ids(node_info, beam_offset)
             beam_offset +=8
             node_info = update_enos(node_info, rack)
-            with open ("l1_production_8beam_rack_%s_node_%s.yaml"%(rack, node), "w") as outfile:
+            with open ("l1_production_8beam_rack%s_node%s.yaml"%(rack.lower(), node), "w") as outfile:
                 yaml.dump(node_info, outfile)
 
 if __name__ == "__main__":
