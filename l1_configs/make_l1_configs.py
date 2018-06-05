@@ -27,7 +27,7 @@ def main():
         'prometheus_address': [ "eno1:8888",
                               "eno2:8888" ],
         'logger_address': "tcp://10.6.200.19:5555",
-        'output_devices': [ "/local", "/frb-archiver-1", "/frb-archiver-2", "/frb-archiver-3", "/frb-archiver-4" ],
+        'output_devices': [ "/local", "/frb-archiver-1", "/frb-archiver-2"],
         'slow_kernels': False,
         'assembled_ringbuf_nsamples': 10000,
         'telescoping_ringbuf_nsamples': [ 60000, 120000, 240000 ],
