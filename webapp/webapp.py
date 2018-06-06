@@ -192,7 +192,7 @@ def l1_service():
                          timeout=3000)
     rr = []
     rack = []
-    previous_rack = "0"
+    previous_rack = "1"
     for node,r in zip(app.cnc_nodes, results):
         current_rack = str(int(node.split('.')[2])-200)
         current_rack = { '10': 'A', '11': 'B', '12': 'C', '13': 'D' }.get(current_rack, current_rack)

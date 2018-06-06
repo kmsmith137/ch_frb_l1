@@ -4,7 +4,6 @@
 <title>CHIME FRB L1 service</title>
 <script type="text/javascript" src="{{ url_for('static', filename='jquery.js') }}"></script>
 <script type="text/javascript" src="{{ url_for('static', filename='d3.min.js') }}"></script>
-</head>
 
 <style>
 table {
@@ -25,6 +24,8 @@ th {
 .bigbutton { font-size:110%; padding:2px; padding-left:10px; padding-right:10px;}
 </style>
 
+</head>
+
 <body>
 
   <h2>CHIME/FRB L1 Service</h2>
@@ -37,13 +38,29 @@ th {
 	<input type="submit" value="Stop ch-frb-l1 service on all nodes" class="bigbutton">
 	</form>
 
+	<form class="chfrb-show-summary" style="display: inline;">
+	<input type="submit" value="Show Summary" class="bigbutton">
+	</form>
+
+	<form class="chfrb-hide-summary" style="display: inline;">
+	<input type="submit" value="Hide Summary" class="bigbutton">
+	</form>
+
+	<form class="chfrb-show-stats" style="display: inline;">
+	<input type="submit" value="Show Stats" class="bigbutton">
+	</form>
+
+	<form class="chfrb-hide-stats" style="display: inline;">
+	<input type="submit" value="Hide Stats" class="bigbutton">
+	</form>
+
 	<hr>
 
   <table border="1" align="center">
     {% for rack in status %}
       <tr>
 	{% for key,value in rack.items() %}
-          <td valign="middle" bgcolor="#17c484">
+          <td valign="middle" bgcolor="#35e0dd">
           <h3>
           rack {{key}} <br>
             <form action="{{ service_url }}/start/rack{{key}}" style="display: inline;">
@@ -57,8 +74,16 @@ th {
           <br>
           </td>
         {% for node,summary,stat in value %}
-          <td valign="middle" bgcolor="#90c417">
-            <a name="node{{loop.index}}">
+          {% if "running" in summary %}
+              <td class="on chfrb-status" valign="middle" bgcolor="#90c417">
+          {% elif "inactive" in summary %}
+              <td class="idle chfrb-status" valign="middle" bgcolor="#dde238">
+          {% elif "Active" in summary %}
+              <td class="idle chfrb-status" valign="middle" bgcolor="#b74242">
+          {% else %}
+              <td class="off chfrb-status" valign="middle" bgcolor="lightgray">
+          {% endif %}
+            <a name="node{{loop.index}}"></a>
               <h3>
                 {{ node }}<br>
                 <form action="{{ service_url }}/start/{{node}}" style="display: inline;">
@@ -69,9 +94,14 @@ th {
                 <input type="submit" value="Stop L1" class="bigbutton">
                 </form>
                 <br>
-                {{summary}}
               </h3>
-              <br>
+                <div class="chfrb-summary" style="display:none; z-level:1">
+                  {{summary}}
+                </div>
+                <br>
+                <div class="chfrb-stats" style="display:none; z-level:1">
+                  {{stat}}
+                </div>
               <!--<pre>{{stat}}</pre>-->
           </td>
         {% endfor %}
@@ -95,6 +125,25 @@ th {
 	  {% endfor %}
 	  </table>-->
 	<hr>
+
+<script>
+$( ".chfrb-show-summary" ).submit(function( event ) {
+  $(".chfrb-summary").css('display', 'block');
+  event.preventDefault();
+});
+$( ".chfrb-hide-summary" ).submit(function( event ) {
+  $(".chfrb-summary").css('display', 'none');
+  event.preventDefault();
+})
+$( ".chfrb-show-stats" ).submit(function( event ) {
+  $(".chfrb-stats").css('display', 'block');
+  event.preventDefault();
+});
+$( ".chfrb-hide-stats" ).submit(function( event ) {
+  $(".chfrb-stats").css('display', 'none');
+  event.preventDefault();
+})
+</script>
 </body>
 
 </html>
