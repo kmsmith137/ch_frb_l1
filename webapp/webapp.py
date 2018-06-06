@@ -45,7 +45,7 @@ def get_cnc_client():
         client = CncClient(ctx=app.zmq)
         return client
     from cnc_ssh import CncSsh
-    client = CncSsh(ssh_options='-o "User=l1operator" -i ~/.ssh/id_frbadmin_to_l1operator')
+    client = CncSsh(ssh_options='-o "User=l1operator" -i ~/.ssh/id_rsa')
     return client
 
 def get_db_session():
