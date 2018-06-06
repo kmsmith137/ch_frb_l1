@@ -3,10 +3,18 @@
 # "trusty" is Ubuntu 14.04.5 LTS
 # gcc 4.8.4
 
-dist: trusty
+# According to https://github.com/uclouvain/openjpeg/blob/master/.travis.yml
+# "sudo: yes" and "dist: trusty" give us a worker with the AVX2 instruction set
+# (2018-04-08 this does not seem to be the case)
+#sudo: yes
+#dist: trusty
 
+os: osx
+
+# Formerly:
 # use containerized infrastructure (for faster startup; no sudo)
-sudo: false
+#sudo: false
+#dist: trusty
 
 language: cpp
 
@@ -14,11 +22,26 @@ compiler:
   - gcc
   - clang
 
-before_script:
-    - cat /proc/cpuinfo
+before_install:
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update          ; fi
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install lz4 yaml-cpp jsoncpp; fi
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install fftw --without-fortran; fi
+    # boost: already installed
+    # fftw: problematic
 
-    - pip install --user cpp-coveralls
-    - pip install --user Cython
+before_script:
+    - if [[ "$TRAVIS_OS_NAME" != "osx" ]]; then cat /proc/cpuinfo; fi
+
+    - pip2 install --user cpp-coveralls
+    - pip2 install --user Cython
+
+    # for cython
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then export PATH=${PATH}:~/Library/Python/2.7/bin; fi
+    - which cython
+
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then pip2 install numpy; fi
+
+    - find /usr/local/lib/python2.7/
 
     - BUILD_DIR=$(pwd)
 
@@ -41,8 +64,8 @@ before_script:
     - export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${ZMQ_LIB_DIR}
     - export PKG_CONFIG_DIR=${PKG_CONFIG_DIR}:${ZMQ_LIB_DIR}/pkgconfig
 
-    - pip install --user pyzmq
-    - pip install --user msgpack-python
+    - pip2 install --user pyzmq
+    - pip2 install --user msgpack-python
 
     - cd
     - wget https://raw.githubusercontent.com/zeromq/cppzmq/master/zmq.hpp
@@ -51,8 +74,7 @@ before_script:
     # Cached hdf5 source code install
     - cd
     - if [ -d "hdf5" ]; then (cd hdf5 && make all install > hdf5.log 2>&1) || rm -R hdf5; fi
-    - if [ ! -d "hdf5" ]; then (wget https://support.hdfgroup.org/ftp/HDF5/current18/src/hdf5-1.8.19.tar.gz && tar xzf hdf5-1.8.19.tar.gz && mv hdf5-1.8.19 hdf5 && cd hdf5 && ./configure --prefix=$HOME/chime --enable-cxx && make all install); fi
-    #> hdf5.log 2>&1); fi
+    - if [ ! -d "hdf5" ]; then (wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.8/hdf5-1.8.20/src/hdf5-1.8.20.tar.gz && tar xzf hdf5-1.8.20.tar.gz && mv hdf5-1.8.20 hdf5 && cd hdf5 && ./configure --prefix=$HOME/chime --enable-cxx && make all install > hdf5.log 2>&1); fi
 
     - export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:~/chime/lib
 
@@ -100,11 +122,21 @@ before_script:
     - mv include/* chime/include/
 
     - cd
+    #- git clone https://github.com/kmsmith137/rf_kernels.git
+    - git clone https://github.com/dstndstn/rf_kernels.git
+    - cd rf_kernels
+    ###
+    - git checkout travis
+    - ln -s site/Makefile.local.travis Makefile.local
+    - make install
+
+    - cd
     ###- git clone https://github.com/CHIMEFRB/bonsai.git
     ###- cd bonsai
     - mkdir bonsai
     #- wget -O bonsai.tgz http://broiler.astrometry.net/~dstn/temp/bonsai-master-2017-04-10.tgz
-    - wget -O bonsai.tgz http://broiler.astrometry.net/~dstn/temp/bonsai-l1-prerelease.tgz
+    #- wget -O bonsai.tgz http://broiler.astrometry.net/~dstn/temp/bonsai-l1-prerelease.tgz
+    - wget -O bonsai.tgz http://broiler.astrometry.net/~dstn/temp/bonsai-15_devel.tgz
     - tar xzf bonsai.tgz
     - ln -s site/Makefile.local.travis Makefile.local
     - make

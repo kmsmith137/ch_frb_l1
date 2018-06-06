@@ -45,7 +45,7 @@ def get_cnc_client():
         client = CncClient(ctx=app.zmq)
         return client
     from cnc_ssh import CncSsh
-    client = CncSsh(ssh_options='-o "User=l1operator" -i ~/.ssh/id_dstn_to_l1operator')
+    client = CncSsh(ssh_options='-o "User=l1operator" -i ~/.ssh/id_frbadmin_to_l1operator')
     return client
 
 def get_db_session():
@@ -191,10 +191,18 @@ def l1_service():
     results = client.run('sudo -n /bin/systemctl status ch-frb-l1', app.cnc_nodes,
                          timeout=3000)
     rr = []
+    rack = []
+    previous_rack = "0"
     for node,r in zip(app.cnc_nodes, results):
+        current_rack = str(int(node.split('.')[2])-200)
+        current_rack = { '10': 'A', '11': 'B', '12': 'C', '13': 'D' }.get(current_rack, current_rack)
+        if not (current_rack == previous_rack):
+            rr.append({previous_rack: rack})
+            rack = []
+            previous_rack = current_rack
         if r is None:
             err = '(failed to retrieve status)'
-            rr.append((node, err, err))
+            rack.append((node, err, err))
         else:
             (rtn, out, err) = r
             print(rtn, out, err)
@@ -208,8 +216,8 @@ def l1_service():
                 if 'Active:' in l:
                     summary = l
                     break
-            
-            rr.append((node, summary, out + err))
+            rack.append((node, summary, out + err))
+    rr.append({previous_rack: rack})
     results = rr
     return render_template('l1-service.html',
                            status=results,
@@ -219,6 +227,8 @@ def l1_service():
 def l1_service_action(action=None, node=None):
     if node == 'all':
         nodes = app.cnc_nodes
+    elif 'rack' in node:
+        nodes = get_rack_of_nodes(node)
     else:
         nodes = [node]
 
@@ -229,6 +239,12 @@ def l1_service_action(action=None, node=None):
     rtn = client.run(cmd, nodes)
     print('Return value:', rtn)
     return redirect('/l1-service')
+
+def get_rack_of_nodes(rack):
+    rack = rack[4:]
+    rack = { 'A': '10', 'B': '11', 'C': '12', 'D': '13' }.get(rack, rack)
+    rack = int(rack)+200
+    return [node for node in app.cnc_nodes if "."+str(rack)+"." in node]
 
 @app.route('/l1-logs-stdout')
 def l1_logs_stdout():

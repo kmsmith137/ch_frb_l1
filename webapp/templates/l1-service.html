@@ -39,35 +39,62 @@ th {
 
 	<hr>
 
+  <table border="1" align="center">
+    {% for rack in status %}
+      <tr>
+	{% for key,value in rack.items() %}
+          <td valign="middle" bgcolor="#17c484">
+          <h3>
+          rack {{key}} <br>
+            <form action="{{ service_url }}/start/rack{{key}}" style="display: inline;">
+            <input type="submit" value="Start L1 on rack {{key}}" class="bigbutton">
+            </form>
+            <br>
+            <form action="{{ service_url }}/stop/rack{{key}}" style="display: inline;">
+            <input type="submit" value="Stop L1 on rack {{key}}" class="bigbutton">
+            </form>
+          </h3>
+          <br>
+          </td>
+        {% for node,summary,stat in value %}
+          <td valign="middle" bgcolor="#90c417">
+            <a name="node{{loop.index}}">
+              <h3>
+                {{ node }}<br>
+                <form action="{{ service_url }}/start/{{node}}" style="display: inline;">
+                <input type="submit" value="Start L1" class="bigbutton">
+                </form>
+                <br>
+                <form action="{{ service_url }}/stop/{{node}}" style="display: inline;">
+                <input type="submit" value="Stop L1" class="bigbutton">
+                </form>
+                <br>
+                {{summary}}
+              </h3>
+              <br>
+              <!--<pre>{{stat}}</pre>-->
+          </td>
+        {% endfor %}
+        {% endfor %}
+      </tr>
+    {% endfor %}
+<!--  </table>
 	<h3>Status summary</h3>
-	<table border="1">
-	  <tr><th>Node</th><th>Status</th></tr>
-	  {% for node,summary,stat in status %}
-	  <tr>
-	    <td><a href="#node{{loop.index}}">{{node}}</a></td>
-	    <td>{{summary}}</td>
-	  </tr>
+	<table border="1">-->
+	  <!--<tr><th>Node</th><th>Status</th></tr>-->
+<!--	  {% for rack in status %}
+	    <tr>
+	      {% for key,value in rack.items() %}
+                <td valign="middle" bgcolor="#17c484">rack {{key}}</td>
+                {% for node,summary,stat in value %}
+	          <td valign="middle" bgcolor="#90c417"><a href="#node{{loop.index}}">{{node}}</a><br>{{summary}}</td>-->
+	          <!--<td>{{summary}}</t>-->
+<!--	        {% endfor %}
+	      {% endfor %}
+	    </tr>
 	  {% endfor %}
-	  </table>
-
+	  </table>-->
 	<hr>
-
-  {% for node,summary,stat in status %}
-	<a name="node{{loop.index}}">
-      <h3>
-	Node {{ node }}
-	<form action="{{ service_url }}/start/{{node}}" style="display: inline;">
-	<input type="submit" value="Start ch-frb-l1 service" class="bigbutton">
-	</form>
-	<form action="{{ service_url }}/stop/{{node}}" style="display: inline;">
-	<input type="submit" value="Stop ch-frb-l1 service" class="bigbutton">
-	</form>
-      </h3>
-  <table border="1">
-    <tr><td><pre>{{stat}}</pre></td></tr>
-  </table>
-  {% endfor %}
-  
 </body>
 
 </html>

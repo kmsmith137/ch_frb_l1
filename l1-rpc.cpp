@@ -241,8 +241,6 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
 
     _time0 = get_time();
 
-    // Set my identity
-    _frontend.setsockopt(ZMQ_IDENTITY, _port);
     // Require messages sent on the frontend socket to have valid addresses.
     _frontend.setsockopt(ZMQ_ROUTER_MANDATORY, 1);
 }
@@ -323,7 +321,7 @@ void L1RpcServer::run() {
 	    chlog("Failed to receive message on frontend socket!");
 	    break;
 	}
-	chlog("Received RPC request from client: " << msg_string(client));
+	chlog("Received RPC request");
 	more = _frontend.getsockopt<int>(ZMQ_RCVMORE);
 	if (!more) {
 	    chlog("Expected two message parts on frontend socket!");
