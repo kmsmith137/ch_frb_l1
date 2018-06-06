@@ -11,6 +11,10 @@ def update_enos(info, rack):
         info['ipaddr'] = ["eno3", "eno4"]
         info['rpc_address'] = ["tcp://eno3:5555", "tcp://eno4:5555"]
         info['prometheus_address'] = ["eno3:8888", "eno4:8888"]
+    else:
+        info['ipaddr'] = ["eno1", "eno2"]
+        info['rpc_address'] = ["tcp://eno1:5555", "tcp://eno2:5555"]
+        info['prometheus_address'] = ["eno1:8888", "eno2:8888"]
     return info
 
 def main():
