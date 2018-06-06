@@ -45,7 +45,7 @@ def get_cnc_client():
         client = CncClient(ctx=app.zmq)
         return client
     from cnc_ssh import CncSsh
-    client = CncSsh(ssh_options='-o "User=l1operator" -i ~/.ssh/id_dstn_to_l1operator')
+    client = CncSsh(ssh_options='-o "User=l1operator" -i ~/.ssh/id_frbadmin_to_l1operator')
     return client
 
 def get_db_session():
@@ -195,10 +195,7 @@ def l1_service():
     previous_rack = "0"
     for node,r in zip(app.cnc_nodes, results):
         current_rack = str(int(node.split('.')[2])-200)
-        current_rack = "A" if current_rack == "10" else current_rack
-        current_rack = "B" if current_rack == "11" else current_rack
-        current_rack = "C" if current_rack == "12" else current_rack
-        current_rack = "D" if current_rack == "13" else current_rack
+        current_rack = { '10': 'A', '11': 'B', '12': 'C', '13': 'D' }.get(current_rack, current_rack)
         if not (current_rack == previous_rack):
             rr.append({previous_rack: rack})
             rack = []
@@ -245,10 +242,7 @@ def l1_service_action(action=None, node=None):
 
 def get_rack_of_nodes(rack):
     rack = rack[4:]
-    rack = 10 if rack == "A" else rack
-    rack = 11 if rack == "B" else rack
-    rack = 12 if rack == "C" else rack
-    rack = 13 if rack == "D" else rack
+    rack = { 'A': '10', 'B': '11', 'C': '12', 'D': '13' }.get(rack, rack)
     rack = int(rack)+200
     return [node for node in app.cnc_nodes if "."+str(rack)+"." in node]
 
