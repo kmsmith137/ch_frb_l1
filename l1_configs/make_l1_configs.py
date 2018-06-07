@@ -34,8 +34,8 @@ def main():
         'output_devices': [ "/local", "/frb-archiver-1", "/frb-archiver-2"],
         'slow_kernels': False,
         'assembled_ringbuf_nsamples': 10000,
-        'telescoping_ringbuf_nsamples': [ 60000, 120000, 240000 ],
-        'write_staging_area_gb': 64.0,
+        'telescoping_ringbuf_nsamples': [ 30000, 60000, 120000 ], # Currently half of what it should be.
+        'write_staging_area_gb': 29.0,   # reduce to 20 if using bonsai config with _ups_.
         'l1b_executable_filename': "../ch_frb_L1b/ch-frb-l1b.py",
         'l1b_buffer_nsamples': 4000,
         'l1b_pipe_timeout': 0,
@@ -58,7 +58,7 @@ def main():
             node = i%10
             node_info = update_beam_ids(node_info, beam_offset)
             beam_offset +=8
-            node_info = update_enos(node_info, rack)
+            #node_info = update_enos(node_info, rack) ### Currently even 10.8 and 10.9 subnets are on eno1/eno2.
             with open ("l1_production_8beam_rack%s_node%s.yaml"%(rack.lower(), node), "w") as outfile:
                 yaml.dump(node_info, outfile)
 
