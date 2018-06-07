@@ -34,8 +34,8 @@ def main():
         'output_devices': [ "/local", "/frb-archiver-1", "/frb-archiver-2"],
         'slow_kernels': False,
         'assembled_ringbuf_nsamples': 10000,
-        'telescoping_ringbuf_nsamples': [ 60000, 120000, 240000 ],
-        'write_staging_area_gb': 64.0,
+        'telescoping_ringbuf_nsamples': [ 30000, 60000, 120000 ], # Currently half of what it should be.
+        'write_staging_area_gb': 29.0,   # reduce to 20 if using bonsai config with _ups_.
         'l1b_executable_filename': "../ch_frb_L1b/ch-frb-l1b.py",
         'l1b_buffer_nsamples': 4000,
         'l1b_pipe_timeout': 0,
