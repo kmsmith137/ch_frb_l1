@@ -58,7 +58,7 @@ def main():
             node = i%10
             node_info = update_beam_ids(node_info, beam_offset)
             beam_offset +=8
-            node_info = update_enos(node_info, rack)
+            #node_info = update_enos(node_info, rack) ### Currently even 10.8 and 10.9 subnets are on eno1/eno2.
             with open ("l1_production_8beam_rack%s_node%s.yaml"%(rack.lower(), node), "w") as outfile:
                 yaml.dump(node_info, outfile)
 
