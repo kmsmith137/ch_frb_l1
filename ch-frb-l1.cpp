@@ -146,6 +146,11 @@ struct l1_config
     // List of output devices (e.g. '/ssd', '/nfs')
     vector<string> output_device_names;
 
+    // If 'intensity_prescale' is specified, then all intensity values will be multiplied by its value.
+    // This is a workaround for 16-bit overflow issues in bonsai.  When data is saved to disk, the
+    // prescaling will not be applied.
+    float intensity_prescale = 1.0;
+
     // L1b linkage.  Note: assumed L1b command line is:
     //   <l1b_executable_filename> <l1b_config_filename> <beam_id>
 
@@ -362,6 +367,7 @@ l1_config::l1_config(int argc, char **argv)
     this->telescoping_ringbuf_nsamples = p.read_vector<int> ("telescoping_ringbuf_nsamples", {});
     this->write_staging_area_gb = p.read_scalar<double> ("write_staging_area_gb", 0.0);
     this->output_device_names = p.read_vector<string> ("output_devices");
+    this->intensity_prescale = p.read_scalar<float> ("intensity_prescale", 1.0);
     this->l1b_executable_filename = tflag ? p.read_scalar<string> ("l1b_executable_filename","") : p.read_scalar<string> ("l1b_executable_filename");
     this->l1b_search_path = p.read_scalar<bool> ("l1b_search_path", false);
     this->l1b_buffer_nsamples = p.read_scalar<int> ("l1b_buffer_nsamples", 0);
@@ -731,7 +737,7 @@ void dedispersion_thread_context::_thread_main() const
     
     // Note: the distinction between 'ibeam' and 'beam_id' is a possible source of bugs!
     int beam_id = config.beam_ids[ibeam];
-    auto stream = rf_pipelines::make_chime_network_stream(sp, beam_id);
+    auto stream = rf_pipelines::make_chime_network_stream(sp, beam_id, config.intensity_prescale);
     auto rfi_chain = rf_pipelines::pipeline_object::from_json(config.rfi_transform_chain_json);
 
     bonsai::dedisperser::initializer ini_params;
