@@ -765,6 +765,12 @@ There are some examples of the L1 server config file in the `ch_frb_l1/l1_config
     by defining config file syntax which allows the beam IDs to be derived from the L1 node's
     IP address.
 
+  - `intensity_prescale` (floating-point, optional)
+
+    If 'intensity_prescale' is specified, then all intensity values will be multiplied by its value.
+    This is a workaround for 16-bit overflow issues in bonsai.  When data is saved to disk, the
+    prescaling will not be applied.
+
 <a name="slow-kernels"></a>
   - `slow_kernels` (boolean, default=false).
 
