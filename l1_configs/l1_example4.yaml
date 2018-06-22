@@ -28,8 +28,8 @@ fpga_counts_per_sample: 384
 ipaddr: [ "10.2.1.101", "10.2.2.101" ]
 port: 6677
 
-rpc_address: [ "tcp://10.2.1.101:5555", 
-	       "tcp://10.2.2.101:5555" ]
+rpc_address: [ "tcp://10.2.2.101:5555", 
+	       "tcp://10.2.2.101:5556" ]
 
 # The L1 node is configured so that it "thinks" the NFS server is four different
 # servers, mounted on directories /frb-archiver1, /frb-archiver2, /frb-archiver3,
@@ -73,7 +73,8 @@ write_staging_area_gb: 96.0
 # L1a and L1b (in this case we use 4000, corresponding to 4 seconds).  See
 # MANUAL.md for discussion!
 
-l1b_executable_filename: "./toy-l1b.py"
+#l1b_executable_filename: "./toy-l1b.py"
+l1b_executable_filename: "../ch_frb_L1b/ch-frb-l1b.py"
 l1b_buffer_nsamples: 4000
 l1b_pipe_timeout: 0
 
@@ -85,4 +86,4 @@ l1b_pipe_timeout: 0
 # not the same as any existing acquisition on the node.  The data will be written to
 # /local/acq_data/$(stream_acqname).
 
-# stream_acqname: "test_acq"
+#stream_acqname: "streams_test_callbacks_2"

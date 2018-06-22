@@ -1,6 +1,7 @@
 #! /bin/bash
 
 # Assume LD_LIBRARY_PATH is set up in ~/.bashrc
+source activate chime-frb-L1b
 #export LD_LIBRARY_PATH=/home/l1operator/lib:${LD_LIBRARY_PATH}
 export LD_LIBRARY_PATH=/home/l1operator/lib:/usr/local/lib:$LD_LIBRARY_PATH
 export PYTHONPATH=/home/l1operator/lib/python2.7/site-packages:$PYTHONPATH
