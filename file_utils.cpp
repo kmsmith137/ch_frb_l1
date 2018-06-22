@@ -82,7 +82,7 @@ static void check_acqdir(const string &acqdir_base, const string &acqname, const
 }
 
 
-string acqname_to_filename_pattern(const string &devname, const string &acqname, const vector<int> &beam_ids, bool new_acq)
+string acqname_to_filename_pattern(const string &devname, const string &acqname, const vector<int> &stream_ids, const vector<int> &beam_ids, bool new_acq)
 {
     if ((acqname.size() == 0) || (beam_ids.size() == 0))
 	return string();  // no acquisition requested
@@ -93,10 +93,8 @@ string acqname_to_filename_pattern(const string &devname, const string &acqname,
 	return "/local/acq_data/" + acqname + "/beam_(BEAM)/chunk_(CHUNK).msg";
     }
     else if (!strcasecmp(devname.c_str(), "nfs")) {
-	check_acqdir_base("/frb-archiver-1/acq_data");	
-	check_acqdir_base("/frb-archiver-2/acq_data");	
-	check_acqdir_base("/frb-archiver-3/acq_data");	
-	check_acqdir_base("/frb-archiver-4/acq_data");
+	for (int stream_id: stream_ids)
+	    check_acqdir_base("/frb-archiver-" + to_string(stream_id) + "/acq_data");
 	check_acqdir("/frb-archiver-1/acq_data", acqname, beam_ids, new_acq);
 	return "/frb-archiver-(STREAM)/acq_data/" + string(acqname) + "/beam_(BEAM)/chunk_(CHUNK).msg";
     }

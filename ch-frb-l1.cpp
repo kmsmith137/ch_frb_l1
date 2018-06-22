@@ -683,7 +683,7 @@ l1_config::l1_config(int argc, char **argv)
 	_have_warnings();
 
     // I put this last, since it creates directories.
-    this->stream_filename_pattern = ch_frb_l1::acqname_to_filename_pattern(stream_devname, stream_acqname, stream_beam_ids);
+    this->stream_filename_pattern = ch_frb_l1::acqname_to_filename_pattern(stream_devname, stream_acqname, vrange(1,nstreams+1), stream_beam_ids);
 }
 
 
