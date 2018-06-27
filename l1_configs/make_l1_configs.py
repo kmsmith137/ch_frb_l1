@@ -23,6 +23,7 @@ def main():
         'nfreq': 16384,
         'nt_per_packet': 16,
         'beam_ids': [0, 1, 2, 3, 4, 5, 6, 7],
+        'intensity_prescale': 0.01,
         'ipaddr': [ "eno1",
                   "eno2" ],
         'port': 1313,
@@ -30,12 +31,13 @@ def main():
         	       "tcp://eno2:5555" ],
         'prometheus_address': [ "eno1:8888",
                               "eno2:8888" ],
-        'logger_address': "tcp://10.6.200.19:5555",
+        'logger_address': "tcp://10.6.213.19:5555",
         'output_devices': [ "/local", "/frb-archiver-1", "/frb-archiver-2"],
         'slow_kernels': False,
         'assembled_ringbuf_nsamples': 10000,
-        'telescoping_ringbuf_nsamples': [ 30000, 60000, 120000 ], # Currently half of what it should be.
-        'write_staging_area_gb': 29.0,   # reduce to 20 if using bonsai config with _ups_.
+        'telescoping_ringbuf_nsamples': [ 60000, 120000, 240000 ], # Currently half of what it should be.
+        'write_staging_area_gb': 20.0,   # reduce to 20 if using bonsai config with _ups_.
+        #'l1b_executable_filename': "./toy-l1b.py",
         'l1b_executable_filename': "../ch_frb_L1b/ch-frb-l1b.py",
         'l1b_buffer_nsamples': 4000,
         'l1b_pipe_timeout': 0,
@@ -58,6 +60,8 @@ def main():
             node = i%10
             node_info = update_beam_ids(node_info, beam_offset)
             beam_offset +=8
+            if beam_offset in [256, 1256, 2256]: #jump by 1000 
+                beam_offset+= 1000-256
             #node_info = update_enos(node_info, rack) ### Currently even 10.8 and 10.9 subnets are on eno1/eno2.
             with open ("l1_production_8beam_rack%s_node%s.yaml"%(rack.lower(), node), "w") as outfile:
                 yaml.dump(node_info, outfile)
