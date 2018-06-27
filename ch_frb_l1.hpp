@@ -37,12 +37,15 @@ extern void makedir(const std::string &filename, bool throw_exception_if_directo
 // a directory in the node's root filesystem (as opposed to local SSD or "large" NFS server), it would blow up the
 // poor head node with more NFS traffic than it can handle!
 //
+// The only purpose of the 'stream_ids' argument is to check that /frb-archiver-X is mounted, for all X in stream_ids.
+//
 // If "new_acq" is false, assume that we're not starting a new
 // acquisition, so it's okay if the directories are not empty.  This
 // is required, eg, if we're turning on or off different beams within
 // an acq.
 extern std::string acqname_to_filename_pattern(const std::string &devname,
 					       const std::string &acqname,
+					       const std::vector<int> &stream_ids,
                                                const std::vector<int> &beam_ids,
                                                bool new_acq=true);
 

@@ -479,7 +479,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             result.second = pattern;
         } else {
             try {
-                pattern = ch_frb_l1::acqname_to_filename_pattern(acq_dev, acq_name, _stream->ini_params.beam_ids, acq_new);
+                pattern = ch_frb_l1::acqname_to_filename_pattern(acq_dev, acq_name, { _stream->ini_params.stream_id }, _stream->ini_params.beam_ids, acq_new);
                 chlog("Streaming to filename pattern: " << pattern);
                 if (acq_new && acq_meta.size()) {
                     // write metadata file in acquisition dir.

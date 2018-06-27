@@ -1,0 +1,36 @@
+# This bonsai config is convenient for offline analysis of pulsars.
+#
+# It is the same as bonsai_production_ups_nbeta2_v2.txt, except that it has been modified
+# to stop at max DM 205, rather than 13000!  (This is done by getting rid of all trees besides
+# the first, and truncating the first tree at tree_size=8192 instead of 32768.)
+#
+# For more info, see comments in bonsai_production_ups_nbeta2_v2.txt.
+
+
+# These parameters are used in bonsai's mask-filling and variance estimation logic.
+variance_timescale = 200.0
+reweighting_timescale = 400.0
+
+nfreq = 16384
+freq_lo_MHz = 400.0
+freq_hi_MHz = 800.0
+dt_sample = 0.00098304    # exact CHIME value assuming 384 FPGA counts/sample
+
+ntrees = 1
+tree_size = 8192
+nds = 1
+nups = 2
+
+nt_tree = 1024
+nt_chunk = 1024
+dm_coarse_graining_factor = 16
+time_coarse_graining_factor = 16
+
+nsm = 1
+sm_depth = 0
+sm_max = 0
+
+nbeta = 2
+beta_depth = 2
+beta_min = -3
+beta_max = 3
