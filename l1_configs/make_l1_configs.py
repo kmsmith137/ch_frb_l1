@@ -6,6 +6,13 @@ def update_beam_ids(info, beam_offset):
     info['beam_ids'] = range(beam_offset, beam_offset+8)
     return info
 
+def update_output_devices(info, rack):
+    if rack in ['0','2','4','6','8','A','C']:
+        info['output_devices'] = ["/local", "/frb-archiver-1", "/frb-archiver-2"]
+    else:
+        info['output_devices'] = ["/local", "/frb-archiver-3", "/frb-archiver-4"]
+    return info
+
 def update_enos(info, rack):
     if rack in ['0','2','4','6','8','A','C']:
         info['ipaddr'] = ["eno3", "eno4"]
@@ -59,6 +66,7 @@ def main():
             node_info = update_beam_ids(node_info, beam_offset)
             beam_offset +=8
             #node_info = update_enos(node_info, rack) ### Currently even 10.8 and 10.9 subnets are on eno1/eno2.
+            node_info = update_output_devices(node_info, rack) ### Currently even 10.8 and 10.9 subnets are on eno1/eno2.
             with open ("l1_production_8beam_rack%s_node%s.yaml"%(rack.lower(), node), "w") as outfile:
                 yaml.dump(node_info, outfile)
 
