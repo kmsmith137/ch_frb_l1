@@ -722,6 +722,21 @@ struct dedispersion_thread_context {
     void _toy_thread_main() const;  // if -t command-line argument is specified
 };
 
+static void print_pipeline(shared_ptr<rf_pipelines::pipeline_object> pipe, string prefix) {
+  cout << prefix << pipe->name << " class " << pipe->class_name << endl;
+  if (pipe->class_name == "pipeline") {
+    shared_ptr<rf_pipelines::pipeline> pipeline = dynamic_pointer_cast<rf_pipelines::pipeline>(pipe);
+    for (int i=0; i<pipeline->size(); i++) {
+      shared_ptr<rf_pipelines::pipeline_object> stage = pipeline->elements[i];
+      print_pipeline(stage, "  "+prefix);
+    }
+  } else if (pipe->class_name == "wi_sub_pipeline") {
+    shared_ptr<rf_pipelines::wi_sub_pipeline> pipeline = dynamic_pointer_cast<rf_pipelines::wi_sub_pipeline>(pipe);
+    cout << prefix << "at subsampling " << pipeline->ini_params.Df << " in freq and " << pipeline->ini_params.Dt << " in time" << endl;
+    print_pipeline(pipeline->sub_pipeline, "  " + prefix);
+  }
+}
+
 
 // Note: only called if config.tflag == false.
 void dedispersion_thread_context::_thread_main() const
@@ -774,7 +789,10 @@ void dedispersion_thread_context::_thread_main() const
 	dedisperser->add_processor(l1b_subprocess);
 
     auto bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
-	
+
+    cout << "rfi_chain state: " << rfi_chain->state << endl;
+    print_pipeline(rfi_chain, "");
+
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);
     pipeline->add(rfi_chain);
