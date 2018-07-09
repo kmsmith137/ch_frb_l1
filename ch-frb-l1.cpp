@@ -724,7 +724,7 @@ struct dedispersion_thread_context {
 };
 
 static void pipeline_get_all(shared_ptr<rf_pipelines::pipeline_object> pipe,
-                             vector<shared_ptr<rf_pipelines::pipeline_object> > stages) {
+                             vector<shared_ptr<rf_pipelines::pipeline_object> > &stages) {
     stages.push_back(pipe);
     if (pipe->class_name == "pipeline") {
         shared_ptr<rf_pipelines::pipeline> pipeline = dynamic_pointer_cast<rf_pipelines::pipeline>(pipe);
@@ -810,11 +810,14 @@ void dedispersion_thread_context::_thread_main() const
     print_pipeline(rfi_chain, "");
 
     if (ms) {
+        cout << "mask_stats object specified.  Finding mask_counter stage..." << endl;
         // Find mask_counter stage(s).
         vector<shared_ptr<rf_pipelines::pipeline_object> > stages;
         pipeline_get_all(rfi_chain, stages);
         for (auto &it : stages) {
+            cout << "pipeline stage: class " << it->class_name << endl;
             if (it->class_name == "mask_counter") {
+                cout << "  casting to mask_counter_transform and registering callback!" << endl;
                 shared_ptr<rf_pipelines::mask_counter_transform> counter = dynamic_pointer_cast<rf_pipelines::mask_counter_transform>(it);
                 counter->add_callback(ms);
             }
@@ -1316,6 +1319,7 @@ void l1_server::spawn_dedispersion_threads()
 	dedispersion_thread_context context;
 	context.config = this->config;
 	context.sp = this->input_streams[istream];
+        context.ms = this->mask_stats_objects[istream];
 	context.l1b_subprocess = this->l1b_subprocesses[ibeam];
 	context.allowed_cores = this->dedispersion_cores[ibeam];
 	context.asynchronous_dedispersion = this->asynchronous_dedispersion;
