@@ -1,0 +1,18 @@
+{% extends 'layout.html' %}
+{% block body %}
+<h1 align='center'>Acquisitions</h1>
+<table class="table table-hover table-striped table-bordered " >
+    <tr>
+    {% for column in columns %}
+        <th style="color:#ff0000;">{{ column.upper() }}</th>
+    {% endfor %}
+    </tr>
+    {% for acq in acqs %}
+        <tr>
+            {% for column in columns %}
+                <td>{{ acq.as_dict()[column] }}</td>
+            {% endfor %}
+        </tr>
+    {% endfor %}
+</table>
+{% endblock %}

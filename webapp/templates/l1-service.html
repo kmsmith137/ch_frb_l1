@@ -4,30 +4,30 @@
 <title>CHIME FRB L1 service</title>
 <script type="text/javascript" src="{{ url_for('static', filename='jquery.js') }}"></script>
 <script type="text/javascript" src="{{ url_for('static', filename='d3.min.js') }}"></script>
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
 
 <style>
 table {
     border-collapse: collapse;
 }
 td {
-    padding: 5px;
+    padding: 3px;
     text-align: left;
 }
 th {
-    padding: 5px;
+    padding: 3px;
     text-align: center;
 }
 
-{#
+{
 .bigbutton { font-size:125%; padding:2px; padding-left:10px; padding-right:10px; font-weight: bold}
-#}
-.bigbutton { font-size:110%; padding:2px; padding-left:10px; padding-right:10px;}
+}
 </style>
 
 </head>
 
 <body>
-
+  {% include 'includes/_navbar.html'%}
   <h2>CHIME/FRB L1 Service</h2>
 
 	<form action="{{ service_url }}/start/all" style="display: inline;">
@@ -55,8 +55,7 @@ th {
 	</form>
 
 	<hr>
-
-  <table border="1" align="center">
+  <table border=1 align="center">
     {% for rack in status %}
       <tr>
 	{% for key,value in rack.items() %}
@@ -64,11 +63,11 @@ th {
           <h3>
           rack {{key}} <br>
             <form action="{{ service_url }}/start/rack{{key}}" style="display: inline;">
-            <input type="submit" value="Start L1 on rack {{key}}" class="bigbutton">
+            <input type="submit" value="Start rack {{key}}" class="bigbutton">
             </form>
             <br>
             <form action="{{ service_url }}/stop/rack{{key}}" style="display: inline;">
-            <input type="submit" value="Stop L1 on rack {{key}}" class="bigbutton">
+            <input type="submit" value="Stop rack {{key}}" class="bigbutton">
             </form>
           </h3>
           <br>
@@ -87,11 +86,11 @@ th {
               <h3>
                 {{ node }}<br>
                 <form action="{{ service_url }}/start/{{node}}" style="display: inline;">
-                <input type="submit" value="Start L1" class="bigbutton">
+                <input type="submit" value="Start" class="bigbutton">
                 </form>
                 <br>
                 <form action="{{ service_url }}/stop/{{node}}" style="display: inline;">
-                <input type="submit" value="Stop L1" class="bigbutton">
+                <input type="submit" value="Stop" class="bigbutton">
                 </form>
                 <br>
               </h3>
@@ -108,8 +107,8 @@ th {
         {% endfor %}
       </tr>
     {% endfor %}
-<!--  </table>
-	<h3>Status summary</h3>
+  </table>
+<!--	<h3>Status summary</h3>
 	<table border="1">-->
 	  <!--<tr><th>Node</th><th>Status</th></tr>-->
 <!--	  {% for rack in status %}

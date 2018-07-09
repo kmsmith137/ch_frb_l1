@@ -1,27 +1,5 @@
-<!doctype html>
-<html>
-<head>
-<title>CHIME FRB L1 logs</title>
-<script type="text/javascript" src="{{ url_for('static', filename='jquery.js') }}"></script>
-<script type="text/javascript" src="{{ url_for('static', filename='d3.min.js') }}"></script>
-</head>
-
-<style>
-table {
-    border-collapse: collapse;
-}
-td {
-    padding: 5px;
-    text-align: left;
-}
-th {
-    padding: 5px;
-    text-align: center;
-}
-</style>
-
-<body>
-
+{% extends 'layout.html' %}
+{% block body %}
   <h3>CHIME/FRB L1 Logs</h3>
 
   <p>Filters:
@@ -32,7 +10,7 @@ th {
     </ul>
   </p>
   
-  <table border="1"><tr><th>Node</th><th>Thread</th><th>Level</th><th>Where</th><th>Date</th><th>Message</th></tr>
+  <table class="table table-hover table-striped table-bordered" ><tr><th>Node</th><th>Thread</th><th>Level</th><th>Where</th><th>Date</th><th>Message</th></tr>
     {% for log in logs %}
     <tr>
       <td>{{ log.host }}</td>
@@ -44,7 +22,4 @@ th {
     </tr>
     {% endfor %}
   </table>
-  
-</body>
-
-</html>
+{% endblock %}
