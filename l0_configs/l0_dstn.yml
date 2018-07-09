@@ -1,0 +1,21 @@
+
+# nt_per_packet=16 is important here, since the 'fast' kernels are hardcoded to
+# use nt_per_packet=16.  See MANUAL.md for more dicussion!
+
+nbeams: 64
+nfreq: 1024
+nt_per_packet: 16
+
+# This example assumes the nodes are in a non-link-bonded configuration, where
+# each of the four 1 Gbps NIC's is on an independent /24 network.  We use UDP
+# port 6677 on all four NIC's.  Traffic is divided between NIC's "per beam", 
+# i.e. four beams will be sent to each NIC.
+
+ipaddr: "127.0.0.1"
+port: [7000, 7001, 7002, 7003, 7004, 7005, 7006, 7007 ]
+
+# Total number of threads used by the L0 simulator.
+# Note: nthreads must be a multiple of the number of "streams", which
+# is the number of distinct (ipaddr,port) pairs (in this case nsteams=2).
+
+nthreads: 8
