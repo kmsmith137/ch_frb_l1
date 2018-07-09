@@ -47,7 +47,7 @@ all: $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES)
 
 INCFILES := ch_frb_l1.hpp l0-sim.hpp l1-rpc.hpp rpc.hpp
 
-L1_OBJS := l1-rpc.o
+L1_OBJS := l1-rpc.o mask_stats.o
 
 # Append compile flags
 CPP_CFLAGS ?=
