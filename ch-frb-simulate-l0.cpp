@@ -259,22 +259,103 @@ void sim_thread_main(const shared_ptr<ch_frb_io::intensity_network_ostream> &ost
 }
 
 
+void data_thread_main(const shared_ptr<ch_frb_io::intensity_network_ostream> &ostream,
+                      const vector<string> &filenames)
+{
+    assert(ostream->target_gbps > 0.0);
+    int nchunks = filenames.size();
+
+    vector<pair<vector<float>,vector<float> > > data;
+
+    for (const string &fn : filenames) {
+        /*
+        struct stat st;
+        if (stat(fn.c_str(), &st)) {
+            cout << "Failed to stat file " << fn << ": " << strerror(errno) << endl;
+            return;
+        }
+        FILE* fid = fopen(fn.c_str(), "r");
+        if (!fid) {
+            cout << "Failed to open file " << fn << " for reading: " << strerror(errno) << endl;
+            return;
+        }
+        char* buffer = (char*)malloc(st.st_size);
+        if (fread(buffer, 1, st.st_size, fid) != st.st_size) {
+            cout << "Failed to read file " << fn << ": " << strerror(errno) << endl;
+            return;
+        }
+        // deserialize it.
+        msgpack::object_handle oh = msgpack::unpack(buffer, st.st_size);
+        // convert it into statically typed object.
+        std::shared_ptr<assembled_chunk> chunk;
+        oh.convert(chunk);
+        //chunk->
+         */
+        cout << "Reading chunk " << fn << endl;
+        shared_ptr<ch_frb_io::assembled_chunk> chunk = ch_frb_io::assembled_chunk::read_msgpack_file(fn);
+        if (!chunk) {
+            cout << "Failed to read msgpack file " << fn << endl;
+            return;
+        }
+
+        cout << "chunk: nupfreq " << chunk->nupfreq  << ", nt_per_packet " << chunk->nt_per_packet << ", fgpa_counts_per_sample " << chunk->fpga_counts_per_sample << ", nt_coarse " << chunk->nt_coarse << ", nscales " << chunk->nscales << ", ndata " << chunk->ndata << endl;
+        //cout << "elts per chunk " << ostream->elts_per_chunk << ", nt per chunk " << ostream->nt_per_chunk << endl;
+        int nsub = chunk->nt_coarse * chunk->nt_per_packet / ostream->nt_per_chunk;
+        cout << "splitting assembled chunk into " << nsub << " pieces" << endl;
+        for (int i=0; i<nsub; i++) {
+            vector<float> intensity(ostream->elts_per_chunk, 0.0);
+            vector<float> weights(ostream->elts_per_chunk, 1.0);
+            chunk->decode_subset(intensity.data(), weights.data(),
+                                 i * ostream->nt_per_chunk,
+                                 ostream->nt_per_chunk,
+                                 ostream->nt_per_chunk,
+                                 ostream->nt_per_chunk);
+            data.push_back(make_pair(intensity, weights));
+        }
+    }
+
+
+    for (int ichunk = 0; ichunk < nchunks; ichunk++) {
+	int64_t fpga_count = int64_t(ichunk) * int64_t(ostream->fpga_counts_per_chunk);
+        int stride = ostream->nt_per_packet;
+        pair<vector<float>,vector<float> > iw = data[ichunk];
+	ostream->send_chunk(iw.first.data(), stride,
+                            iw.second.data(), stride,
+                            fpga_count);
+    }
+
+    // We don't call ostream->end_stream() here.  This is because end_stream() has the side effect
+    // of sending end-of-stream packets in one distinguished thread (see above).  We want to make
+    // sure that all threads have finished transmitting before the end-of-stream packets are sent.
+    //
+    // Therefore, we postpone the call to ostream->end_stream() until all sim_threads have finished
+    // and joined (see main() below).
+}
+
+
+
+
 static void usage()
 {
-    cerr << "Usage: ch-frb-simulate-l0 <l0_params.yaml> <num_seconds>\n";
+    cerr << "Usage: ch-frb-simulate-l0 <l0_params.yaml> <num_seconds> [msgpack-chunk-files ...]\n";
     exit(2);
 }
 
 
 int main(int argc, char **argv)
 {
-    if (argc != 3)
+    if (argc < 3)
 	usage();
 
     string filename = argv[1];
     double num_seconds = lexical_cast<double> (argv[2]);
 
-    if (num_seconds <= 0.0)
+    vector<string> datafiles;
+    for (int a=3; a<argc; a++) {
+        datafiles.push_back(string(argv[a]));
+    }
+    
+    if ((num_seconds <= 0.0) && (datafiles.size() == 0))
 	usage();
 
     l0_params p(filename);
@@ -290,9 +371,14 @@ int main(int argc, char **argv)
 	streams[ithread]->print_status();
     }
 
-    for (int ithread = 0; ithread < p.nthreads_tot; ithread++)
-	threads[ithread] = std::thread(sim_thread_main, streams[ithread], num_seconds);
-
+    if (datafiles.size() == 0) {
+        for (int ithread = 0; ithread < p.nthreads_tot; ithread++)
+            threads[ithread] = std::thread(sim_thread_main, streams[ithread], num_seconds);
+    } else {
+        for (int ithread = 0; ithread < p.nthreads_tot; ithread++)
+            threads[ithread] = std::thread(data_thread_main, streams[ithread], datafiles);
+    }
+    
     for (int ithread = 0; ithread < p.nthreads_tot; ithread++)
 	threads[ithread].join();
 
