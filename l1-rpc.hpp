@@ -9,6 +9,7 @@
 #include <condition_variable>
 #include <zmq.hpp>
 #include <ch_frb_io.hpp>
+#include <mask_stats.hpp>
 
 const int default_port_l1_rpc = 5555;
 
@@ -21,6 +22,7 @@ public:
     // Creates a new RPC server listening on the given port, and reading
     // from the ring buffers of the given stream.
     L1RpcServer(std::shared_ptr<ch_frb_io::intensity_network_stream> stream,
+                ch_frb_l1::mask_stats_map maskstats,
                 const std::string &port = "",
                 const std::string &cmdline = "",
                 zmq::context_t* ctx = NULL);
@@ -103,6 +105,9 @@ private:
 
     // the stream we are serving RPC requests for.
     std::shared_ptr<ch_frb_io::intensity_network_stream> _stream;
+
+    // objects holding RFI mask statistics
+    ch_frb_l1::mask_stats_map _mask_stats;
 
     // server start time
     struct timeval _time0;

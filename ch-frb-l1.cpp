@@ -1288,7 +1288,7 @@ void l1_server::make_rpc_servers()
     this->rpc_threads.resize(config.nstreams);
     
     for (int istream = 0; istream < config.nstreams; istream++) {
-	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], config.rpc_address[istream], command_line);
+	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], mask_stats_objects[istream], config.rpc_address[istream], command_line);
 	rpc_threads[istream] = rpc_servers[istream]->start();
     }
 }
