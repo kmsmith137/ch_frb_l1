@@ -38,6 +38,19 @@ void mask_stats::mask_count(const struct rf_pipelines::mask_counter_measurements
     }
 }
 
+vector<rf_pipelines::mask_counter_measurements>
+mask_stats::get_all_measurements() {
+    vector<rf_pipelines::mask_counter_measurements> copy;
+    {
+        ulock l(_meas_mutex);
+        // Reorder the ring buffer.
+        int n = _meas.size();
+        for (int off=0; off<n; off++)
+            copy.push_back(_meas[(_imeas + 1 + off) % n]);
+    }
+    return copy;
+}
+
 unordered_map<string, float> mask_stats::get_stats(float history) {
     unordered_map<string, float> stats;
 

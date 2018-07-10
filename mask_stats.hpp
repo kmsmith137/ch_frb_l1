@@ -11,11 +11,12 @@ namespace ch_frb_l1 {
 
 class mask_stats : public rf_pipelines::mask_counter_callback {
 public:
-    mask_stats(int beam_id, std::string where="", int nhistory=60);
+    mask_stats(int beam_id, std::string where="", int nhistory=300);
     virtual void mask_count(const struct rf_pipelines::mask_counter_measurements& m);
     virtual ~mask_stats();
     std::unordered_map<std::string, float> get_stats(float period);
-
+    std::vector<rf_pipelines::mask_counter_measurements> get_all_measurements();
+    
     const int _beam_id;
     std::string _where;
 private:
