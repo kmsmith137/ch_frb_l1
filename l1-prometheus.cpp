@@ -224,6 +224,35 @@ public:
                 }
             }
         }
+
+        // RFI masking stats per-beam.
+        if (_mask_stats.size()) {
+            struct metric_stat ms5[] = {
+                {"rfi_mask_pct_masked", "",
+                 "Total fraction of samples masked"},
+                {"rfi_mask_pct_t_masked", "",
+                 "Total fraction of times samples that are fully masked"},
+                {"rfi_mask_pct_f_masked", "",
+                 "Total fraction of frequency channels that are fully masked"},
+            };
+            vector<unordered_map<string, float> > maskstats;
+            for (auto &it : _mask_stats) {
+                maskstats.push_back(it->get_stats(period));
+            }
+            for (size_t i=0; i<sizeof(ms5)/sizeof(struct metric_stat); i++) {
+                const char* name = ms5[i].metric;
+                mg_printf(conn,
+                          "# HELP %s %s\n"
+                          "# TYPE %s %s\n", name, ms5[i].help, name, ms5[i].type);
+                for (size_t ib=0; ib<maskstats.size(); ib++) {
+                    unordered_map<string, float> mstats = maskstats[ib];
+                    const char* key = ms5[i].key;
+                    mg_printf(conn, "%s{beam=\"%i\",where=\"%s\"} %f\n", name,
+                              _mask_stats[ib]->_beam_id, _mask_stats[ib]->_where.c_str(), mstats[key]);
+                }
+            }
+            
+        }
         
         return true;
     }

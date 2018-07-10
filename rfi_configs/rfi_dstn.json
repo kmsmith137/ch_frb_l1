@@ -8,7 +8,7 @@
                     {
                         "class_name": "mask_counter", 
                         "nt_chunk": 1024,
-                        "name": "before_rfi"
+                        "where": "before_rfi"
                     },
                     {
                         "Df": 1, 
@@ -1095,7 +1095,7 @@
                     {
                         "class_name": "mask_counter", 
                         "nt_chunk": 1024,
-                        "name": "after_rfi"
+                        "where": "after_rfi"
                     }
                 ]
             }, 

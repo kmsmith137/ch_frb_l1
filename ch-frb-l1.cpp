@@ -819,6 +819,7 @@ void dedispersion_thread_context::_thread_main() const
             if (it->class_name == "mask_counter") {
                 cout << "Found mask_counter_transform -- registering callback.  name: " << it->name << endl;
                 shared_ptr<rf_pipelines::mask_counter_transform> counter = dynamic_pointer_cast<rf_pipelines::mask_counter_transform>(it);
+                ms->_where = counter->where;
                 counter->add_callback(ms);
             }
         }
