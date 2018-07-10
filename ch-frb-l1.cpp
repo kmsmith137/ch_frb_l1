@@ -979,6 +979,7 @@ struct l1_server {
     void make_output_devices();
     void make_memory_slab_pools();
     void make_input_streams();
+    void make_mask_stats();
     void make_rpc_servers();
     void make_prometheus_servers();
     void spawn_dedispersion_threads();
@@ -1298,7 +1299,14 @@ void l1_server::make_prometheus_servers()
 	throw("ch-frb-l1 internal error: double call to make_prometheus_servers()");
     if (input_streams.size() != size_t(config.nstreams))
 	throw("ch-frb-l1 internal error: make_prometheus_servers() was called, without first calling make_input_streams()");
+    this->prometheus_servers.resize(config.nstreams);
+    for (int istream = 0; istream < config.nstreams; istream++) {
+        prometheus_servers[istream] = start_prometheus_server(config.prometheus_address[istream], input_streams[istream], mask_stats_objects[istream]);
+    }
+}
 
+void l1_server::make_mask_stats()
+{
     // UGLY -- to collect mask stats, we need to create one mask_stats object
     // per mask_counter stage in the RFI chain (there can be > 1).
     // They need to be made here because the dedispersion_thread_context is
@@ -1326,13 +1334,7 @@ void l1_server::make_prometheus_servers()
         }
         mask_stats_objects.push_back(ms);
     }
-
-    this->prometheus_servers.resize(config.nstreams);
-    for (int istream = 0; istream < config.nstreams; istream++) {
-        prometheus_servers[istream] = start_prometheus_server(config.prometheus_address[istream], input_streams[istream], mask_stats_objects[istream]);
-    }
 }
-
        
 void l1_server::spawn_dedispersion_threads()
 {
@@ -1452,6 +1454,7 @@ int main(int argc, char **argv)
     server.make_output_devices();
     server.make_memory_slab_pools();
     server.make_input_streams();
+    server.make_mask_stats();
     server.make_rpc_servers();
     server.make_prometheus_servers();
     server.spawn_dedispersion_threads();
