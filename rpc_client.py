@@ -120,6 +120,15 @@ class MaskedFrequencies(object):
             where = where.decode()
             self.histories[(beam, where)] = np.array(hist).astype(np.float32) / nt
 
+class MaskedTimes(object):
+    def __init__(self, msgpack):
+        self.histories = {}
+        for m in msgpack:
+            (beam, where, nf, hist) = m
+            print('Where:', where, type(where))
+            where = where.decode()
+            self.histories[(beam, where)] = np.hstack(hist).astype(np.float32) / nf
+            
 class PacketRate(object):
     def __init__(self, msgpack):
         self.start = msgpack[0]
@@ -483,6 +492,24 @@ class RpcClient(object):
                 else None
                 for p in parts]
 
+    def get_masked_times(self, servers=None, wait=True, timeout=-1):
+        if servers is None:
+            servers = self.servers.keys()
+        tokens = []
+        for k in servers:
+            self.token += 1
+            req = msgpack.packb(['get_masked_times', self.token])
+            #args = msgpack.packb([float(start), float(period)])
+            tokens.append(self.token)
+            self.sockets[k].send(req) # + args)
+        if not wait:
+            return tokens
+        parts = self.wait_for_tokens(tokens, timeout=timeout)
+        # We expect one message part for each token.
+        return [MaskedTimes(msgpack.unpackb(p[0])) if p is not None
+                else None
+                for p in parts]
+
     def _pop_token(self, t, d=None, get_socket=False):
         '''
         Pops a message for the given token number *t*, or returns *d*
@@ -670,6 +697,8 @@ if __name__ == '__main__':
                         help='Request rate history for the list of L0 nodes')
     parser.add_argument('--masked-freqs', action='store_true', default=False,
                         help='Send request for masked frequencies history')
+    parser.add_argument('--masked-times', action='store_true', default=False,
+                        help='Send request for masked times history')
     parser.add_argument('ports', nargs='*',
                         help='Addresses or port numbers of RPC servers to contact')
     opt = parser.parse_args()
@@ -744,7 +773,44 @@ if __name__ == '__main__':
                 plt.xlabel('Frequency bin')
                 plt.ylabel('Time (s)')
                 plt.title('Beam %i, %s' % (beam, where))
-                plt.savefig('masked-%i-%s.png' % (beam, where))
+                plt.savefig('masked-f-%i-%s.png' % (beam, where))
+        doexit = True
+
+    if opt.masked_times:
+        import pylab as plt
+        times = client.get_masked_times()
+        for t in times:
+            allbeams = set()
+            for k,v in t.histories.items():
+                (beam,where) = k
+                allbeams.add(beam)
+                hist = v
+                print('Beam', beam, 'at', where, ':', hist.shape, hist.dtype,
+                      hist.min(), hist.max())
+                plt.clf()
+                plt.plot(hist, '-')
+                plt.xlabel('Time (s)')
+                plt.ylabel('Fraction of masked samples')
+                plt.title('Beam %i, %s' % (beam, where))
+                plt.ylim(-0.01, 1.01)
+                plt.savefig('masked-t-%i-%s.png' % (beam, where))
+            allbeams = list(allbeams)
+            allbeams.sort()
+            for b in allbeams:
+                plt.clf()
+                for k,v in t.histories.items():
+                    (beam,where) = k
+                    if beam != b:
+                        continue
+                    hist = v
+                    plt.plot(hist, '-', label=where)
+                    plt.xlabel('Time (s)')
+                    plt.ylabel('Fraction of masked samples')
+                    plt.title('Beam %i' % (beam))
+                    plt.ylim(-0.01, 1.01)
+                    plt.legend()
+                    plt.savefig('masked-t-%i.png' % (beam))
+
         doexit = True
 
     if opt.rate_history:

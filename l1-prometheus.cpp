@@ -267,14 +267,6 @@ protected:
     ch_frb_l1::mask_stats_map _mask_stats;
 };
 
-/*
-class PrometheusServer {
-public:
-    PrometheusServer(shared_ptr<CivetServer> cs) :
-        _civet(cs) {}
-protected:
-};
- */
 class L1PrometheusServer : public CivetServer {
 public:
     L1PrometheusServer(std::vector<std::string> options,
