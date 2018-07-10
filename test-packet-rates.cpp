@@ -109,7 +109,7 @@ int main(int argc, char** argv) {
         chlog("Starting RPC server on port " << rpc_addr);
 
         string pro_addr = to_string(prometheus_port + i);
-        vector<shared_ptr<ch_frb_l1::mask_stats> > ms;
+        ch_frb_l1::mask_stats_map ms;
         shared_ptr<L1PrometheusServer> pro = start_prometheus_server(pro_addr, stream, ms);
         if (!pro) {
             return -1;

@@ -8,13 +8,14 @@
 
 using namespace std;
 using namespace ch_frb_io;
+using namespace ch_frb_l1;
 
 #include "CivetServer.h"
 
 class L1PrometheusHandler : public CivetHandler {
 public:
     L1PrometheusHandler(shared_ptr<intensity_network_stream> stream,
-                        vector<shared_ptr<ch_frb_l1::mask_stats> > ms) :
+                        mask_stats_map ms) :
         CivetHandler(),
         _stream(stream),
         _mask_stats(ms) {}
@@ -235,9 +236,9 @@ public:
                 {"rfi_mask_pct_f_masked", "",
                  "Total fraction of frequency channels that are fully masked"},
             };
-            vector<unordered_map<string, float> > maskstats;
+            vector<tuple<int, string, unordered_map<string, float> > > maskstats;
             for (auto &it : _mask_stats) {
-                maskstats.push_back(it->get_stats(period));
+                maskstats.push_back(make_tuple(it.first.first, it.first.second, it.second->get_stats(period)));
             }
             for (size_t i=0; i<sizeof(ms5)/sizeof(struct metric_stat); i++) {
                 const char* name = ms5[i].metric;
@@ -245,10 +246,13 @@ public:
                           "# HELP %s %s\n"
                           "# TYPE %s %s\n", name, ms5[i].help, name, ms5[i].type);
                 for (size_t ib=0; ib<maskstats.size(); ib++) {
-                    unordered_map<string, float> mstats = maskstats[ib];
+                    int beam_id;
+                    string where;
+                    unordered_map<string, float> mstats;
+                    std::tie(beam_id, where, mstats) = maskstats[ib];
                     const char* key = ms5[i].key;
                     mg_printf(conn, "%s{beam=\"%i\",where=\"%s\"} %f\n", name,
-                              _mask_stats[ib]->_beam_id, _mask_stats[ib]->_where.c_str(), mstats[key]);
+                              beam_id, where.c_str(), mstats[key]);
                 }
             }
             
@@ -259,7 +263,7 @@ public:
 
 protected:
     shared_ptr<intensity_network_stream> _stream;
-    vector<shared_ptr<ch_frb_l1::mask_stats> > _mask_stats;
+    ch_frb_l1::mask_stats_map _mask_stats;
 };
 
 /*
@@ -281,7 +285,7 @@ public:
 
 shared_ptr<L1PrometheusServer> start_prometheus_server(string ipaddr_port,
                                                        shared_ptr<intensity_network_stream> stream,
-                                                       vector<shared_ptr<ch_frb_l1::mask_stats> > ms) {
+                                                       mask_stats_map ms) {
     //"document_root", DOCUMENT_ROOT, "listening_ports", PORT, 0};
     std::vector<std::string> options;
     // listening_ports = [ipaddr:]port

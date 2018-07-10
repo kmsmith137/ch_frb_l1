@@ -713,7 +713,7 @@ void l1_config::_have_warnings() const
 struct dedispersion_thread_context {
     l1_config config;
     shared_ptr<ch_frb_io::intensity_network_stream> sp;
-    shared_ptr<ch_frb_l1::mask_stats> ms;
+    mask_stats_map ms;
     shared_ptr<bonsai::trigger_pipe> l1b_subprocess;   // warning: can be empty pointer!
     vector<int> allowed_cores;
     bool asynchronous_dedispersion;   // run RFI and dedispersion in separate threads?
@@ -806,25 +806,25 @@ void dedispersion_thread_context::_thread_main() const
 
     auto bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
 
-    cout << "rfi_chain state: " << rfi_chain->state << endl;
-    print_pipeline(rfi_chain, "");
+    //cout << "rfi_chain state: " << rfi_chain->state << endl;
+    //print_pipeline(rfi_chain, "");
 
-    if (ms) {
-        cout << "mask_stats objects specified.  Finding mask_counter stage..." << endl;
-        // Find mask_counter stage(s).
-        vector<shared_ptr<rf_pipelines::pipeline_object> > stages;
-        pipeline_get_all(rfi_chain, stages);
-        for (auto &it : stages) {
-            //cout << "pipeline stage: class " << it->class_name << endl;
-            if (it->class_name == "mask_counter") {
-                cout << "Found mask_counter_transform -- registering callback.  name: " << it->name << endl;
-                shared_ptr<rf_pipelines::mask_counter_transform> counter = dynamic_pointer_cast<rf_pipelines::mask_counter_transform>(it);
-                ms->_where = counter->where;
-                counter->add_callback(ms);
-            }
+    cout << "Finding mask_counter stages..." << endl;
+    // Find mask_counter stage(s).
+    vector<shared_ptr<rf_pipelines::pipeline_object> > stages;
+    pipeline_get_all(rfi_chain, stages);
+    for (auto &it : stages) {
+        //cout << "pipeline stage: class " << it->class_name << endl;
+        if (it->class_name == "mask_counter") {
+            shared_ptr<rf_pipelines::mask_counter_transform> counter =
+                dynamic_pointer_cast<rf_pipelines::mask_counter_transform>(it);
+            cout << "Found mask_counter_transform: " << counter->where << endl;
+            auto mit = ms.find(make_pair(beam_id, counter->where));
+            if (mit != ms.end())
+                counter->add_callback(mit->second);
         }
     }
-    
+
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);
     pipeline->add(rfi_chain);
@@ -957,7 +957,7 @@ struct l1_server {
     vector<shared_ptr<ch_frb_io::output_device>> output_devices;
     vector<shared_ptr<ch_frb_io::memory_slab_pool>> memory_slab_pools;
     vector<shared_ptr<ch_frb_io::intensity_network_stream>> input_streams;
-    vector<vector<shared_ptr<ch_frb_l1::mask_stats> > > mask_stats_objects;
+    vector<mask_stats_map> mask_stats_objects;
     vector<shared_ptr<L1RpcServer>> rpc_servers;
     vector<shared_ptr<L1PrometheusServer>> prometheus_servers;
     vector<std::thread> rpc_threads;
@@ -1291,17 +1291,36 @@ void l1_server::make_prometheus_servers()
     if (input_streams.size() != size_t(config.nstreams))
 	throw("ch-frb-l1 internal error: make_prometheus_servers() was called, without first calling make_input_streams()");
 
-    this->prometheus_servers.resize(config.nstreams);
+    // UGLY -- to collect mask stats, we need to create one mask_stats object
+    // per mask_counter stage in the RFI chain (there can be > 1).
+    // They need to be made here because the dedispersion_thread_context is
+    // const when the dedispersion threads start.
+    // Find mask_counter stage(s).
+    auto rfi_chain = rf_pipelines::pipeline_object::from_json(config.rfi_transform_chain_json);
+    vector<string> mask_counters_where;
+    vector<shared_ptr<rf_pipelines::pipeline_object> > stages;
+    pipeline_get_all(rfi_chain, stages);
+    for (auto &it : stages)
+        if (it->class_name == "mask_counter") {
+            shared_ptr<rf_pipelines::mask_counter_transform> counter = dynamic_pointer_cast<rf_pipelines::mask_counter_transform>(it);
+            mask_counters_where.push_back(counter->where);
+        }
+    cout << "Found " << mask_counters_where.size() << " mask_counter stages in the RFI chain" << endl;
     int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
     for (int istream = 0; istream < config.nstreams; istream++) {
-        // Create one mask_stats object per beam; one vector per stream.
-        vector<shared_ptr<ch_frb_l1::mask_stats> > ms;
+        // Create one mask_stats object per beam * mask_counter; one vector per stream.
+        mask_stats_map ms;
         for (int ibeam = 0; ibeam < nbeams_per_stream; ibeam++) {
             int beam_id = config.beam_ids[istream*nbeams_per_stream + ibeam];
-            ms.push_back(make_shared<mask_stats>(beam_id));
+            for (const auto &wit : mask_counters_where) {
+                ms[make_pair(beam_id, wit)] = make_shared<mask_stats>(beam_id, wit);
+            }
         }
         mask_stats_objects.push_back(ms);
+    }
 
+    this->prometheus_servers.resize(config.nstreams);
+    for (int istream = 0; istream < config.nstreams; istream++) {
         prometheus_servers[istream] = start_prometheus_server(config.prometheus_address[istream], input_streams[istream], mask_stats_objects[istream]);
     }
 }
@@ -1328,7 +1347,7 @@ void l1_server::spawn_dedispersion_threads()
 	dedispersion_thread_context context;
 	context.config = this->config;
 	context.sp = this->input_streams[istream];
-        context.ms = this->mask_stats_objects[istream][ibeam % nbeams_per_stream];
+        context.ms = this->mask_stats_objects[istream];
 	context.l1b_subprocess = this->l1b_subprocesses[ibeam];
 	context.allowed_cores = this->dedispersion_cores[ibeam];
 	context.asynchronous_dedispersion = this->asynchronous_dedispersion;

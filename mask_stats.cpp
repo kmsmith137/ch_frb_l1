@@ -30,6 +30,11 @@ void mask_stats::mask_count(const struct rf_pipelines::mask_counter_measurements
             _meas[_imeas] = meas;
         _imeas = (_imeas + 1) % _maxmeas;
     }
+
+    unordered_map<string, float> stats = get_stats(5.);
+    for (const auto &it : stats) {
+        cout << "  " << it.first << " = " << it.second << endl;
+    }
 }
 
 unordered_map<string, float> mask_stats::get_stats(float history) {
@@ -43,6 +48,7 @@ unordered_map<string, float> mask_stats::get_stats(float history) {
     float tot_t = 0;
     float tot_tmasked = 0;
     float tot_fmasked = 0;
+    float tot_f = 0;
     {
         ulock l(_meas_mutex);
         if (nsteps > _meas.size())
@@ -57,11 +63,12 @@ unordered_map<string, float> mask_stats::get_stats(float history) {
             tot_t += _meas[i].nt;
             tot_tmasked += _meas[i].nt_masked;
             tot_fmasked += _meas[i].nf_masked;
+            tot_f += _meas[i].nf;
         }
     }
-    stats["rfi_mask_pct_masked"] = 100. * totmasked / totsamp;
+    stats["rfi_mask_pct_masked"]   = 100. * totmasked / totsamp;
     stats["rfi_mask_pct_t_masked"] = 100. * tot_tmasked / tot_t;
-    stats["rfi_mask_pct_f_masked"] = 100. * tot_fmasked / (float)nsteps;
+    stats["rfi_mask_pct_f_masked"] = 100. * tot_fmasked / tot_f;
     return stats;
 }
     
