@@ -237,6 +237,7 @@ public:
                  "Total fraction of frequency channels that are fully masked"},
             };
             vector<tuple<int, string, unordered_map<string, float> > > maskstats;
+            float period = 15.;
             for (auto &it : _mask_stats) {
                 maskstats.push_back(make_tuple(it.first.first, it.first.second, it.second->get_stats(period)));
             }

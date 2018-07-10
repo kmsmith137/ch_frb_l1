@@ -68,18 +68,24 @@ unordered_map<string, float> mask_stats::get_stats(float history) {
         if (nsteps > _meas.size())
             nsteps = _meas.size();
         int istart = (_imeas - nsteps + _maxmeas) % _maxmeas;
-        int iend = (istart + nsteps) % _maxmeas;
-        cout << "History: " << history << " imeas=" << _imeas << ", max="
-             << _maxmeas << " -> istart " << istart << ", iend " << iend << endl;
-        for (int i=istart; i<(istart + nsteps); i=(i + 1) % _maxmeas) {
+        //cout << "History: " << history << " imeas=" << _imeas << ", max="
+        //<< _maxmeas << " -> istart " << istart << endl;
+        //cout << "Gathering stats" << endl;
+        for (int offset=0; offset<nsteps; offset++) {
+            int i = (istart + offset) % _maxmeas;
             totsamp += _meas[i].nsamples;
             totmasked += _meas[i].nsamples_masked;
             tot_t += _meas[i].nt;
             tot_tmasked += _meas[i].nt_masked;
-            tot_fmasked += _meas[i].nf_masked;
             tot_f += _meas[i].nf;
+            tot_fmasked += _meas[i].nf_masked;
+            //cout << "  pos " << _meas[i].pos << " ns " << _meas[i].nsamples_masked << "/" <<_meas[i].nsamples << ", nt " << _meas[i].nt_masked << "/" << _meas[i].nt << ", nf " << _meas[i].nf_masked << "/" << _meas[i].nf << endl;
         }
     }
+    //cout << "Percentages: " << (100. * totmasked / max(totsamp, 1.f))
+    //<< ", " << (100. * tot_tmasked / max(tot_t, 1.f))
+    //<< ", " << (100. * tot_fmasked / max(tot_f, 1.f)) << endl;
+
     stats["rfi_mask_pct_masked"]   = 100. * totmasked / max(totsamp, 1.f);
     stats["rfi_mask_pct_t_masked"] = 100. * tot_tmasked / max(tot_t, 1.f);
     stats["rfi_mask_pct_f_masked"] = 100. * tot_fmasked / max(tot_f, 1.f);

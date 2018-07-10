@@ -115,11 +115,11 @@ class MaskedFrequencies(object):
         #print('Masked frequencies: got ', msgpack)
         self.histories = {}
         for m in msgpack:
-            (beam, where, hist) = m
+            (beam, where, nt, hist) = m
             print('Where:', where, type(where))
             where = where.decode()
-            self.histories[(beam, where)] = np.array(hist)
-            
+            self.histories[(beam, where)] = np.array(hist).astype(np.float32) / nt
+
 class PacketRate(object):
     def __init__(self, msgpack):
         self.start = msgpack[0]
@@ -735,7 +735,8 @@ if __name__ == '__main__':
             for k,v in f.histories.items():
                 (beam,where) = k
                 hist = v
-                print('Beam', beam, 'at', where, ':', hist.shape)
+                print('Beam', beam, 'at', where, ':', hist.shape, hist.dtype,
+                      hist.min(), hist.max())
                 import pylab as plt
                 plt.clf()
                 plt.imshow(hist, interpolation='nearest', origin='lower',

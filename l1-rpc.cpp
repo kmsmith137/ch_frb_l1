@@ -905,13 +905,17 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             shared_ptr<ch_frb_l1::mask_stats> ms = it.second;
             vector<rf_pipelines::mask_counter_measurements> meas = ms->get_all_measurements();
             cout << "Got " << meas.size() << " measurements from beam " << beam_id << " where " << where << endl;
-            pk.pack_array(3);
+            pk.pack_array(4);
             pk.pack(beam_id);
             pk.pack(where);
+            int nt = 0;
+            if (meas.size())
+                nt = meas[0].nt;
+            pk.pack(nt);
             pk.pack_array(meas.size());
             for (const auto &m : meas) {
                 pk.pack_array(m.nf);
-                bool* fm = m.freqs_masked.get();
+                uint16_t* fm = m.freqs_masked.get();
                 for (int k=0; k<m.nf; k++)
                     pk.pack(fm[k]);
             }
