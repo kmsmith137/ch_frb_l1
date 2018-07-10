@@ -264,7 +264,6 @@ void data_thread_main(const shared_ptr<ch_frb_io::intensity_network_ostream> &os
                       const vector<string> &filenames)
 {
     assert(ostream->target_gbps > 0.0);
-    int nchunks = filenames.size();
 
     vector<pair<vector<float>,vector<float> > > data;
 
@@ -276,7 +275,8 @@ void data_thread_main(const shared_ptr<ch_frb_io::intensity_network_ostream> &os
             return;
         }
 
-        cout << "chunk: nupfreq " << chunk->nupfreq  << ", nt_per_packet " << chunk->nt_per_packet << ", fgpa_counts_per_sample " << chunk->fpga_counts_per_sample << ", nt_coarse " << chunk->nt_coarse << ", nscales " << chunk->nscales << ", ndata " << chunk->ndata << endl;
+        cout << "chunk: nupfreq " << chunk->nupfreq  << ", nt_per_packet " << chunk->nt_per_packet << ", fgpa_counts_per_sample " << chunk->fpga_counts_per_sample << ", nt_coarse " << chunk->nt_coarse << ", nscales " << chunk->nscales << ", ndata " << chunk->ndata << ", beam " << chunk->beam_id << ", fpga_begin " << chunk->fpga_begin <<endl;
+
         //cout << "elts per chunk " << ostream->elts_per_chunk << ", nt per chunk " << ostream->nt_per_chunk << endl;
         int nsub = chunk->nt_coarse * chunk->nt_per_packet / ostream->nt_per_chunk;
         cout << "splitting assembled chunk into " << nsub << " pieces" << endl;
@@ -309,7 +309,7 @@ void data_thread_main(const shared_ptr<ch_frb_io::intensity_network_ostream> &os
     }
 
 
-    for (int ichunk = 0; ichunk < nchunks; ichunk++) {
+    for (int ichunk = 0; ichunk < data.size(); ichunk++) {
 	int64_t fpga_count = int64_t(ichunk) * int64_t(ostream->fpga_counts_per_chunk);
         int stride = ostream->nt_per_chunk;
         pair<vector<float>,vector<float> > iw = data[ichunk];

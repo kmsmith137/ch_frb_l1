@@ -815,9 +815,9 @@ void dedispersion_thread_context::_thread_main() const
         vector<shared_ptr<rf_pipelines::pipeline_object> > stages;
         pipeline_get_all(rfi_chain, stages);
         for (auto &it : stages) {
-            cout << "pipeline stage: class " << it->class_name << endl;
+            //cout << "pipeline stage: class " << it->class_name << endl;
             if (it->class_name == "mask_counter") {
-                cout << "  casting to mask_counter_transform and registering callback!" << endl;
+                cout << "Found mask_counter_transform -- registering callback.  name: " << it->name << endl;
                 shared_ptr<rf_pipelines::mask_counter_transform> counter = dynamic_pointer_cast<rf_pipelines::mask_counter_transform>(it);
                 counter->add_callback(ms);
             }

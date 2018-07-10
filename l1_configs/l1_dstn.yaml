@@ -21,6 +21,8 @@ port: 6677
 rpc_address: "tcp://127.0.0.1:5555"
 prometheus_address: "127.0.0.1:8888"
 
+# beam_ids: [ 139 ]
+
 # This configures the L1 server to use a single I/O thread for all writes.
 # See 'output_devices' in MANUAL.md for discussion!
 output_devices: ""
@@ -50,3 +52,5 @@ write_staging_area_gb: 0.1
 l1b_executable_filename: "./toy-l1b.py"
 l1b_buffer_nsamples: 0
 l1b_pipe_timeout: 5.0
+
+#stream_acqname: "test_acq"
