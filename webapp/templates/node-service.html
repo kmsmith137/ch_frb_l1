@@ -28,14 +28,14 @@ th {
 
 <body>
   {% include 'includes/_navbar.html'%}
-  <h2>CHIME/FRB L1 Service</h2>
+  <h2>CHIME/FRB Node Status</h2>
 
 	<form action="{{ service_url }}/start/all" style="display: inline;">
-	<input type="submit" value="Start ch-frb-l1 service on all nodes" class="bigbutton">
+	<input type="submit" value="Start all L1 nodes" class="bigbutton">
 	</form>
 
 	<form action="{{ service_url }}/stop/all" style="display: inline;">
-	<input type="submit" value="Stop ch-frb-l1 service on all nodes" class="bigbutton">
+	<input type="submit" value="Stop all L1 nodes" class="bigbutton">
 	</form>
 
 	<form class="chfrb-show-summary" style="display: inline;">
@@ -62,37 +62,40 @@ th {
           <td valign="middle" bgcolor="#35e0dd">
           <h3>
           rack {{key}} <br>
-            <form action="{{ service_url }}/start/rack{{key}}" style="display: inline;">
-            <input type="submit" value="Start" class="bigbutton">
+            <form action="{{ service_url }}/on/rack{{key}}" style="display: inline;">
+            <input type="submit" value="On" class="bigbutton">
             </form>
             <br>
-            <form action="{{ service_url }}/stop/rack{{key}}" style="display: inline;">
-            <input type="submit" value="Stop" class="bigbutton">
+            <form action="{{ service_url }}/off/rack{{key}}" style="display: inline;">
+            <input type="submit" value="Off" class="bigbutton">
+            </form>
+            <br>
+            <form action="{{ service_url }}/cycle/rack{{key}}" style="display: inline;">
+            <input type="submit" value="Cycle" class="bigbutton">
             </form>
           </h3>
           <br>
           </td>
         {% for node,summary,stat in value %}
-          {% if "running" in summary %}
+          {% if "ON" in summary.upper() %}
               <td class="on chfrb-status" valign="middle" bgcolor="#90c417">
-          {% elif "inactive" in summary %}
-              <td class="idle chfrb-status" valign="middle" bgcolor="#dde238">
-          {% elif "Active" in summary %}
-              <td class="idle chfrb-status" valign="middle" bgcolor="#b74242">
-          {% else %}
+          {% elif "OFF" in summary.upper() %}
               <td class="off chfrb-status" valign="middle" bgcolor="lightgray">
           {% endif %}
             <a name="node{{loop.index}}"></a>
               <h3>
                 {{ node }}<br>
-                <form action="{{ service_url }}/start/{{node}}" style="display: inline;">
-                <input type="submit" value="Start" class="bigbutton">
+                <form action="{{ service_url }}/on/{{node}}" style="display: inline;">
+                <input type="submit" value="On" class="bigbutton">
                 </form>
                 <br>
-                <form action="{{ service_url }}/stop/{{node}}" style="display: inline;">
-                <input type="submit" value="Stop" class="bigbutton">
+                <form action="{{ service_url }}/off/{{node}}" style="display: inline;">
+                <input type="submit" value="Off" class="bigbutton">
                 </form>
                 <br>
+                <form action="{{ service_url }}/cycle/{{node}}" style="display: inline;">
+                <input type="submit" value="Cycle" class="bigbutton">
+                </form>
               </h3>
                 <div class="chfrb-summary" style="display:none; z-level:1">
                   {{summary}}

@@ -10,7 +10,6 @@ except:
     basestring = str
 
 from flask import Flask, render_template, jsonify, request, redirect, url_for, session, flash
-
 import os
 import sys
 from datetime import datetime, timedelta
@@ -20,12 +19,11 @@ import msgpack
 import numpy as np
 import sqlalchemy
 from sqlalchemy.orm import sessionmaker, scoped_session
-from chlog_database import LogMessage
-from acquisition_database import Acquisition, Base
-from chime_frb_operations import UserAccounts
 from subprocess import check_output
 from functools import wraps
 from passlib.hash import sha256_crypt
+from chlog_database import LogMessage
+from chime_frb_operations import UserAccounts, Acquisition, Base
 
 #print('Python version:', sys.version)
 # 2.7 on cf0g9
@@ -43,7 +41,7 @@ def get_rpc_client():
         _rpc_client = RpcClient(servers)
     return _rpc_client
 
-def get_cnc_client():
+def get_cnc_client(user="l1operator"):
     # SSH
     if False:
         #from webapp.cnc_client import CncClient
@@ -51,7 +49,7 @@ def get_cnc_client():
         client = CncClient(ctx=app.zmq)
         return client
     from cnc_ssh import CncSsh
-    client = CncSsh(ssh_options='-o "User=l1operator" -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa')
+    client = CncSsh(ssh_options='-o "User=%s" -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa'%user)
     return client
 
 def get_db_session():
@@ -123,7 +121,7 @@ def parse_config(app):
 
     # SSH
     app.cnc_nodes = [n.replace('tcp://', '').replace(':9999','') for n in cnc_nodes]
-
+    app.head_nodes = ['10.5.2.1']
 
     # FIXME(?): check the format of the node strings here?
     # (Should be something like 'tcp://10.0.0.101:5555')
@@ -132,13 +130,12 @@ def parse_config(app):
     engine = sqlalchemy.create_engine(database)
     app.make_db_session = scoped_session(sessionmaker(bind=engine))
 
-    acq_database = y.get('acq_database', 'sqlite:///acq.sqlite3')
-    acq_engine = sqlalchemy.create_engine(acq_database, echo=True)
+    operations_database = y.get('chime_frb_operations_database', 'sqlite:///chime_frb_operations.sqlite3')
+    acq_engine = sqlalchemy.create_engine(operations_database)
     Base.metadata.create_all(acq_engine)
     app.make_acq_db_session = scoped_session(sessionmaker(bind=acq_engine))
 
-    operations_database = y.get('operations_database', 'sqlite:///operations.sqlite3')
-    operations_engine = sqlalchemy.create_engine(operations_database, echo=True)
+    operations_engine = sqlalchemy.create_engine(operations_database)
     Base.metadata.create_all(operations_engine)
     app.make_operations_db_session = scoped_session(sessionmaker(bind=operations_engine))
 
@@ -204,8 +201,6 @@ def diagnostics():
 #user login
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    print ("Request method is : ", request.method)
-
     if request.method == 'POST':
         # Get Form Fields
         username = request.form['username']
@@ -214,7 +209,6 @@ def login():
         user = operations_session.query(UserAccounts).filter(UserAccounts.username == username).all()
         if len(user):
             data = user[0].as_dict()
-            print (data)
             password = data['password']
             if sha256_crypt.verify(password_candidate, password):
                 session['logged_in'] = True
@@ -227,7 +221,6 @@ def login():
                 return render_template('login.html', error=error)
         else:
             error = "Username not found !"
-            print (error)
             return render_template('login.html', error=error)
     return render_template('login.html')
 
@@ -243,7 +236,6 @@ def logout():
 @login_required
 def acq_page():
     nodes = [n.replace('tcp://','') for n in app.nodes]
-    print (nodes)
     return render_template('acq.html',
                            nodes = list(enumerate(nodes)))
 
@@ -297,12 +289,12 @@ def acq_start():
                   'acquisition_start': datetime.now(),
                   'beams': str(acqbeams),
                   'frame0_ctime_us': frame0_ctime_us,
-                  'notes': acqmeta['notes']
+                  'notes': acqmeta,
+                  'user': session['username']
                  }
         acq = Acquisition(**to_add)
         acq_session.add(acq)
         acq_session.commit()
-        print ( "frame0_ctime_us: ", frame0_ctime_us)
     print('Start stream status:', stat)
     return jsonify(stat)
 
@@ -319,6 +311,73 @@ def acq_history():
 
 
 
+@app.route('/node-service')
+@login_required
+def node_service():
+    # Retrieve systemd/journalctl logs for ch-frb-l1 systemd processes.
+    client = get_cnc_client(user="frbadmin")
+    #results = client.run('cctl power on cf', app.cnc_nodes,
+    #                     timeout=3000)
+    #results = client.run('cctl power on cf1n8', app.head_nodes,
+    #                     timeout=3000)
+    #print ("results", results)
+    rr = []
+    rack = []
+    previous_rack = "1"
+    #for node,r in zip(app.cnc_nodes, results):
+    for node in app.cnc_nodes:
+        try:
+            r = check_output(["fping", "-c", "1", "-t100", node])
+        except:
+            r = None
+        current_rack = str(int(node.split('.')[2])-200)
+        current_rack = { '10': 'A', '11': 'B', '12': 'C', '13': 'D' }.get(current_rack, current_rack)
+        if not (current_rack == previous_rack):
+            rr.append({previous_rack: rack})
+            rack = []
+            previous_rack = current_rack
+        if r is None:
+            err = '(Node or Network is down)'
+            summary = "Off"
+            rack.append((node, summary, err))
+        else:
+            r = (r, "Node is up!", "")
+            (rtn, out, err) = r
+            print(rtn, out, err)
+            out = out.decode('utf-8')
+            err = err.decode('utf-8')
+
+            lines = (out + err).split('\n')
+            summary = "On"
+            rack.append((node, summary, out + err))
+    rr.append({previous_rack: rack})
+    results = rr
+    return render_template('node-service.html',
+                           status=results,
+                           service_url='/node-service-action')
+
+@app.route('/node-service-action/<action>/<node>')
+@login_required
+def node_service_action(action=None, node=None):
+    assert(action in ['on','off','cycle'])
+    if node == 'all':
+        perform_action = "cf" 
+    elif 'rack' in node:
+        perform_action = "cf"+node[4:]
+    else:
+        perform_action = get_dns_of_node(node)
+
+    client = get_cnc_client(user="frbadmin")
+    if (action == 'cycle'):
+        cmd = 'cctl power cycle %s' % perform_action
+    elif (action == 'off'):
+        cmd = 'cctl power off %s' % perform_action
+    else:
+        cmd = 'cctl power on %s' % perform_action
+    rtn = client.run(cmd, app.head_nodes)
+    print('Return value:', rtn)
+    return redirect('/node-service')
+
 @app.route('/l1-service')
 @login_required
 def l1_service():
@@ -326,6 +385,7 @@ def l1_service():
     client = get_cnc_client()
     results = client.run('sudo -n /bin/systemctl status ch-frb-l1', app.cnc_nodes,
                          timeout=3000)
+    print (app.cnc_nodes)
     rr = []
     rack = []
     previous_rack = "1"
@@ -382,6 +442,13 @@ def get_rack_of_nodes(rack):
     rack = { 'A': '10', 'B': '11', 'C': '12', 'D': '13' }.get(rack, rack)
     rack = int(rack)+200
     return [node for node in app.cnc_nodes if "."+str(rack)+"." in node]
+
+def get_dns_of_node(node):
+    node_split = node.split('.')
+    rack = str(int(node_split[2])-200)
+    rack = { 'A': '10', 'B': '11', 'C': '12', 'D': '13' }.get(rack, rack)
+    node_num = str(int(node_split[-1])-10)
+    return "cf"+rack+"n"+node_num
 
 @app.route('/l1-logs-stdout')
 @login_required
@@ -742,8 +809,11 @@ def packet_matrix_json():
 @login_required
 def packet_matrix():
     senders, sender_names, packets = get_packet_matrix()
-    
-    html = '<html><body>'
+   
+    #html = '<html><body>'
+    html = '<html>'
+    html +='<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">'
+    html += '<body>'
     html += '<table><tr><td></td>'
     for i,l0 in enumerate(sender_names):
         html += '<td><a href="l0/%s">%s</a></td>' % (l0,l0)

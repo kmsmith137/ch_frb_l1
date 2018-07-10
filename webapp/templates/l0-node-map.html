@@ -4,6 +4,7 @@
 <title>CHIME FRB L1 status</title>
 <script type="text/javascript" src="{{ url_for('static', filename='jquery.js') }}"></script>
 <script type="text/javascript" src="{{ url_for('static', filename='d3.min.js') }}"></script>
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
 </head>
 
 <style>
@@ -17,6 +18,7 @@ th, td {
 </style>
 
 <body>
+  {% include 'includes/_navbar.html'%}
 
 <p>
 <input type="button" onClick="stopUpdating()"  value="Stop updating" />
