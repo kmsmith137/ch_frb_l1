@@ -79,6 +79,7 @@ struct l1_config
 
     bool tflag = false;
     bool fflag = false;
+    bool iflag = false;
     bool l1b_pipe_io_debug = false;
     bool memory_pool_debug = false;
     bool write_chunk_debug = false;
@@ -225,6 +226,7 @@ l1_config::l1_config(int argc, char **argv)
         ("m,memory", "Enables a very verbose debug trace of the memory_slab_pool allocation")
         ("w,write", "Eables a very verbose debug trace of the logic for writing chunks")
         ("c,crash", "Deliberately crash dedispersion thread (for debugging, obviously)")
+        ("i,ignore", "Ignore end-of-stream packets; stay alive")
         ("t,toy", "Starts a \"toy server\" which assembles packets, but does not run RFI removal, dedispersion, or L1B (if -t is specified, then the last 3 arguments are optional)")
         ("a,acq", "Stream data to disk, saving it to this acquisition directory name", cxxopts::value<std::string>(acq_name))
         ("n,nfs", "For streaming data acquisition, stream to NFS, not SSD")
@@ -248,6 +250,8 @@ l1_config::l1_config(int argc, char **argv)
         this->deliberately_crash = true;
     if (opts.count("t"))
         this->tflag = true;
+    if (opts.count("i"))
+        this->iflag = true;
 
     if (opts.count("help") || (args.size() == 0) || (!((args.size() == 4) || ((args.size() == 1) && (this->tflag)))) ){
         std::cout << parser.help({""}) << endl;
@@ -282,6 +286,8 @@ l1_config::l1_config(int argc, char **argv)
     		this->deliberately_crash = true;
     	    else if (argv[i][j] == 't')
     		this->tflag = true;
+    	    else if (argv[i][j] == 'i')
+    		this->iflag = true;
     	    else
     		usage();
     	}
@@ -1233,7 +1239,9 @@ void l1_server::make_input_streams()
 	ini_params.memory_pool = memory_slab_pool;
 	ini_params.output_devices = this->output_devices;
 	ini_params.sleep_hack = this->sleep_hack;
-	
+        if (config.iflag)
+            ini_params.accept_end_of_stream_packets = false;
+
 	// Setting the 'throw_exception_on_buffer_drop' flag means that an exception 
 	// will be thrown if either:
 	//
