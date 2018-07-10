@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <iostream>
 #include <mask_stats.hpp>
 
@@ -66,9 +67,9 @@ unordered_map<string, float> mask_stats::get_stats(float history) {
             tot_f += _meas[i].nf;
         }
     }
-    stats["rfi_mask_pct_masked"]   = 100. * totmasked / totsamp;
-    stats["rfi_mask_pct_t_masked"] = 100. * tot_tmasked / tot_t;
-    stats["rfi_mask_pct_f_masked"] = 100. * tot_fmasked / tot_f;
+    stats["rfi_mask_pct_masked"]   = 100. * totmasked / max(totsamp, 1.f);
+    stats["rfi_mask_pct_t_masked"] = 100. * tot_tmasked / max(tot_t, 1.f);
+    stats["rfi_mask_pct_f_masked"] = 100. * tot_fmasked / max(tot_f, 1.f);
     return stats;
 }
     
