@@ -14,7 +14,7 @@ using namespace ch_frb_io;
 class L1PrometheusHandler : public CivetHandler {
 public:
     L1PrometheusHandler(shared_ptr<intensity_network_stream> stream,
-                        shared_ptr<ch_frb_l1::mask_stats> ms) :
+                        vector<shared_ptr<ch_frb_l1::mask_stats> > ms) :
         CivetHandler(),
         _stream(stream),
         _mask_stats(ms) {}
@@ -230,7 +230,7 @@ public:
 
 protected:
     shared_ptr<intensity_network_stream> _stream;
-    shared_ptr<ch_frb_l1::mask_stats> _mask_stats;
+    vector<shared_ptr<ch_frb_l1::mask_stats> > _mask_stats;
 };
 
 /*
@@ -252,7 +252,7 @@ public:
 
 shared_ptr<L1PrometheusServer> start_prometheus_server(string ipaddr_port,
                                                        shared_ptr<intensity_network_stream> stream,
-                                                       shared_ptr<ch_frb_l1::mask_stats> ms) {
+                                                       vector<shared_ptr<ch_frb_l1::mask_stats> > ms) {
     //"document_root", DOCUMENT_ROOT, "listening_ports", PORT, 0};
     std::vector<std::string> options;
     // listening_ports = [ipaddr:]port

@@ -810,7 +810,7 @@ void dedispersion_thread_context::_thread_main() const
     print_pipeline(rfi_chain, "");
 
     if (ms) {
-        cout << "mask_stats object specified.  Finding mask_counter stage..." << endl;
+        cout << "mask_stats objects specified.  Finding mask_counter stage..." << endl;
         // Find mask_counter stage(s).
         vector<shared_ptr<rf_pipelines::pipeline_object> > stages;
         pipeline_get_all(rfi_chain, stages);
@@ -956,7 +956,7 @@ struct l1_server {
     vector<shared_ptr<ch_frb_io::output_device>> output_devices;
     vector<shared_ptr<ch_frb_io::memory_slab_pool>> memory_slab_pools;
     vector<shared_ptr<ch_frb_io::intensity_network_stream>> input_streams;
-    vector<shared_ptr<ch_frb_l1::mask_stats> > mask_stats_objects;
+    vector<vector<shared_ptr<ch_frb_l1::mask_stats> > > mask_stats_objects;
     vector<shared_ptr<L1RpcServer>> rpc_servers;
     vector<shared_ptr<L1PrometheusServer>> prometheus_servers;
     vector<std::thread> rpc_threads;
@@ -1291,9 +1291,17 @@ void l1_server::make_prometheus_servers()
 	throw("ch-frb-l1 internal error: make_prometheus_servers() was called, without first calling make_input_streams()");
 
     this->prometheus_servers.resize(config.nstreams);
+    int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
     for (int istream = 0; istream < config.nstreams; istream++) {
-        mask_stats_objects.push_back(make_shared<mask_stats>());
-	prometheus_servers[istream] = start_prometheus_server(config.prometheus_address[istream], input_streams[istream], mask_stats_objects[istream]);
+        // Create one mask_stats object per beam; one vector per stream.
+        vector<shared_ptr<ch_frb_l1::mask_stats> > ms;
+        for (int ibeam = 0; ibeam < nbeams_per_stream; ibeam++) {
+            int beam_id = config.beam_ids[istream*nbeams_per_stream + ibeam];
+            ms.push_back(make_shared<mask_stats>(beam_id));
+        }
+        mask_stats_objects.push_back(ms);
+
+        prometheus_servers[istream] = start_prometheus_server(config.prometheus_address[istream], input_streams[istream], mask_stats_objects[istream]);
     }
 }
 
@@ -1319,7 +1327,7 @@ void l1_server::spawn_dedispersion_threads()
 	dedispersion_thread_context context;
 	context.config = this->config;
 	context.sp = this->input_streams[istream];
-        context.ms = this->mask_stats_objects[istream];
+        context.ms = this->mask_stats_objects[istream][ibeam % nbeams_per_stream];
 	context.l1b_subprocess = this->l1b_subprocesses[ibeam];
 	context.allowed_cores = this->dedispersion_cores[ibeam];
 	context.asynchronous_dedispersion = this->asynchronous_dedispersion;
