@@ -755,6 +755,11 @@ if __name__ == '__main__':
             print('Got rate:', r)
         doexit = True
 
+    if opt.masked_freqs or opt.masked_times:
+        import matplotlib
+        matplotlib.use('Agg')
+        import pylab as plt
+
     if opt.masked_freqs:
         freqs = client.get_masked_frequencies()
         print('Received masked frequencies:')
@@ -766,7 +771,6 @@ if __name__ == '__main__':
                 hist = v
                 print('Beam', beam, 'at', where, ':', hist.shape, hist.dtype,
                       hist.min(), hist.max())
-                import pylab as plt
                 plt.clf()
                 plt.imshow(hist, interpolation='nearest', origin='lower',
                            vmin=0, vmax=1, cmap='gray', aspect='auto')
@@ -777,7 +781,6 @@ if __name__ == '__main__':
         doexit = True
 
     if opt.masked_times:
-        import pylab as plt
         times = client.get_masked_times()
         for t in times:
             allbeams = set()
