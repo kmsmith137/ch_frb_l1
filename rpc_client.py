@@ -797,22 +797,49 @@ if __name__ == '__main__':
                 plt.title('Beam %i, %s' % (beam, where))
                 plt.ylim(-0.01, 1.01)
                 plt.savefig('masked-t-%i-%s.png' % (beam, where))
+
+                plt.clf()
+                plt.plot(hist, '.', alpha=0.01)
+                # Compute average in 1-second chunks
+                avgs = np.zeros(len(hist)//1000)
+                for i in range(len(avgs)):
+                    avgs[i] = np.mean(hist[i*1000:(i+1)*1000])
+                avgts = 500 + np.arange(len(avgs))*1000
+                plt.plot(avgts, avgs, 'b-')
+                plt.xlabel('Time (s)')
+                plt.ylabel('Fraction of masked samples')
+                plt.title('Beam %i, %s' % (beam, where))
+                plt.ylim(-0.01, 1.01)
+                plt.savefig('masked-t2-%i-%s.png' % (beam, where))
             allbeams = list(allbeams)
             allbeams.sort()
             for b in allbeams:
                 plt.clf()
-                for k,v in t.histories.items():
+                for ii,(k,v) in enumerate(t.histories.items()):
                     (beam,where) = k
                     if beam != b:
                         continue
                     hist = v
-                    plt.plot(hist, '-', label=where)
-                    plt.xlabel('Time (s)')
-                    plt.ylabel('Fraction of masked samples')
-                    plt.title('Beam %i' % (beam))
-                    plt.ylim(-0.01, 1.01)
-                    plt.legend()
-                    plt.savefig('masked-t-%i.png' % (beam))
+                    cc = 'brgm'[ii%4]
+                    # Compute average in 100-ms chunks
+                    avgs = np.zeros(len(hist)//100)
+                    for i in range(len(avgs)):
+                        avgs[i] = np.mean(hist[i*100:(i+1)*100])
+                    avgts = 50 + np.arange(len(avgs))*100
+                    plt.plot(avgts, avgs, '.', alpha=0.1, color=cc, label=where + ' (100 ms avg)')
+                    #plt.plot(hist, '.', alpha=0.1, color=cc, label=where)
+                    # Compute average in 1-second chunks
+                    avgs = np.zeros(len(hist)//1000)
+                    for i in range(len(avgs)):
+                        avgs[i] = np.mean(hist[i*1000:(i+1)*1000])
+                    avgts = 500 + np.arange(len(avgs))*1000
+                    plt.plot(avgts, avgs, '-', color=cc, label=where + ' (1 s avg)')
+                plt.xlabel('Time (s)')
+                plt.ylabel('Fraction of masked samples')
+                plt.title('Beam %i' % (beam))
+                plt.ylim(-0.01, 1.01)
+                plt.legend()
+                plt.savefig('masked-t-%i.png' % (beam))
 
         doexit = True
 
