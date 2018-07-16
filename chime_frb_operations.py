@@ -50,3 +50,26 @@ class Acquisition(Base):
                 'notes': self.notes,
                 'user': self.user,
                }
+
+class SignUpForMonitoring(Base):
+    __tablename__ = 'signupformonitoring'
+
+    monitoring_id = Column(Integer, primary_key=True)
+    name = Column(String)
+    email = Column(String)
+    monitoring_start = Column(String)
+    monitoring_stop = Column(String)
+    notes = Column(String)
+
+    def __repr__(self):
+        return '%s -- %s -- %s -- %s -- %s -- %s' % (self.name, self.monitoring_id, self.email, self.monitoring_start, self.monitoring_stop, self.notes)
+
+    def as_dict(self):
+        return {
+                'monitoring_id': self.monitoring_id,
+                'name': self.name,
+                'email': self.email,
+                'start': self.monitoring_start,
+                'end': self.monitoring_stop,
+                'notes': self.notes,
+               }

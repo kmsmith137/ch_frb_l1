@@ -23,7 +23,7 @@ from subprocess import check_output
 from functools import wraps
 from passlib.hash import sha256_crypt
 from chlog_database import LogMessage
-from chime_frb_operations import UserAccounts, Acquisition, Base
+from chime_frb_operations import UserAccounts, Acquisition, SignUpForMonitoring, Base
 
 #print('Python version:', sys.version)
 # 2.7 on cf0g9
@@ -60,6 +60,9 @@ def get_acq_db_session():
 
 def get_operations_db_session():
     return app.make_operations_db_session()
+
+def get_monitoring_db_session():
+    return app.make_monitoring_db_session()
 
 def parse_config(app):
     """
@@ -139,6 +142,10 @@ def parse_config(app):
     Base.metadata.create_all(operations_engine)
     app.make_operations_db_session = scoped_session(sessionmaker(bind=operations_engine))
 
+    monitoring_engine = sqlalchemy.create_engine(operations_database)
+    Base.metadata.create_all(monitoring_engine)
+    app.make_monitoring_db_session = scoped_session(sessionmaker(bind=monitoring_engine))
+
 parse_config(app)
 
 import zmq
@@ -158,6 +165,50 @@ def login_required(f):
             return redirect(url_for('login'))
     return decorated_function
 
+@app.route('/calendar', methods=['GET', 'POST'])
+@login_required
+def calendar():
+    if request.method=="POST":
+        monitoring_session = get_monitoring_db_session()
+        monitoring_info = monitoring_session.query(SignUpForMonitoring).all()
+        monitoring_info = [info.as_dict() for info in monitoring_info]
+        return jsonify(monitoring_info)
+    return render_template('sign_up_for_observations.html')
+
+@app.route('/sign_up_for_monitoring', methods=['POST'])
+@login_required
+def sign_up_for_monitoring():
+    monitoring_session = get_monitoring_db_session()
+    args = request.get_json()
+    print (args)
+    monitoring_id = int(args['monitoring_id'])
+    if args['to_delete']:
+        obj =  monitoring_session.query(SignUpForMonitoring).get(monitoring_id)
+        monitoring_session.delete(obj)
+        monitoring_session.commit()
+    else:
+        name = args['name'] 
+        email = args['email'] 
+        monitoring_start = args['start'] 
+        monitoring_stop = args['stop']
+        notes = args['notes']
+        to_add = {
+                  'name': name,
+                  'email': email,
+                  'monitoring_start': monitoring_start,
+                  'monitoring_stop': monitoring_stop,
+                  'notes': notes
+                 }
+
+        if monitoring_id:
+            monitoring_session.query(SignUpForMonitoring).filter_by(monitoring_id=monitoring_id).update(to_add)
+            monitoring_session.commit()
+        else:
+            add_monitoring_info = SignUpForMonitoring(**to_add)
+            monitoring_session.add(add_monitoring_info)
+            monitoring_session.commit()
+    return jsonify("success")
+    
 @app.route('/operations')
 @login_required
 def operations():

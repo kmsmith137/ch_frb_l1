@@ -1,0 +1,305 @@
+<!doctype html>
+<html>
+<head>
+<!--Sylesheets and JavaScript files to be included-->
+<link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='bootstrap-4/css/bootstrap.min.css') }}">
+<link type="text/css" href="{{ url_for('static', filename='node_modules/fullcalendar/dist/fullcalendar.css') }}" rel='stylesheet' />
+<link type="text/css" href="{{ url_for('static', filename='node_modules/fullcalendar/dist/fullcalendar.print.css') }}" rel='stylesheet' media='print'/>
+<link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='bootstrap-4/css/bootstrap-formhelpers.min.css') }}">
+<script type="text/javascript" src="{{ url_for('static', filename='moment.min.js') }}"></script>
+<script type="text/javascript" src="{{ url_for('static', filename='jquery.js') }}"></script>
+<script type="text/javascript" src="{{ url_for('static', filename='fullcalendar.min.js') }}"></script>
+<script type="text/javascript" src="{{ url_for('static', filename='bootstrap-4/js/bootstrap.min.js') }}"> </script>
+<script type="text/javascript" src="{{ url_for('static', filename='bootstrap-4/js/bootstrap-formhelpers.js') }}"> </script>
+
+<style>
+body {
+margin: 40px 10px;
+padding: 0;
+font-family: "Lucida Grande",Helvetica,Arial,Verdana,sans-serif;
+font-size: 14px;
+}
+#calendar {
+max-width: 900px;
+margin: 0 auto;
+}
+</style>
+</head>
+<body>
+  {% include 'includes/_navbar.html'%}
+  <br><br><br>
+  <div id='calendar'></div>
+
+
+  <div class="modal fade bd-example-modal-lg" id="showModal" tabindex="-1" role="dialog" aria-labelledby="calendarModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="calendarModalLabel">Monitoring Information</h5>
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <button type="button" class="btn btn-default btn-sm float-right" id="btnEdit">Edit</button>
+          <button type="button" class="btn btn-default btn-sm float-right" style="margin-right:5px;" id="btnDelete">Delete</button>
+          <p id="pDetails"></p>
+          <p id="monitoring_id"></p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <div class="modal fade bd-example-modal-lg" id="calendarModal" tabindex="-1" role="dialog" aria-labelledby="calendarModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="calendarModalLabel">Sign up for Monitoring</h5>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <form class="col-md-12 form-horizontal">
+          <label for="name" class="col-form-label">Name:</label>
+          <input type="text" class="form-control" id="name">
+          <label for="email" class="col-form-label">Email:</label>
+          <input type="text" class="form-control" id="email">
+          <div class="form-row align-items-center">
+            <div class="col-auto">
+              <label class="col-form-label">Start:</label>
+            </div>
+            <div class="col-auto">
+              <div class="bfh-datepicker" data-format="y-m-d" id="start-date"></div>
+            </div>
+            <div class="col-auto">
+              <div class="bfh-timepicker" data-mode="12h" id="start-time"></div>
+            </div>
+          </div>
+          <div class="form-row align-items-center">
+            <div class="col-auto">
+              <label class="col-form-label">End  :</label>
+            </div>
+            <div class="col-auto">
+              <div class="bfh-datepicker" data-format="y-m-d" id="stop-date"></div>
+            </div>
+            <div class="col-auto">
+              <div class="bfh-timepicker" data-mode="12h" id="stop-time"></div>
+            </div>
+          </div>
+          <label for="notes" class="col-form-label">Notes:</label>
+          <input type="text" class="form-control" id="notes">
+          <button type="button" class="btn btn-secondary float-right" data-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary float-right" id="save" style="margin-right:5px;">Save</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+$(document).ready(function() {
+    var selectedEvent=null
+    FetchEventAndRenderCalendar();
+    function FetchEventAndRenderCalendar(){
+       //make ajax call for events.
+        $.ajax({
+                type:"POST",
+                url: "{{ url_for('calendar') }}",
+                data: JSON.stringify(""),
+                contentType: 'application/json;charset=UTF-8',
+                success: function(response){
+                    response.forEach(function(d){
+                        d.title = d.name  
+                        d.start = moment(d.start)
+                        d.end = moment(d.end)
+                    });
+                    console.log(response);
+                    GenerateCalendar(response);
+                },
+                error: function(){
+                    alert("Failed");
+                }
+        });
+    };
+       //events= [
+       //    {
+       //    monitoring_id: '120',
+       //    email: 'foo@bar',
+       //    name: 'All Day Event',
+       //    start: '2018-07-01',
+       //    end: '2018-07-10',
+       //    notes: 'All Day '
+       //    },
+       //    {
+       //    monitoring_id: '121',
+       //    email: 'foo@bar',
+       //    name: 'Long Event',
+       //    start: '2018-07-07',
+       //    end: '2018-07-10',
+       //    notes: 'All Day '
+       //    },
+       // ]
+
+    function GenerateCalendar(events){
+        $('#calendar').fullCalendar('destroy');
+        $('#calendar').fullCalendar({
+            aspectRatio: 1.35,
+            <!--Header Section Including Previous,Next and Today-->
+            header: {
+                left: 'prev,next today',
+                center: 'title',
+                right: 'month,basicWeek,basicDay'
+                },
+            selectable: true,
+            selectHelper: true,
+            <!--Default Date-->
+            defaultDate: '2018-07-11',
+            editable: true,
+          
+            select: function(start, end) {
+                selectedEvent={
+                    monitoring_id:"0",
+                    name:"",
+                    email:"",
+                    start: start,
+                    end: end,
+                    notes: "",
+                }
+                openAddEditForm();
+                $('#calendar').fullCalendar('unselect');
+            },
+     
+            <!--Event Section-->
+            eventLimit: true, // allow "more" link when too many events
+            events: events,
+            eventClick: function(calEvent, jsEvent, view){
+                selectedEvent = calEvent;
+                var $description = $('<div/>');
+                $description.append($('<p/>').html('<b>Email: </b>'+calEvent.name));
+                $description.append($('<p/>').html('<b>Email: </b>'+calEvent.email));
+                $description.append($('<p/>').html('<b>Start: </b>'+calEvent.start.format("YYYY-MM-DD HH:mm a")));
+                if (calEvent.end != null){
+                    $description.append($('<p/>').html('<b>End: </b>'+calEvent.end.format("YYYY-MM-DD HH:mm a")));
+                }
+                $description.append($('<p/>').html('<b>Notes: </b>'+calEvent.notes));
+                $('#showModal #pDetails').empty().html($description);
+                $('#showModal').modal('show');
+            },
+            eventDrop: function(dropEvent, delta, revertFunc) {
+                if (!confirm("Are you sure about this change?")) {
+                    revertFunc();
+                }else{
+                    selectedEvent = dropEvent;
+                    var update_info={
+                        monitoring_id: dropEvent.monitoring_id,
+                        name: dropEvent.name,
+                        email: dropEvent.email,
+                        start: moment(dropEvent.start).toISOString(),
+                        stop: moment(dropEvent.end).toISOString(),
+                        notes: dropEvent.notes,
+                        to_delete: 0
+                    }
+                    SaveEvent(update_info);
+                }
+            }
+        });
+    }
+    $('#btnEdit').click(function(){
+        //Open modal for edit event
+        openAddEditForm();
+    });
+
+    $('#btnDelete').click(function(){
+        if (selectedEvent != null && confirm('Are you sure?')){
+            //Call ajax method to delete event.
+            info = {
+                    monitoring_id: selectedEvent.monitoring_id,
+                    to_delete: 1
+                   }
+            $.ajax({
+                    type:"POST",
+                    url: "{{ url_for('sign_up_for_monitoring') }}",
+                    data: JSON.stringify(info),
+                    contentType: 'application/json;charset=UTF-8',
+                    success: function(response){
+                        if (response == "success"){
+                            $('#calendarModal').modal('hide');
+                            FetchEventAndRenderCalendar();
+                        }    
+                    },
+                    error: function(){
+                        alert("Failed");
+                    }
+            });
+            FetchEventAndRenderCalendar();
+            $('#showModal').modal('hide');
+        }
+    });
+    function openAddEditForm(){
+        $('#showModal').modal('hide');
+        $('#calendarModal').modal('show');
+        if (selectedEvent != null){
+            $('#monitoring_id').val(selectedEvent.monitoring_id);
+            console.log("monitoring id: ", $('#monitoring_id').val())
+            $('#name').val(selectedEvent.name);
+            $('#email').val(selectedEvent.email);
+            $('#start-date').val(selectedEvent.start.format("YYYY-MM-DD"));
+            $('#start-time').val(selectedEvent.start.format("HH:mm"));
+            $('#stop-date').val(selectedEvent.end.format("YYYY-MM-DD"));
+            $('#stop-time').val(selectedEvent.end.format("HH:mm"));
+            $('#notes').val(selectedEvent.notes);
+        }
+    }
+    $('#save').click(function(){
+        //Validation
+        if ($('#name').val().trim() == ""){
+            alert("Name required");
+            return;
+        }
+        var start_str = $('#start-date').val() + ' '+ $('#start-time').val()
+        var stop_str = $('#stop-date').val() + ' '+ $('#stop-time').val()
+        var start = moment(start_str, "YYYY-MM-DD HH:mm A")
+        var stop = moment(stop_str, "YYYY-MM-DD HH:mm A")
+        if (start.toDate() > stop.toDate()){
+            alert("Invalid : Start time is after End time");
+            return; 
+        }
+        var info={
+                 monitoring_id: $('#monitoring_id').val(),
+                 name: $('#name').val().trim(),
+                 email: $('#email').val().trim(),
+                 start: moment(start).toISOString(),
+                 stop: moment(stop).toISOString(),
+                 notes: $('#notes').val(),
+                 to_delete: 0
+                 }
+        // call function for submit data to server
+        SaveEvent(info);
+    });
+    function SaveEvent(info){
+        // Write Ajax Method to update the server.
+        console.log("sending an ajax call: ", info)
+        $.ajax({
+                type:"POST",
+                url: "{{ url_for('sign_up_for_monitoring') }}",
+                data: JSON.stringify(info),
+                contentType: 'application/json;charset=UTF-8',
+                success: function(response){
+                    if (response == "success"){
+                        $('#calendarModal').modal('hide');
+                        FetchEventAndRenderCalendar();
+                    }    
+                },
+                error: function(){
+                    alert("Failed");
+                }
+        });
+    }
+});
+</script>
+</body>
+</html>
