@@ -106,6 +106,12 @@ int main(int argc, char** argv) {
     out_params.verbosity = 3;
     std::shared_ptr<output_device> outdev = output_device::make(out_params);
     ini.output_devices.push_back(outdev);
+    // Also add /frb-archiver-1 and -2.
+    out_params.verbosity = 2;
+    out_params.device_name = "/frb-archiver-1";
+    ini.output_devices.push_back(output_device::make(out_params));
+    out_params.device_name = "/frb-archiver-2";
+    ini.output_devices.push_back(output_device::make(out_params));
 
     shared_ptr<intensity_network_stream> stream = intensity_network_stream::make(ini);
     stream->start_stream();
