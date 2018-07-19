@@ -919,7 +919,7 @@ struct l1_server {
     vector<std::thread> dedispersion_threads;
 
     string frame0_txt;
-    int64_t frame0_nano;
+    uint64_t frame0_nano;
 
     // The constructor reads the configuration files, does a lot of sanity checks,
     // but does not initialize any "heavyweight" data structures.
@@ -1179,6 +1179,7 @@ void l1_server::make_input_streams()
 	ini_params.nt_per_packet = config.nt_per_packet;
 	ini_params.fpga_counts_per_sample = config.fpga_counts_per_sample;
 	ini_params.stream_id = istream + 1;   // +1 here since first NFS mount is /frb-archive-1, not /frb-archive-0
+        ini_params.frame0_nano = frame0_nano;
 	ini_params.force_fast_kernels = !config.slow_kernels;
 	ini_params.force_reference_kernels = config.slow_kernels;
 	ini_params.deliberately_crash = config.deliberately_crash;
@@ -1423,7 +1424,7 @@ void l1_server::fetch_frame0()
         cout << "ch-frb-l1: expected 'frame0[frame0_nano]' to be integral." << endl;
         return;
     }
-    frame0_nano = v.asInt64();
+    frame0_nano = v.asUInt64();
     cout << "Found frame0_nano: " << frame0_nano << endl;
 }
 
