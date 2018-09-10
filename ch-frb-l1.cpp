@@ -1180,6 +1180,7 @@ void l1_server::make_input_streams()
 	ini_params.fpga_counts_per_sample = config.fpga_counts_per_sample;
 	ini_params.stream_id = istream + 1;   // +1 here since first NFS mount is /frb-archive-1, not /frb-archive-0
         ini_params.frame0_nano = frame0_nano;
+        ini_params.frame0_url = config.frame0_url;
 	ini_params.force_fast_kernels = !config.slow_kernels;
 	ini_params.force_reference_kernels = config.slow_kernels;
 	ini_params.deliberately_crash = config.deliberately_crash;
