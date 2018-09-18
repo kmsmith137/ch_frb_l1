@@ -174,7 +174,7 @@ public:
                   "# TYPE %s gauge\n"
                   "%s %f\n",
                   key, "Total number of packets per second sent from L0 nodes to this L1 node in this sampling period",
-                  key, key, total_packets / period);
+                  key, key, (period ? total_packets / period : 0.));
 
         // Stats per beam.
 
