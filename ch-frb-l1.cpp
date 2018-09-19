@@ -719,7 +719,7 @@ void l1_config::_have_warnings() const
 struct dedispersion_thread_context {
     l1_config config;
     shared_ptr<ch_frb_io::intensity_network_stream> sp;
-    mask_stats_map ms;
+    mask_stats_map mask_stats;
     shared_ptr<bonsai::trigger_pipe> l1b_subprocess;   // warning: can be empty pointer!
     vector<int> allowed_cores;
     bool asynchronous_dedispersion;   // run RFI and dedispersion in separate threads?
@@ -825,8 +825,10 @@ void dedispersion_thread_context::_thread_main() const
             shared_ptr<rf_pipelines::mask_counter_transform> counter =
                 dynamic_pointer_cast<rf_pipelines::mask_counter_transform>(it);
             cout << "Found mask_counter_transform: " << counter->where << endl;
-            auto mit = ms.find(make_pair(beam_id, counter->where));
-            if (mit != ms.end())
+            // Previously, in make_mask_stats(), we built up a map from
+            // beam_id + pipeline location to mask_stats object.
+            auto mit = mask_stats.find(make_pair(beam_id, counter->where));
+            if (mit != mask_stats.end())
                 counter->add_callback(mit->second);
         }
     }
@@ -1325,14 +1327,14 @@ void l1_server::make_mask_stats()
     int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
     for (int istream = 0; istream < config.nstreams; istream++) {
         // Create one mask_stats object per beam * mask_counter; one vector per stream.
-        mask_stats_map ms;
+        mask_stats_map mstats;
         for (int ibeam = 0; ibeam < nbeams_per_stream; ibeam++) {
             int beam_id = config.beam_ids[istream*nbeams_per_stream + ibeam];
             for (const auto &wit : mask_counters_where) {
-                ms[make_pair(beam_id, wit)] = make_shared<mask_stats>(beam_id, wit);
+                mstats[make_pair(beam_id, wit)] = make_shared<mask_stats>(beam_id, wit);
             }
         }
-        mask_stats_objects.push_back(ms);
+        mask_stats_objects.push_back(mstats);
     }
 }
        
@@ -1357,7 +1359,7 @@ void l1_server::spawn_dedispersion_threads()
 	dedispersion_thread_context context;
 	context.config = this->config;
 	context.sp = this->input_streams[istream];
-        context.ms = this->mask_stats_objects[istream];
+        context.mask_stats = this->mask_stats_objects[istream];
 	context.l1b_subprocess = this->l1b_subprocesses[ibeam];
 	context.allowed_cores = this->dedispersion_cores[ibeam];
 	context.asynchronous_dedispersion = this->asynchronous_dedispersion;
