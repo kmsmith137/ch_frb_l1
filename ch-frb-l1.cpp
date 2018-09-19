@@ -94,8 +94,8 @@ struct l1_config
     int nt_per_packet = 0;
     int fpga_counts_per_sample = 384;
 
-    // FIXME -- the number of frequencies in the downsampled RFI chain.
-    int ndownfreq = 1024;
+    // The number of frequencies in the downsampled RFI chain.  Must match a value in the RFI JSON file.
+    int nrfifreq = 1024;
     
     // If slow_kernels=false (the default), the L1 server will use fast assembly language kernels
     // for its packet processing.  If slow_kernels=true, then it will use reference kernels which
@@ -617,7 +617,7 @@ l1_config::l1_config(int argc, char **argv)
     //   - total_staging_chunks (derived from config param 'write_staging_area_gb')
 
     int nupfreq = xdiv(nfreq, nfreq_c);
-    this->nbytes_per_memory_slab = ch_frb_io::assembled_chunk::get_memory_slab_size(nupfreq, nt_per_packet, this->ndownfreq);
+    this->nbytes_per_memory_slab = ch_frb_io::assembled_chunk::get_memory_slab_size(nupfreq, nt_per_packet, this->nrfifreq);
 
     int live_chunks_per_beam = 2;   // "active" chunks
     live_chunks_per_beam += assembled_ringbuf_nchunks;  // assembled_ringbuf
@@ -785,8 +785,8 @@ public:
             return NULL;
         }
         cout << "Found chunk!" << endl;
-        if (chunk->ndownfreq != m.nf) {
-            cout << "Chunk's downsampled frequencies = " << chunk->ndownfreq << " but expected " << m.nf << endl;
+        if (chunk->nrfifreq != m.nf) {
+            cout << "Chunk's downsampled frequencies = " << chunk->nrfifreq << " but expected " << m.nf << endl;
             return NULL;
         }
         // assume it gets filled...
@@ -1275,7 +1275,7 @@ void l1_server::make_input_streams()
 	ini_params.udp_port = config.port[istream];
 	ini_params.beam_ids = vector<int> (beam_id0, beam_id1);
 	ini_params.nupfreq = xdiv(config.nfreq, ch_frb_io::constants::nfreq_coarse_tot);
-        ini_params.ndownfreq = config.ndownfreq;
+        ini_params.nrfifreq = config.nrfifreq;
 	ini_params.nt_per_packet = config.nt_per_packet;
 	ini_params.fpga_counts_per_sample = config.fpga_counts_per_sample;
 	ini_params.stream_id = istream + 1;   // +1 here since first NFS mount is /frb-archive-1, not /frb-archive-0
