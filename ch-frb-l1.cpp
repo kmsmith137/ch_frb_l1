@@ -759,6 +759,44 @@ static void print_pipeline(shared_ptr<rf_pipelines::pipeline_object> pipe, strin
   }
 }
 
+class mask_updater : public rf_pipelines::mask_counter_callback {
+public:
+    mask_updater(shared_ptr<ch_frb_io::intensity_network_stream> _stream,
+                 int _beam) :
+        stream(_stream),
+        beam(_beam)
+    {}
+    virtual ~mask_updater() {}
+    virtual void mask_count(const struct rf_pipelines::mask_counter_measurements& m) {
+        cout << "mask_updater: processing chunk starting at " << m.pos << endl;
+        cout << "  nt " << m.nt << ", nf " << m.nf << endl;
+
+        uint64_t fpga_counts = ((uint64_t)m.pos +
+                                (uint64_t)stream->first_ichunk * (uint64_t)ch_frb_io::constants::nt_per_assembled_chunk)
+            * (uint64_t)stream->ini_params.fpga_counts_per_sample;
+
+        cout << "FPGA counts: " << fpga_counts << endl;
+        
+        shared_ptr<ch_frb_io::assembled_chunk> chunk = stream->find_assembled_chunk(beam, fpga_counts);
+        if (!chunk) {
+            cout << "Could not find a chunk for beam " << beam << ", FPGA counts " << fpga_counts << endl;
+            return;
+        }
+        cout << "Found chunk -- adding bitmask!" << endl;
+        
+        for (int i_f=0; i_f<m.nf; i_f++) {
+            for (int i_t=0; i_t<m.nt; i_t++) {
+                //if (m.weights[i_f*m.wstride + i_t] == 0) {
+                //}
+            }
+        }
+    }
+
+protected:
+    shared_ptr<ch_frb_io::intensity_network_stream> stream;
+    int beam;
+};
+
 
 // Note: only called if config.tflag == false.
 void dedispersion_thread_context::_thread_main() const
@@ -815,6 +853,8 @@ void dedispersion_thread_context::_thread_main() const
     //cout << "rfi_chain state: " << rfi_chain->state << endl;
     //print_pipeline(rfi_chain, "");
 
+    auto maskup = make_shared<mask_updater>(sp, beam_id);
+
     cout << "Finding mask_counter stages..." << endl;
     // Find mask_counter stage(s).
     vector<shared_ptr<rf_pipelines::pipeline_object> > stages;
@@ -830,6 +870,11 @@ void dedispersion_thread_context::_thread_main() const
             auto mit = mask_stats.find(make_pair(beam_id, counter->where));
             if (mit != mask_stats.end())
                 counter->add_callback(mit->second);
+
+            // Are we going to update our buffered assembled_chunks from this
+            // mask?
+            if (counter->bitmap)
+                counter->add_callback(maskup);
         }
     }
 
