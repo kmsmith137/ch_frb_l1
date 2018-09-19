@@ -93,6 +93,9 @@ struct l1_config
     int nstreams = 0;
     int nt_per_packet = 0;
     int fpga_counts_per_sample = 384;
+
+    // FIXME -- the number of frequencies in the downsampled RFI chain.
+    int ndownfreq = 1024;
     
     // If slow_kernels=false (the default), the L1 server will use fast assembly language kernels
     // for its packet processing.  If slow_kernels=true, then it will use reference kernels which
@@ -614,7 +617,7 @@ l1_config::l1_config(int argc, char **argv)
     //   - total_staging_chunks (derived from config param 'write_staging_area_gb')
 
     int nupfreq = xdiv(nfreq, nfreq_c);
-    this->nbytes_per_memory_slab = ch_frb_io::assembled_chunk::get_memory_slab_size(nupfreq, nt_per_packet);
+    this->nbytes_per_memory_slab = ch_frb_io::assembled_chunk::get_memory_slab_size(nupfreq, nt_per_packet, this->ndownfreq);
 
     int live_chunks_per_beam = 2;   // "active" chunks
     live_chunks_per_beam += assembled_ringbuf_nchunks;  // assembled_ringbuf
@@ -767,30 +770,31 @@ public:
         beam(_beam)
     {}
     virtual ~mask_updater() {}
-    virtual void mask_count(const struct rf_pipelines::mask_counter_measurements& m) {
-        cout << "mask_updater: processing chunk starting at " << m.pos << endl;
-        cout << "  nt " << m.nt << ", nf " << m.nf << endl;
+
+    virtual uint8_t* get_bitmap_destination(const struct rf_pipelines::mask_counter_measurements& m) {
+        cout << "mask_updater: finding bitmap destination for " << m.pos << endl;
 
         uint64_t fpga_counts = ((uint64_t)m.pos +
                                 (uint64_t)stream->first_ichunk * (uint64_t)ch_frb_io::constants::nt_per_assembled_chunk)
             * (uint64_t)stream->ini_params.fpga_counts_per_sample;
-
         cout << "FPGA counts: " << fpga_counts << endl;
         
         shared_ptr<ch_frb_io::assembled_chunk> chunk = stream->find_assembled_chunk(beam, fpga_counts);
         if (!chunk) {
             cout << "Could not find a chunk for beam " << beam << ", FPGA counts " << fpga_counts << endl;
-            return;
+            return NULL;
         }
-        cout << "Found chunk -- adding bitmask!" << endl;
-        
-        for (int i_f=0; i_f<m.nf; i_f++) {
-            for (int i_t=0; i_t<m.nt; i_t++) {
-                //if (m.weights[i_f*m.wstride + i_t] == 0) {
-                //}
-            }
+        cout << "Found chunk!" << endl;
+        if (chunk->ndownfreq != m.nf) {
+            cout << "Chunk's downsampled frequencies = " << chunk->ndownfreq << " but expected " << m.nf << endl;
+            return NULL;
         }
+        // assume it gets filled...
+        chunk->has_rfi_mask = true;
+        return chunk->rfi_mask;
     }
+
+    virtual void mask_count(const struct rf_pipelines::mask_counter_measurements& m) {}
 
 protected:
     shared_ptr<ch_frb_io::intensity_network_stream> stream;
@@ -1271,6 +1275,7 @@ void l1_server::make_input_streams()
 	ini_params.udp_port = config.port[istream];
 	ini_params.beam_ids = vector<int> (beam_id0, beam_id1);
 	ini_params.nupfreq = xdiv(config.nfreq, ch_frb_io::constants::nfreq_coarse_tot);
+        ini_params.ndownfreq = config.ndownfreq;
 	ini_params.nt_per_packet = config.nt_per_packet;
 	ini_params.fpga_counts_per_sample = config.fpga_counts_per_sample;
 	ini_params.stream_id = istream + 1;   // +1 here since first NFS mount is /frb-archive-1, not /frb-archive-0

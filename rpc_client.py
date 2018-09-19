@@ -43,6 +43,28 @@ class AssembledChunk(object):
         offsets = c[15]
         data    = c[16]
 
+        if len(c) == 20:
+            self.ndownfreq = c[17]
+            self.has_rfi_mask = c[18]
+            mask = c[19]
+            # to numpy
+            #print('mask:', type(mask))
+            mask = np.fromstring(mask, dtype=np.uint8)
+            mask = mask.reshape((self.ndownfreq, self.nt//8))
+            #print('mask:', len(mask), mask.dtype)
+            #print('Ndownfreq:', self.ndownfreq)
+            #print('NT:', self.nt)
+            #print('Mask:', len(mask))
+            # Expand mask!
+            self.rfi_mask = np.zeros((self.ndownfreq, self.nt), bool)
+            for i in range(8):
+                self.rfi_mask[:,i::8] = (mask & (1<<i)) > 0
+            #print('Expanded mask:', self.rfi_mask.shape)
+        else:
+            self.ndownfreq = 0
+            self.has_rfi_mask = False
+            self.rfi_mask = None
+
         if compressed:
            import pybitshuffle
            data = pybitshuffle.decompress(data, self.ndata)
