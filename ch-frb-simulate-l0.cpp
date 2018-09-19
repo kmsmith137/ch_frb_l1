@@ -175,7 +175,8 @@ shared_ptr<ch_frb_io::intensity_network_ostream> l0_params::make_ostream(int ith
     ini_params.beam_ids = vrange(istream * nbeams_per_stream, (istream+1) * nbeams_per_stream);
     ini_params.coarse_freq_ids = vrange(jthread * nfreq_coarse_per_thread, (jthread+1) * nfreq_coarse_per_thread);
     ini_params.nupfreq = nupfreq;
-    ini_params.nt_per_chunk = nt_per_packet;   // best?
+    ini_params.nt_per_chunk = ch_frb_io::constants::nt_per_assembled_chunk;
+    //nt_per_packet; // best?
     ini_params.nfreq_coarse_per_packet = nfreq_coarse_per_packet;
     ini_params.nt_per_packet = nt_per_packet;
     ini_params.fpga_counts_per_sample = fpga_counts_per_sample;
@@ -247,7 +248,9 @@ void sim_thread_main(const shared_ptr<ch_frb_io::intensity_network_ostream> &ost
         for (unsigned int i = 0; i < intensity.size(); i++)
             intensity[i] = r0 + scale * (float)rando();
 
-	int64_t fpga_count = int64_t(ichunk) * int64_t(ostream->fpga_counts_per_chunk);
+        int chunk_offset = 100;
+
+	int64_t fpga_count = int64_t(ichunk + chunk_offset) * int64_t(ostream->fpga_counts_per_chunk);
 	ostream->send_chunk(&intensity[0], stride, &weights[0], stride, fpga_count);
     }
 
