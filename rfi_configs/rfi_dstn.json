@@ -6,10 +6,9 @@
                 "class_name": "pipeline", 
                 "elements": [
                     {
-                        "class_name": "mask_counter", 
+                        "class_name": "mask_counter",
                         "nt_chunk": 1024,
-                        "where": "before_rfi",
-                        "bitmap": false
+                        "where": "before_rfi"
                     },
                     {
                         "Df": 1, 
@@ -1094,10 +1093,9 @@
                         "axis": "AXIS_FREQ"
                     }, 
                     {
-                        "class_name": "mask_counter", 
+                        "class_name": "chime_mask_counter", 
                         "nt_chunk": 1024,
-                        "where": "after_rfi",
-                        "bitmap": true
+                        "where": "after_rfi"
                     }
                 ]
             }, 

@@ -823,20 +823,24 @@ void dedispersion_thread_context::_thread_main() const
     pipeline_get_all(rfi_chain, stages);
     for (auto &it : stages) {
         //cout << "pipeline stage: class " << it->class_name << endl;
-        if (it->class_name == "mask_counter") {
+        if ((it->class_name == "mask_counter") ||
+            (it->class_name == "chime_mask_counter")) {
             shared_ptr<rf_pipelines::mask_counter_transform> counter =
                 dynamic_pointer_cast<rf_pipelines::mask_counter_transform>(it);
             cout << "Found mask_counter_transform: " << counter->where << endl;
             // Previously, in make_mask_stats(), we built up a map from
             // beam_id + pipeline location to mask_stats object.
-            auto mit = mask_stats.find(make_pair(beam_id, counter->where));
-            if (mit != mask_stats.end())
+            auto mit = ms_map.find(make_pair(beam_id, counter->where));
+            if (mit != ms_map.end())
                 counter->add_callback(mit->second);
-
-            // Are we going to update our buffered assembled_chunks from this
-            // mask?
-            if (counter->bitmap)
-                counter->add_callback(maskup);
+            else
+                cout << "Did not find a mask_stats object for beam " << beam_id << ", " << counter->where << endl;
+        }
+        if (it->class_name == "chime_mask_counter") {
+            shared_ptr<rf_pipelines::chime_mask_counter> counter =
+                dynamic_pointer_cast<rf_pipelines::chime_mask_counter>(it);
+            cout << "Found chime_mask_counter: " << counter->where << endl;
+            counter->set_stream(sp, beam_id);
         }
     }
 
@@ -1327,7 +1331,8 @@ void l1_server::make_mask_stats()
     vector<shared_ptr<rf_pipelines::pipeline_object> > stages;
     pipeline_get_all(rfi_chain, stages);
     for (auto &it : stages)
-        if (it->class_name == "mask_counter") {
+        if ((it->class_name == "mask_counter") ||
+            (it->class_name == "chime_mask_counter")) {
             shared_ptr<rf_pipelines::mask_counter_transform> counter = dynamic_pointer_cast<rf_pipelines::mask_counter_transform>(it);
             mask_counters_where.push_back(counter->where);
         }
