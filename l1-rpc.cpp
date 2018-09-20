@@ -828,7 +828,10 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 	    w->priority = req.priority;
 	    w->chunk = chunk;
 	    w->token = token;
-	    
+
+            // FIXME -- this could be set by an RPC argument.
+            w->need_rfi_mask = true;
+
 	    // Returns false if request failed to queue.  
 	    bool success = _output_devices.enqueue_write_request(w);
 

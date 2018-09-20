@@ -1200,7 +1200,7 @@ void l1_server::make_output_devices()
 void l1_server::make_memory_slab_pools()
 {
     if (memory_slab_pools.size() != 0)
-	throw("ch-frb-l1 internal error: double call to make_output_devices()");
+	throw("ch-frb-l1 internal error: double call to make_memory_slab_pools()");
     
     int verbosity = config.memory_pool_debug ? 2 : 1;
     int memory_slabs_per_cpu = config.total_memory_slabs / ncpus;
