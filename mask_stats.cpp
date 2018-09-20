@@ -32,10 +32,12 @@ void mask_stats::mask_count(const struct rf_pipelines::mask_counter_measurements
         _imeas = (_imeas + 1) % _maxmeas;
     }
 
-    unordered_map<string, float> stats = get_stats(5.);
-    for (const auto &it : stats) {
-        cout << "  " << it.first << " = " << it.second << endl;
-    }
+    /*
+     unordered_map<string, float> stats = get_stats(5.);
+     for (const auto &it : stats) {
+     cout << "  " << it.first << " = " << it.second << endl;
+     }
+     */
 }
 
 vector<rf_pipelines::mask_counter_measurements>

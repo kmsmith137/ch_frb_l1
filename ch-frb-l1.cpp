@@ -722,7 +722,7 @@ void l1_config::_have_warnings() const
 struct dedispersion_thread_context {
     l1_config config;
     shared_ptr<ch_frb_io::intensity_network_stream> sp;
-    mask_stats_map mask_stats;
+    mask_stats_map ms_map;
     shared_ptr<bonsai::trigger_pipe> l1b_subprocess;   // warning: can be empty pointer!
     vector<int> allowed_cores;
     bool asynchronous_dedispersion;   // run RFI and dedispersion in separate threads?
@@ -972,7 +972,7 @@ struct l1_server {
     vector<shared_ptr<ch_frb_io::output_device>> output_devices;
     vector<shared_ptr<ch_frb_io::memory_slab_pool>> memory_slab_pools;
     vector<shared_ptr<ch_frb_io::intensity_network_stream>> input_streams;
-    vector<mask_stats_map> mask_stats_objects;
+    vector<mask_stats_map> mask_stats_maps;
     vector<shared_ptr<L1RpcServer>> rpc_servers;
     vector<shared_ptr<L1PrometheusServer>> prometheus_servers;
     vector<std::thread> rpc_threads;
@@ -1298,7 +1298,7 @@ void l1_server::make_rpc_servers()
     this->rpc_threads.resize(config.nstreams);
     
     for (int istream = 0; istream < config.nstreams; istream++) {
-	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], mask_stats_objects[istream], config.rpc_address[istream], command_line);
+	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], mask_stats_maps[istream], config.rpc_address[istream], command_line);
 	rpc_threads[istream] = rpc_servers[istream]->start();
     }
 }
@@ -1311,7 +1311,7 @@ void l1_server::make_prometheus_servers()
 	throw("ch-frb-l1 internal error: make_prometheus_servers() was called, without first calling make_input_streams()");
     this->prometheus_servers.resize(config.nstreams);
     for (int istream = 0; istream < config.nstreams; istream++) {
-        prometheus_servers[istream] = start_prometheus_server(config.prometheus_address[istream], input_streams[istream], mask_stats_objects[istream]);
+        prometheus_servers[istream] = start_prometheus_server(config.prometheus_address[istream], input_streams[istream], mask_stats_maps[istream]);
     }
 }
 
@@ -1342,7 +1342,7 @@ void l1_server::make_mask_stats()
                 mstats[make_pair(beam_id, wit)] = make_shared<mask_stats>(beam_id, wit);
             }
         }
-        mask_stats_objects.push_back(mstats);
+        mask_stats_maps.push_back(mstats);
     }
 }
        
@@ -1367,7 +1367,7 @@ void l1_server::spawn_dedispersion_threads()
 	dedispersion_thread_context context;
 	context.config = this->config;
 	context.sp = this->input_streams[istream];
-        context.mask_stats = this->mask_stats_objects[istream];
+        context.ms_map = this->mask_stats_maps[istream];
 	context.l1b_subprocess = this->l1b_subprocesses[ibeam];
 	context.allowed_cores = this->dedispersion_cores[ibeam];
 	context.asynchronous_dedispersion = this->asynchronous_dedispersion;
