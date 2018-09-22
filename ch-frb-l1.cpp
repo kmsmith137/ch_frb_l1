@@ -79,11 +79,11 @@ struct l1_config
 
     bool tflag = false;
     bool fflag = false;
-    bool iflag = false;
     bool l1b_pipe_io_debug = false;
     bool memory_pool_debug = false;
     bool write_chunk_debug = false;
     bool deliberately_crash = false;
+    bool ignore_end_of_stream = false;
     int l1_verbosity = 1;
 
     // nstreams is automatically determined by the number of (ipaddr, port) pairs.
@@ -192,9 +192,10 @@ struct l1_config
 #else
 static void usage()
 {
-    cerr << "Usage: ch-frb-l1 [-fvpmct] <l1_config.yaml> <rfi_config.json> <bonsai_config.hdf5> <l1b_config_file>\n"
+    cerr << "Usage: ch-frb-l1 [-fvipmwct] <l1_config.yaml> <rfi_config.json> <bonsai_config.hdf5> <l1b_config_file>\n"
 	 << "  -f forces the L1 server to run, even if the config files look fishy\n"
 	 << "  -v increases verbosity of the toplevel ch-frb-l1 logic\n"
+         << "  -i ignores end-of-stream packets\n"
 	 << "  -p enables a very verbose debug trace of the pipe I/O between L1a and L1b\n"
 	 << "  -m enables a very verbose debug trace of the memory_slab_pool allocation\n"
 	 << "  -w enables a very verbose debug trace of the logic for writing chunks\n"
@@ -226,10 +227,10 @@ l1_config::l1_config(int argc, char **argv)
         ("v,verbose", "Increases verbosity of the toplevel ch-frb-l1 logic")
         ("f,force", "Forces the L1 server to run, even if the config files look fishy")
         ("p,pipe", "Enables a very verbose debug trace of the pipe I/O between L1a and L1b")
+        ("i,ignore", "Ignores end-of-stream packets")
         ("m,memory", "Enables a very verbose debug trace of the memory_slab_pool allocation")
         ("w,write", "Eables a very verbose debug trace of the logic for writing chunks")
         ("c,crash", "Deliberately crash dedispersion thread (for debugging, obviously)")
-        ("i,ignore", "Ignore end-of-stream packets; stay alive")
         ("t,toy", "Starts a \"toy server\" which assembles packets, but does not run RFI removal, dedispersion, or L1B (if -t is specified, then the last 3 arguments are optional)")
         ("a,acq", "Stream data to disk, saving it to this acquisition directory name", cxxopts::value<std::string>(acq_name))
         ("n,nfs", "For streaming data acquisition, stream to NFS, not SSD")
@@ -243,6 +244,8 @@ l1_config::l1_config(int argc, char **argv)
         this->l1_verbosity = 2;
     if (opts.count("f"))
         this->fflag = true;
+    if (opts.count("i"))
+        this->ignore_end_of_stream = true;
     if (opts.count("p"))
         this->l1b_pipe_io_debug = true;
     if (opts.count("m"))
@@ -253,8 +256,6 @@ l1_config::l1_config(int argc, char **argv)
         this->deliberately_crash = true;
     if (opts.count("t"))
         this->tflag = true;
-    if (opts.count("i"))
-        this->iflag = true;
 
     if (opts.count("help") || (args.size() == 0) || (!((args.size() == 4) || ((args.size() == 1) && (this->tflag)))) ){
         std::cout << parser.help({""}) << endl;
@@ -281,6 +282,8 @@ l1_config::l1_config(int argc, char **argv)
     		this->fflag = true;
     	    else if (argv[i][j] == 'p')
     		this->l1b_pipe_io_debug = true;
+            else if (argv[i][j] == 'i')
+                this->ignore_end_of_stream = true;
     	    else if (argv[i][j] == 'm')
     		this->memory_pool_debug = true;
     	    else if (argv[i][j] == 'w')
@@ -289,8 +292,6 @@ l1_config::l1_config(int argc, char **argv)
     		this->deliberately_crash = true;
     	    else if (argv[i][j] == 't')
     		this->tflag = true;
-    	    else if (argv[i][j] == 'i')
-    		this->iflag = true;
     	    else
     		usage();
     	}
@@ -1254,7 +1255,7 @@ void l1_server::make_input_streams()
 	ini_params.memory_pool = memory_slab_pool;
 	ini_params.output_devices = this->output_devices;
 	ini_params.sleep_hack = this->sleep_hack;
-        if (config.iflag)
+        if (config.ignore_end_of_stream)
             ini_params.accept_end_of_stream_packets = false;
 
 	// Setting the 'throw_exception_on_buffer_drop' flag means that an exception 
