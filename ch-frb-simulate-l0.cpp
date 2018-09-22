@@ -18,6 +18,14 @@ static void usage()
     exit(2);
 }
 
+void sim_thread_main(shared_ptr<l0_params> l0, int istream, double num_seconds) {
+    l0->send_noise(istream, num_seconds);
+}
+
+void chunk_files_thread_main(shared_ptr<l0_params> l0, int istream,
+                             vector<string> datafiles) {
+    l0->send_chunk_files(istream, datafiles);
+}
 
 int main(int argc, char **argv)
 {
@@ -39,37 +47,25 @@ int main(int argc, char **argv)
         if (num_seconds <= 0.0)
             usage();
 
-    l0_params p(filename);
-    p.write(cout);
+    shared_ptr<l0_params> p = make_shared<l0_params>(filename, gbps);
+    p->write(cout);
 
-    int nthreads = p.nthreads_tot;
+    int nthreads = p->nthreads_tot;
 
-    vector<shared_ptr<ch_frb_io::intensity_network_ostream>> streams(nthreads);
     vector<std::thread> threads(nthreads);
 
-    for (int ithread = 0; ithread < p.nthreads_tot; ithread++) {
-	streams[ithread] = p.make_ostream(ithread, gbps);
-	streams[ithread]->print_status();
-    }
-
     if (datafiles.size() == 0) {
-        for (int ithread = 0; ithread < p.nthreads_tot; ithread++)
-            threads[ithread] = std::thread(sim_thread_main, streams[ithread], num_seconds);
+        for (int ithread = 0; ithread < p->nthreads_tot; ithread++)
+            threads[ithread] = std::thread(sim_thread_main, p, ithread, num_seconds);
     } else {
-        for (int ithread = 0; ithread < p.nthreads_tot; ithread++)
-            threads[ithread] = std::thread(data_thread_main, streams[ithread], datafiles);
+        for (int ithread = 0; ithread < p->nthreads_tot; ithread++)
+            threads[ithread] = std::thread(chunk_files_thread_main, p, ithread, datafiles);
     }
     
-    for (int ithread = 0; ithread < p.nthreads_tot; ithread++)
+    for (int ithread = 0; ithread < p->nthreads_tot; ithread++)
 	threads[ithread].join();
 
-    // We postpone the calls to intensity_network_ostream::end_stream() until all sim_threads
-    // have finished (see explanation above).
-    for (int ithread = 0; ithread < p.nthreads_tot; ithread++)
-	streams[ithread]->end_stream(true);  // "true" joins network thread
-
-    for (int ithread = 0; ithread < p.nthreads_tot; ithread++)
-	streams[ithread]->print_status();
-
+    p->end_streams();
+    
     return 0;
 }

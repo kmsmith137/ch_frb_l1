@@ -16,11 +16,23 @@ using namespace std;
 struct l0_params {
     static constexpr int nfreq_coarse = ch_frb_io::constants::nfreq_coarse_tot;
 
-    l0_params(const string &filename);
+    l0_params(const string &filename, double gbps=1.0);
 
     shared_ptr<ch_frb_io::intensity_network_ostream> make_ostream(int ithread, double gbps) const;
 
     void write(ostream &os) const;
+
+    void end_streams();
+
+    std::vector<std::shared_ptr<ch_frb_io::intensity_network_ostream> > streams;
+
+    void send_noise(int istream, double num_seconds);
+
+    void send_chunk_files(int istream, const std::vector<std::string> &filenames);
+
+    void send_chunks(int istream, const std::vector<std::shared_ptr<ch_frb_io::assembled_chunk> > &chunks);
+
+    double gbps = 1.0;
 
     int nbeams_tot = 0;
     int nthreads_tot = 0;
@@ -51,12 +63,4 @@ struct l0_params {
     int packet_size = 0;
 
 };
-
-
-
-void sim_thread_main(const shared_ptr<ch_frb_io::intensity_network_ostream> &ostream, double num_seconds);
-
-void data_thread_main(const shared_ptr<ch_frb_io::intensity_network_ostream> &ostream,
-                      const vector<string> &filenames);
-
 

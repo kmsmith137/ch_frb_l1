@@ -12,7 +12,7 @@ using namespace std;
 using namespace ch_frb_io;
 using namespace ch_frb_l1;
 
-l0_params::l0_params(const string &filename)
+l0_params::l0_params(const string &filename, double gbps)
 {
     yaml_paramfile p(filename);
 
@@ -20,7 +20,8 @@ l0_params::l0_params(const string &filename)
     this->nthreads_tot = p.read_scalar<int> ("nthreads");
     this->nfreq_fine = p.read_scalar<int> ("nfreq");
     this->nt_per_packet = p.read_scalar<int> ("nt_per_packet");
-
+    this->gbps = gbps;
+    
     if (p.has_param("fpga_counts_per_sample"))
 	this->fpga_counts_per_sample = p.read_scalar<int> ("fpga_counts_per_sample");
     if (p.has_param("max_packet_size"))
@@ -115,6 +116,13 @@ l0_params::l0_params(const string &filename)
     assert(nt_per_packet > 0);
     assert(ch_frb_l1::is_power_of_two(nt_per_packet));
     assert(packet_size <= max_packet_size);
+
+    streams = std::vector<std::shared_ptr<ch_frb_io::intensity_network_ostream> >(nthreads_tot);
+    for (int ithread = 0; ithread < nthreads_tot; ithread++) {
+	streams[ithread] = make_ostream(ithread, gbps);
+	streams[ithread]->print_status();
+    }
+
 }
 
 
@@ -168,11 +176,23 @@ void l0_params::write(ostream &os) const
 }
 
 
+
+void l0_params::end_streams() {
+    // We postpone the calls to intensity_network_ostream::end_stream() until all sim_threads
+    // have finished (see explanation above).
+    for (int ithread = 0; ithread < nthreads_tot; ithread++)
+	streams[ithread]->end_stream(true);  // "true" joins network thread
+
+    for (int ithread = 0; ithread < nthreads_tot; ithread++)
+	streams[ithread]->print_status();
+}
+
+
 // -------------------------------------------------------------------------------------------------
 
+void l0_params::send_noise(int istream, double num_seconds) {
+    const shared_ptr<ch_frb_io::intensity_network_ostream> &ostream = streams[istream];
 
-void sim_thread_main(const shared_ptr<ch_frb_io::intensity_network_ostream> &ostream, double num_seconds)
-{
     assert(ostream->target_gbps > 0.0);
 
     double target_nbytes = 1.25e8 * ostream->target_gbps * num_seconds;
@@ -217,22 +237,15 @@ void sim_thread_main(const shared_ptr<ch_frb_io::intensity_network_ostream> &ost
     // and joined (see main() below).
 }
 
+void l0_params::send_chunks(int istream,
+                            const std::vector<std::shared_ptr<ch_frb_io::assembled_chunk> > &chunks) {
+    const shared_ptr<ch_frb_io::intensity_network_ostream> &ostream = streams[istream];
 
-void data_thread_main(const shared_ptr<ch_frb_io::intensity_network_ostream> &ostream,
-                      const vector<string> &filenames)
-{
     assert(ostream->target_gbps > 0.0);
 
     vector<pair<vector<float>,vector<float> > > data;
 
-    for (const string &fn : filenames) {
-        cout << "Reading chunk " << fn << endl;
-        shared_ptr<ch_frb_io::assembled_chunk> chunk = ch_frb_io::assembled_chunk::read_msgpack_file(fn);
-        if (!chunk) {
-            cout << "Failed to read msgpack file " << fn << endl;
-            return;
-        }
-
+    for (const shared_ptr<ch_frb_io::assembled_chunk> &chunk : chunks) {
         cout << "chunk: nupfreq " << chunk->nupfreq  << ", nt_per_packet " << chunk->nt_per_packet << ", fgpa_counts_per_sample " << chunk->fpga_counts_per_sample << ", nt_coarse " << chunk->nt_coarse << ", nscales " << chunk->nscales << ", ndata " << chunk->ndata << ", beam " << chunk->beam_id << ", fpga_begin " << chunk->fpga_begin <<endl;
 
         //cout << "elts per chunk " << ostream->elts_per_chunk << ", nt per chunk " << ostream->nt_per_chunk << endl;
@@ -303,4 +316,19 @@ void data_thread_main(const shared_ptr<ch_frb_io::intensity_network_ostream> &os
     // and joined (see main() below).
 }
 
+void l0_params::send_chunk_files(int istream,
+                                 const std::vector<std::string> &filenames) {
+    vector<shared_ptr<assembled_chunk> > chunks;
+    
+    for (const string &fn : filenames) {
+        cout << "Reading chunk " << fn << endl;
+        shared_ptr<ch_frb_io::assembled_chunk> chunk = ch_frb_io::assembled_chunk::read_msgpack_file(fn);
+        if (!chunk) {
+            cout << "Failed to read msgpack file " << fn << endl;
+            return;
+        }
+        chunks.push_back(chunk);
+    }
+    send_chunks(istream, chunks);
+}
 

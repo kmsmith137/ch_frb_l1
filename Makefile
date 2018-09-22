@@ -77,6 +77,9 @@ sim-l0-set: sim-l0-set.cpp l0-sim.cpp
 ch-frb-simulate-l0: ch-frb-simulate-l0.o l0-sim.o simulate-l0.o file_utils.o yaml_paramfile.o
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io -lyaml-cpp
 
+test-rfi-mask-write: test-rfi-mask-write.o l0-sim.o simulate-l0.o file_utils.o yaml_paramfile.o
+	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io -lyaml-cpp
+
 ch-frb-test: ch-frb-test.cpp $(L1_OBJS)
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io -lzmq -lhdf5
 
