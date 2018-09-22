@@ -77,6 +77,15 @@ sim-l0-set: sim-l0-set.cpp l0-sim.cpp
 ch-frb-simulate-l0: ch-frb-simulate-l0.o l0-sim.o simulate-l0.o file_utils.o yaml_paramfile.o
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io -lyaml-cpp
 
+PYTHON ?= python
+
+simulate_l0.so: simulate_l0_py.cpp setup.py simulate-l0.o file_utils.o yaml_paramfile.o
+	LINKFLAGS="$(CPP_LFLAGS) -lch_frb_io -lyaml-cpp" \
+	CPPFLAGS="$(CPP_CFLAGS)" \
+	OBJS="simulate-l0.o file_utils.o yaml_paramfile.o" \
+	CPP="$(CPP)" \
+	$(PYTHON) setup.py build_ext --inplace --force --build-temp .
+
 test-rfi-mask-write: test-rfi-mask-write.o l0-sim.o simulate-l0.o file_utils.o yaml_paramfile.o
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io -lyaml-cpp
 

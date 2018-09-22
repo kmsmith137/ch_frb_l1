@@ -24,14 +24,15 @@ struct l0_params {
 
     void end_streams();
 
-    std::vector<std::shared_ptr<ch_frb_io::intensity_network_ostream> > streams;
-
     void send_noise(int istream, double num_seconds);
 
     void send_chunk_files(int istream, const std::vector<std::string> &filenames);
 
     void send_chunks(int istream, const std::vector<std::shared_ptr<ch_frb_io::assembled_chunk> > &chunks);
 
+
+    std::vector<std::shared_ptr<ch_frb_io::intensity_network_ostream> > streams;
+    
     double gbps = 1.0;
 
     int nbeams_tot = 0;
