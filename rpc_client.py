@@ -44,24 +44,24 @@ class AssembledChunk(object):
         data    = c[16]
 
         if len(c) == 20:
-            self.ndownfreq = c[17]
+            self.nrfifreq = c[17]
             self.has_rfi_mask = c[18]
             mask = c[19]
             # to numpy
             #print('mask:', type(mask))
             mask = np.fromstring(mask, dtype=np.uint8)
-            mask = mask.reshape((self.ndownfreq, self.nt//8))
+            mask = mask.reshape((self.nrfifreq, self.nt//8))
             #print('mask:', len(mask), mask.dtype)
-            #print('Ndownfreq:', self.ndownfreq)
+            #print('Nrfifreq:', self.nrfifreq)
             #print('NT:', self.nt)
             #print('Mask:', len(mask))
             # Expand mask!
-            self.rfi_mask = np.zeros((self.ndownfreq, self.nt), bool)
+            self.rfi_mask = np.zeros((self.nrfifreq, self.nt), bool)
             for i in range(8):
                 self.rfi_mask[:,i::8] = (mask & (1<<i)) > 0
             #print('Expanded mask:', self.rfi_mask.shape)
         else:
-            self.ndownfreq = 0
+            self.nrfifreq = 0
             self.has_rfi_mask = False
             self.rfi_mask = None
 
