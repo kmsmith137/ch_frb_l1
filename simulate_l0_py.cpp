@@ -9,6 +9,9 @@
 
 #include "simulate-l0.hpp"
 
+#include <ch_frb_io.hpp>
+using namespace ch_frb_io;
+
 typedef struct {
     PyObject_HEAD
     /* Type-specific fields go here. */
@@ -152,6 +155,302 @@ static PyTypeObject L0SimType = {
     l0sim_new,                /* tp_new */
 };
 
+
+
+typedef struct {
+    PyObject_HEAD
+    /* Type-specific fields go here. */
+    shared_ptr<ch_frb_io::assembled_chunk> chunk;
+} chunk;
+
+static void chunk_dealloc(chunk* self) {
+    if (self)
+        self->chunk.reset();
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static PyObject* chunk_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
+    chunk *self;
+    self = (chunk*)type->tp_alloc(type, 0);
+    if (self != NULL) {
+        self->chunk = shared_ptr<ch_frb_io::assembled_chunk>();
+    }
+    return (PyObject*)self;
+}
+
+/*
+ assembled_chunk(beam_id, fpga_counts_per_sample,
+                 data, scale, offset, rfi)
+
+ data: (constants::nfreq_coarse * nupfreq, constants::nt_per_assembled_Chunk)
+ offsets, scales: (constants:nfreq_coarse, nt_coarse)
+ rfi: (nrfifreq, nt_per_assembled_chunk) <--- not bit-packed
+
+ */
+static int chunk_init(chunk *self, PyObject *args, PyObject *keywords) {
+    Py_ssize_t n;
+    int beam_id;
+    int fpga_counts_per_sample;
+    Py_ssize_t nf, nt;
+
+    int nupfreq;
+    int nt_coarse;
+    int nrfifreq;
+
+    int d1,d2;
+    
+    PyObject* py_data;
+    PyObject* py_scale;
+    PyObject* py_offset;
+    PyObject* py_rfi;
+
+    PyArray_Descr* dtype = PyArray_DescrFromType(NPY_DOUBLE);
+    PyArray_Descr* btype = PyArray_DescrFromType(NPY_BOOL);
+    int req = NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED
+        | NPY_ARRAY_ELEMENTSTRIDES;
+
+    n = PyTuple_Size(args);
+    if (n != 6) {
+        PyErr_SetString(PyExc_ValueError, "need six args: (beam_id, fpga_counts_per_sample, data, scale, offset, rfi)");
+        return -1;
+    }
+    // Try parsing as an array.
+    if (!PyArg_ParseTuple(args, "iiO!O!O!O!",
+                          &beam_id, &fpga_counts_per_sample,
+                          &PyArray_Type, &py_data,
+                          &PyArray_Type, &py_scale,
+                          &PyArray_Type, &py_offset,
+                          &PyArray_Type, &py_rfi)) {
+        PyErr_SetString(PyExc_ValueError, "Failed to parse args: need: (int beam_id, int fpga_counts_per_sample, array data, array scale, array offset, array rfi)");
+        return -1;
+    }
+
+    cout << "converting" << endl;
+    Py_INCREF(dtype);
+    py_data = PyArray_FromAny(py_data, dtype, 2, 2, req, NULL);
+    if (!py_data) {
+        PyErr_SetString(PyExc_ValueError, "Failed to convert 'data' array");
+        return -1;
+    }
+    Py_INCREF(dtype);
+    py_offset = PyArray_FromAny(py_offset, dtype, 2, 2, req, NULL);
+    if (!py_offset) {
+        PyErr_SetString(PyExc_ValueError, "Failed to convert 'offset' array");
+        return -1;
+    }
+    Py_INCREF(dtype);
+    py_scale = PyArray_FromAny(py_scale, dtype, 2, 2, req, NULL);
+    if (!py_scale) {
+        PyErr_SetString(PyExc_ValueError, "Failed to convert 'scale' array");
+        return -1;
+    }
+    Py_INCREF(btype);
+    py_rfi = PyArray_FromAny(py_rfi, btype, 2, 2, req, NULL);
+    if (!py_rfi) {
+        PyErr_SetString(PyExc_ValueError, "Failed to convert 'rfi' array");
+        return -1;
+    }
+
+    if (PyArray_NDIM(py_data) != 2) {
+        PyErr_SetString(PyExc_ValueError, "data array must be two-dimensional");
+        return -1;
+    }
+    if (PyArray_TYPE(py_data) != NPY_DOUBLE) {
+        PyErr_SetString(PyExc_ValueError, "data array must contain doubles");
+        return -1;
+    }
+    nf = PyArray_DIM(py_data, 0);
+    nt = PyArray_DIM(py_data, 1);
+
+    nupfreq = nf / ch_frb_io::constants::nfreq_coarse_tot;
+    
+    if (nt != ch_frb_io::constants::nt_per_assembled_chunk) {
+        PyErr_SetString(PyExc_ValueError, "data array must have nt_per_assembled_chunk time samples!");
+        return -1;
+    }
+
+    if (PyArray_NDIM(py_scale) != 2) {
+        PyErr_SetString(PyExc_ValueError, "scale array must be two-dimensional");
+        return -1;
+    }
+    if (PyArray_TYPE(py_scale) != NPY_DOUBLE) {
+        PyErr_SetString(PyExc_ValueError, "scale array must contain doubles");
+        return -1;
+    }
+    d1 = (int)PyArray_DIM(py_scale, 0);
+    nt_coarse = (int)PyArray_DIM(py_scale, 1);
+
+    if (d1 != ch_frb_io::constants::nfreq_coarse_tot) {
+        PyErr_SetString(PyExc_ValueError, "scale array must have nfreq_coarse samples!");
+        return -1;
+    }
+
+    if (PyArray_NDIM(py_offset) != 2) {
+        PyErr_SetString(PyExc_ValueError, "offset array must be two-dimensional");
+        return -1;
+    }
+    if (PyArray_TYPE(py_offset) != NPY_DOUBLE) {
+        PyErr_SetString(PyExc_ValueError, "offset array must contain doubles");
+        return -1;
+    }
+    d1 = (int)PyArray_DIM(py_offset, 0);
+    d2 = (int)PyArray_DIM(py_offset, 1);
+
+    if ((d1 != ch_frb_io::constants::nfreq_coarse_tot) ||
+        (d2 != nt_coarse)) {
+        PyErr_SetString(PyExc_ValueError, "offset array must have nfreq_coarse x nt_coarse samples!");
+        return -1;
+    }
+
+    if (PyArray_NDIM(py_rfi) != 2) {
+        PyErr_SetString(PyExc_ValueError, "rfi array must be two-dimensional");
+        return -1;
+    }
+    if (PyArray_TYPE(py_rfi) != NPY_BOOL) {
+        PyErr_SetString(PyExc_ValueError, "rfi array must contain booleans");
+        return -1;
+    }
+    d1 = (int)PyArray_DIM(py_rfi, 0);
+    d2 = (int)PyArray_DIM(py_rfi, 1);
+
+    nrfifreq = d1;
+    
+    if (d2 != ch_frb_io::constants::nt_per_assembled_chunk) {
+        PyErr_SetString(PyExc_ValueError, "rfi array must have nt_per_assembled_chunk samples!");
+        return -1;
+    }
+
+    cout << "copying" << endl;
+
+    /////////////////////////////////
+    ch_frb_io::assembled_chunk::initializer ini;
+    ini.beam_id = beam_id;
+    ini.nupfreq = nupfreq;
+    ini.nrfifreq = nrfifreq;
+    ini.nt_per_packet = constants::nt_per_assembled_chunk / nt_coarse;
+    ini.fpga_counts_per_sample = fpga_counts_per_sample;
+    self->chunk = ch_frb_io::assembled_chunk::make(ini);
+
+    double* d;
+    d = (double*)PyArray_DATA(py_data);
+    for (int i=0; i<self->chunk->ndata; i++) {
+        self->chunk->data[i] = (uint8_t)(d[i]);
+    }
+    d = (double*)PyArray_DATA(py_offset);
+    for (int i=0; i<self->chunk->nscales; i++) {
+        self->chunk->offsets[i] = (uint8_t)(d[i]);
+    }
+    d = (double*)PyArray_DATA(py_scale);
+    for (int i=0; i<self->chunk->nscales; i++) {
+        self->chunk->scales[i] = (uint8_t)(d[i]);
+    }
+    bool* b = (bool*)PyArray_DATA(py_rfi);
+    for (int i=0; i<self->chunk->nrfimaskbytes/8; i++) {
+        uint8_t bval = 0;
+        for (int j=0; j<8; j++) {
+            bval |= (b[i] * (1<<j));
+        }
+        self->chunk->rfi_mask[i] = bval;
+    }
+    self->chunk->has_rfi_mask = true;
+
+    Py_DECREF(py_data);
+    Py_DECREF(py_offset);
+    Py_DECREF(py_scale);
+    Py_DECREF(py_rfi);
+    Py_DECREF(dtype);
+    Py_DECREF(dtype);
+    Py_DECREF(dtype);
+    Py_DECREF(btype);
+
+    return 0;
+}
+
+static PyObject* chunk_write(chunk* self, PyObject* args) {
+    char* fn;
+#if defined(IS_PY3K)
+    PyObject *fnbytes = NULL;
+    if (!PyArg_ParseTuple(args, "O&", PyUnicode_FSConverter, &fnbytes)) {
+        PyErr_SetString(PyExc_ValueError, "need filename (string)");
+        return NULL;
+    }
+    if (fnbytes == NULL)
+        return NULL;
+    fn = PyBytes_AsString(fnbytes);
+#else
+    if (!PyArg_ParseTuple(args, "s", &fn)) {
+        PyErr_SetString(PyExc_ValueError, "need filename (string)");
+        return NULL;
+    }
+#endif
+
+    bool compress = false;
+    self->chunk->write_msgpack_file(string(fn), compress);
+    
+#if defined(IS_PY3K)
+    Py_DECREF(fnbytes);
+#endif
+    Py_RETURN_NONE;
+}
+
+static PyMethodDef chunk_methods[] = {
+    {"write", (PyCFunction)chunk_write, METH_VARARGS,
+     "Writes the given chunk to a msgpack file"},
+    {NULL}
+};
+
+static PyGetSetDef chunk_getseters[] = {
+    /*
+     {"n",
+     (getter)chunk_n, NULL, "number of data items in kd-tree",
+     NULL},
+     */
+    {NULL}
+};
+
+static PyTypeObject ChunkType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "assembled_chunk",      /* tp_name */
+    sizeof(chunk),          /* tp_basicsize */
+    0,                         /* tp_itemsize */
+    (destructor)chunk_dealloc, /* tp_dealloc */
+    0,                         /* tp_print */
+    0,                         /* tp_getattr */
+    0,                         /* tp_setattr */
+    0,                         /* tp_reserved */
+    0,                         /* tp_repr */
+    0,                         /* tp_as_number */
+    0,                         /* tp_as_sequence */
+    0,                         /* tp_as_mapping */
+    0,                         /* tp_hash  */
+    0,                         /* tp_call */
+    0,                         /* tp_str */
+    0,                         /* tp_getattro */
+    0,                         /* tp_setattro */
+    0,                         /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,        /* tp_flags */
+    "chunk object",           /* tp_doc */
+    0,                         /* tp_traverse */
+    0,                         /* tp_clear */
+    0,                         /* tp_richcompare */
+    0,                         /* tp_weaklistoffset */
+    0,                         /* tp_iter */
+    0,                         /* tp_iternext */
+    chunk_methods,            /* tp_methods */
+    0, //Noddy_members,             /* tp_members */
+    chunk_getseters,          /* tp_getset */
+    0,                         /* tp_base */
+    0,                         /* tp_dict */
+    0,                         /* tp_descr_get */
+    0,                         /* tp_descr_set */
+    0,                         /* tp_dictoffset */
+    (initproc)chunk_init,     /* tp_init */
+    0,                         /* tp_alloc */
+    chunk_new,                /* tp_new */
+};
+
+
+
 static PyMethodDef moduleMethods[] = {
     /*
      { "match", spherematch_match, METH_VARARGS,
@@ -162,7 +461,7 @@ static PyMethodDef moduleMethods[] = {
 
 #if defined(IS_PY3K)
 
-static struct PyModuleDef spherematch_module = {
+static struct PyModuleDef simulate_l0_module = {
     PyModuleDef_HEAD_INIT,
     "simulate_l0",
     NULL,
@@ -183,12 +482,18 @@ PyInit_simulate_l0(void) {
     if (PyType_Ready(&L0SimType) < 0)
         return NULL;
 
-    m = PyModule_Create(&spherematch_module);
+    ChunkType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&ChunkType) < 0)
+        return NULL;
+    
+    m = PyModule_Create(&simulate_l0_module);
     if (m == NULL)
         return NULL;
 
     Py_INCREF((PyObject*)&L0SimType);
     PyModule_AddObject(m, "l0sim", (PyObject*)&L0SimType);
+    Py_INCREF((PyObject*)&ChunkType);
+    PyModule_AddObject(m, "assembled_chunk", (PyObject*)&ChunkType);
 
     return m;
 }
@@ -204,11 +509,17 @@ init_simulate_l0(void) {
     if (PyType_Ready(&L0SimType) < 0)
         return;
 
+    ChunkType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&ChunkType) < 0)
+        return;
+    
     m = Py_InitModule3("simulate_l0", moduleMethods,
                        "simulate_l0 provides python bindings for simulating the L0 system");
 
     Py_INCREF((PyObject*)&L0SimType);
     PyModule_AddObject(m, "l0sim", (PyObject*)&L0SimType);
+    Py_INCREF((PyObject*)&ChunkType);
+    PyModule_AddObject(m, "assembled_chunk", (PyObject*)&ChunkType);
 }
 
 #endif
