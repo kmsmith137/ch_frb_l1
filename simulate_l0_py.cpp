@@ -191,12 +191,13 @@ static int chunk_init(chunk *self, PyObject *args, PyObject *keywords) {
     Py_ssize_t n;
     int beam_id;
     int fpga_counts_per_sample;
+    int ichunk;
     Py_ssize_t nf, nt;
 
     int nupfreq;
     int nt_coarse;
     int nrfifreq;
-
+    
     int d1,d2;
     
     PyObject* py_data;
@@ -210,13 +211,13 @@ static int chunk_init(chunk *self, PyObject *args, PyObject *keywords) {
         | NPY_ARRAY_ELEMENTSTRIDES;
 
     n = PyTuple_Size(args);
-    if (n != 6) {
-        PyErr_SetString(PyExc_ValueError, "need six args: (beam_id, fpga_counts_per_sample, data, scale, offset, rfi)");
+    if (n != 7) {
+        PyErr_SetString(PyExc_ValueError, "need 7 args: (beam_id, fpga_counts_per_sample, ichunk, data, scale, offset, rfi)");
         return -1;
     }
     // Try parsing as an array.
-    if (!PyArg_ParseTuple(args, "iiO!O!O!O!",
-                          &beam_id, &fpga_counts_per_sample,
+    if (!PyArg_ParseTuple(args, "iiiO!O!O!O!",
+                          &beam_id, &fpga_counts_per_sample, &ichunk,
                           &PyArray_Type, &py_data,
                           &PyArray_Type, &py_scale,
                           &PyArray_Type, &py_offset,
@@ -225,7 +226,6 @@ static int chunk_init(chunk *self, PyObject *args, PyObject *keywords) {
         return -1;
     }
 
-    cout << "converting" << endl;
     Py_INCREF(dtype);
     py_data = PyArray_FromAny(py_data, dtype, 2, 2, req, NULL);
     if (!py_data) {
@@ -320,8 +320,6 @@ static int chunk_init(chunk *self, PyObject *args, PyObject *keywords) {
         return -1;
     }
 
-    cout << "copying" << endl;
-
     /////////////////////////////////
     ch_frb_io::assembled_chunk::initializer ini;
     ini.beam_id = beam_id;
@@ -329,6 +327,7 @@ static int chunk_init(chunk *self, PyObject *args, PyObject *keywords) {
     ini.nrfifreq = nrfifreq;
     ini.nt_per_packet = constants::nt_per_assembled_chunk / nt_coarse;
     ini.fpga_counts_per_sample = fpga_counts_per_sample;
+    ini.ichunk = ichunk;
     self->chunk = ch_frb_io::assembled_chunk::make(ini);
 
     double* d;
@@ -358,11 +357,8 @@ static int chunk_init(chunk *self, PyObject *args, PyObject *keywords) {
     Py_DECREF(py_offset);
     Py_DECREF(py_scale);
     Py_DECREF(py_rfi);
-    Py_DECREF(dtype);
-    Py_DECREF(dtype);
-    Py_DECREF(dtype);
-    Py_DECREF(btype);
-
+    Py_INCREF(dtype);
+    Py_INCREF(btype);
     return 0;
 }
 
