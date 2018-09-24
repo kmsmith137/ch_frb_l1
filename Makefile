@@ -86,9 +86,6 @@ simulate_l0.so: simulate_l0_py.cpp setup.py simulate-l0.o file_utils.o yaml_para
 	CPP="$(CPP)" \
 	$(PYTHON) setup.py build_ext --inplace --force --build-temp .
 
-test-rfi-mask-write: test-rfi-mask-write.o l0-sim.o simulate-l0.o file_utils.o yaml_paramfile.o
-	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io -lyaml-cpp
-
 ch-frb-test: ch-frb-test.cpp $(L1_OBJS)
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io -lzmq -lhdf5
 
