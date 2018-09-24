@@ -244,6 +244,7 @@ void l0_params::send_chunks(int istream,
     assert(ostream->target_gbps > 0.0);
 
     vector<pair<vector<float>,vector<float> > > data;
+    vector<int64_t> fpgacounts;
 
     for (const shared_ptr<ch_frb_io::assembled_chunk> &chunk : chunks) {
         cout << "chunk: nupfreq " << chunk->nupfreq  << ", nt_per_packet " << chunk->nt_per_packet << ", fgpa_counts_per_sample " << chunk->fpga_counts_per_sample << ", nt_coarse " << chunk->nt_coarse << ", nscales " << chunk->nscales << ", ndata " << chunk->ndata << ", beam " << chunk->beam_id << ", fpga_begin " << chunk->fpga_begin <<endl;
@@ -259,50 +260,18 @@ void l0_params::send_chunks(int istream,
                                  ostream->nt_per_chunk,
                                  ostream->nt_per_chunk,
                                  ostream->nt_per_chunk);
-
-            /*
-            float mean_acc = 0, var_acc = 0, wt_acc = 0;
-            int nz_weights = 0;
-            for (int j=0; j<ostream->elts_per_chunk; j++) {
-                mean_acc += intensity[j] * weights[j];
-                var_acc += intensity[j]*intensity[j] * weights[j];
-                wt_acc += weights[j];
-                if (weights[j] > 0.0)
-                    nz_weights++;
-            }
-            mean_acc /= wt_acc;
-            var_acc = var_acc / wt_acc - mean_acc*mean_acc;
-            cout << "sub-chunk: " << nz_weights << " of " << ostream->elts_per_chunk << " > 0; mean " << mean_acc << ", var " << var_acc << endl;
-             */
-
             data.push_back(make_pair(intensity, weights));
+            fpgacounts.push_back(chunk->fpga_begin + (i*ostream->nt_per_chunk) * int64_t(ostream->fpga_counts_per_chunk));
         }
     }
 
-
     for (int ichunk = 0; ichunk < data.size(); ichunk++) {
-	int64_t fpga_count = int64_t(ichunk) * int64_t(ostream->fpga_counts_per_chunk);
+	//int64_t fpga_count = int64_t(ichunk) * int64_t(ostream->fpga_counts_per_chunk);
+        int64_t fpga_count = fpgacounts[ichunk];
+
         int stride = ostream->nt_per_chunk;
         pair<vector<float>,vector<float> > iw = data[ichunk];
-
-        /*
-        vector<float> intensity = iw.first;
-        vector<float> weights = iw.second;
-        float mean_acc = 0, var_acc = 0, wt_acc = 0;
-        int nz_weights = 0;
-        int nel = intensity.size();
-        for (int j=0; j<nel; j++) {
-            mean_acc += intensity[j] * weights[j];
-            var_acc += intensity[j]*intensity[j] * weights[j];
-            wt_acc += weights[j];
-            if (weights[j] > 0.0)
-                nz_weights++;
-        }
-        mean_acc /= wt_acc;
-        var_acc = var_acc / wt_acc - mean_acc*mean_acc;
-        cout << "sending chunk: " << nz_weights << " of " << nel << " > 0; mean " << mean_acc << ", var " << var_acc << endl;
-         */
-        cout << "sending chunk " << ichunk << endl;
+        cout << "sending chunk " << ichunk << " with fpgacounts " << fpga_count << endl;
         ostream->send_chunk(iw.first.data(), stride,
                             iw.second.data(), stride,
                             fpga_count);
