@@ -18,7 +18,9 @@ public:
                         shared_ptr<mask_stats_map> ms) :
         CivetHandler(),
         _stream(stream),
-        _mask_stats(ms) {}
+        _mask_stats(ms) {
+        cout << "L1 prometheus: mask_stats ptr: " << _mask_stats.get() << endl;
+    }
 
     bool handleGet(CivetServer *server, struct mg_connection *conn) {
         mg_printf(conn,
@@ -239,13 +241,13 @@ public:
             vector<tuple<int, string, unordered_map<string, float> > > maskstats;
             float period = 15.;
             for (auto &it : _mask_stats->map) {
-                cout << "prometheus mask stats: beam " << it.first.first
-                     << " where " << it.first.second << " stats:" << endl;
+                // cout << "prometheus mask stats: beam " << it.first.first
+                // << " where " << it.first.second << " stats:" << endl;
                 unordered_map<string, float> stats = it.second->get_stats(period);
-                cout << "stats: " << stats.size() << endl;
-                for (auto &sit : stats) {
-                    cout << "  " << sit.first << " = " << sit.second << endl;
-                }
+                // cout << "stats: " << stats.size() << endl;
+                // for (auto &sit : stats) {
+                //     cout << "  " << sit.first << " = " << sit.second << endl;
+                // }
                 
                 maskstats.push_back(make_tuple(it.first.first, it.first.second, it.second->get_stats(period)));
             }

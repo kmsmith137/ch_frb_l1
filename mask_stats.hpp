@@ -32,7 +32,7 @@ public:
     std::mutex mutex;
 
     void put(int, std::string, std::shared_ptr<rf_pipelines::mask_measurements_ringbuf>);
-    std::shared_ptr<rf_pipelines::mask_measurements_ringbuf> get(int, std::string) const;
+    //std::shared_ptr<rf_pipelines::mask_measurements_ringbuf> get(int, std::string) const;
 
     size_t size() const {
         return map.size();

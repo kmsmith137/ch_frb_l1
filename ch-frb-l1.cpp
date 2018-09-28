@@ -753,6 +753,7 @@ static void find_mask_counters(shared_ptr<mask_stats_map> msmap,
     if (!counter)
         return;
     cout << "Found mask counter: " << counter->class_name << ", " << counter->where << endl;
+    //cout << "  ring buffer: " << counter->get_ringbuf() << endl;
     msmap->put(beam_id, counter->where, counter->get_ringbuf());
 }
 
@@ -1320,37 +1321,6 @@ void l1_server::make_mask_stats()
         mask_stats_maps.push_back(make_shared<mask_stats_map>());
     }
 }
-    /*
-    // UGLY -- to collect mask stats, we need to create one mask_stats object
-    // per mask_counter stage in the RFI chain (there can be > 1).
-    // They need to be made here because the dedispersion_thread_context is
-    // const when the dedispersion threads start.
-    // Find mask_counter stage(s).
-    auto rfi_chain = rf_pipelines::pipeline_object::from_json(config.rfi_transform_chain_json);
-    vector<string> mask_counters_where;
-    vector<shared_ptr<rf_pipelines::pipeline_object> > stages;
-    pipeline_get_all(rfi_chain, stages);
-    for (auto &it : stages)
-        if ((it->class_name == "mask_counter") ||
-            (it->class_name == "chime_mask_counter")) {
-            shared_ptr<rf_pipelines::mask_counter_transform> counter = dynamic_pointer_cast<rf_pipelines::mask_counter_transform>(it);
-            mask_counters_where.push_back(counter->where);
-        }
-    cout << "Found " << mask_counters_where.size() << " mask_counter stages in the RFI chain" << endl;
-    int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
-    for (int istream = 0; istream < config.nstreams; istream++) {
-        // Create one mask_stats object per beam * mask_counter; one vector per stream.
-        mask_stats_map mstats;
-        for (int ibeam = 0; ibeam < nbeams_per_stream; ibeam++) {
-            int beam_id = config.beam_ids[istream*nbeams_per_stream + ibeam];
-            for (const auto &wit : mask_counters_where) {
-                mstats[make_pair(beam_id, wit)] = make_shared<mask_stats>(beam_id, wit);
-            }
-        }
-        mask_stats_maps.push_back(mstats);
-    }
-}
- */
 
 void l1_server::spawn_dedispersion_threads()
 {
