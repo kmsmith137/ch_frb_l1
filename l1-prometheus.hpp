@@ -12,6 +12,6 @@ class L1PrometheusServer;
 // *ipaddr_port*: [ipaddr:]port
 std::shared_ptr<L1PrometheusServer> start_prometheus_server(std::string ipaddr_port,
                                                             std::shared_ptr<ch_frb_io::intensity_network_stream> st,
-                                                            std::shared_ptr<ch_frb_l1::mask_stats_map> ms);
+                                                            std::shared_ptr<const ch_frb_l1::mask_stats_map> ms);
 
 #endif

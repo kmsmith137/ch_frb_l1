@@ -15,11 +15,10 @@ using namespace ch_frb_l1;
 class L1PrometheusHandler : public CivetHandler {
 public:
     L1PrometheusHandler(shared_ptr<intensity_network_stream> stream,
-                        shared_ptr<mask_stats_map> ms) :
+                        shared_ptr<const mask_stats_map> ms) :
         CivetHandler(),
         _stream(stream),
         _mask_stats(ms) {
-        cout << "L1 prometheus: mask_stats ptr: " << _mask_stats.get() << endl;
     }
 
     bool handleGet(CivetServer *server, struct mg_connection *conn) {
@@ -240,7 +239,7 @@ public:
             };
             vector<tuple<int, string, unordered_map<string, float> > > maskstats;
             float period = 15.;
-            for (auto &it : _mask_stats->map) {
+            for (const auto &it : _mask_stats->map) {
                 // cout << "prometheus mask stats: beam " << it.first.first
                 // << " where " << it.first.second << " stats:" << endl;
                 unordered_map<string, float> stats = it.second->get_stats(period);
@@ -274,7 +273,7 @@ public:
 
 protected:
     shared_ptr<intensity_network_stream> _stream;
-    shared_ptr<ch_frb_l1::mask_stats_map> _mask_stats;
+    shared_ptr<const ch_frb_l1::mask_stats_map> _mask_stats;
 };
 
 class L1PrometheusServer : public CivetServer {
@@ -288,7 +287,7 @@ public:
 
 shared_ptr<L1PrometheusServer> start_prometheus_server(string ipaddr_port,
                                                        shared_ptr<intensity_network_stream> stream,
-                                                       shared_ptr<mask_stats_map> ms) {
+                                                       shared_ptr<const mask_stats_map> ms) {
     //"document_root", DOCUMENT_ROOT, "listening_ports", PORT, 0};
     std::vector<std::string> options;
     // listening_ports = [ipaddr:]port
