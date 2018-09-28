@@ -94,9 +94,10 @@ struct l1_config
     int nt_per_packet = 0;
     int fpga_counts_per_sample = 384;
 
-    // The number of frequencies in the downsampled RFI chain.  Must match a value in the RFI JSON file.
-    int nrfifreq = 1024;
-    
+    // The number of frequencies in the downsampled RFI chain.
+    // Must match the number of downsampled frequencies in the RFI chain JSON file.  (probably 1024)
+    int nrfifreq = 0;
+
     // If slow_kernels=false (the default), the L1 server will use fast assembly language kernels
     // for its packet processing.  If slow_kernels=true, then it will use reference kernels which
     // are much slower.
@@ -366,6 +367,7 @@ l1_config::l1_config(int argc, char **argv)
     this->nfreq = p.read_scalar<int> ("nfreq");
     this->nt_per_packet = p.read_scalar<int> ("nt_per_packet");
     this->fpga_counts_per_sample = p.read_scalar<int> ("fpga_counts_per_sample", 384);
+    this->nrfifreq = p.read_scalar<int> ("nrfifreq");
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
     this->rpc_address = p.read_vector<string> ("rpc_address");
@@ -486,6 +488,8 @@ l1_config::l1_config(int argc, char **argv)
 
     if (nbeams <= 0)
 	throw runtime_error(l1_config_filename + ": 'nbeams' must be >= 1");
+    if (nrfifreq <= 0)
+	throw runtime_error(l1_config_filename + ": 'nrfifreq' must be positive, and must match the number of downsampled frequencies in the RFI chain JSON file -- probably 1024.");
     if (!tflag && (nfreq != bonsai_config.nfreq))
 	throw runtime_error("ch-frb-l1: 'nfreq' values in l1 config file and bonsai config file must match");
     if (nfreq <= 0)
@@ -753,7 +757,6 @@ static void find_mask_counters(shared_ptr<mask_stats_map> msmap,
     if (!counter)
         return;
     cout << "Found mask counter: " << counter->class_name << ", " << counter->where << endl;
-    //cout << "  ring buffer: " << counter->get_ringbuf() << endl;
     msmap->put(beam_id, counter->where, counter->get_ringbuf());
 }
 
