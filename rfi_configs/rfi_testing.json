@@ -1,0 +1,55 @@
+{
+    "class_name": "pipeline", 
+    "elements": [
+        {
+            "sub_pipeline": {
+                "class_name": "pipeline", 
+                "elements": [
+                    {
+                        "class_name": "mask_counter",
+                        "nt_chunk": 1024,
+                        "where": "before_rfi"
+                    },
+                    {
+                        "Df": 1, 
+                        "class_name": "std_dev_clipper", 
+                        "nt_chunk": 1024, 
+                        "Dt": 1, 
+                        "sigma": 3, 
+                        "two_pass": true, 
+                        "axis": "AXIS_TIME"
+                    }, 
+                    {
+                        "Df": 1, 
+                        "class_name": "std_dev_clipper", 
+                        "nt_chunk": 6144, 
+                        "Dt": 1, 
+                        "sigma": 3, 
+                        "two_pass": true, 
+                        "axis": "AXIS_TIME"
+                    }, 
+                    {
+                        "Df": 1, 
+                        "class_name": "std_dev_clipper", 
+                        "nt_chunk": 6144, 
+                        "Dt": 1, 
+                        "sigma": 3, 
+                        "two_pass": false, 
+                        "axis": "AXIS_FREQ"
+                    }, 
+                    {
+                        "class_name": "chime_mask_counter",
+                        "nt_chunk": 1024,
+                        "where": "after_rfi"
+                    }
+                ]
+            }, 
+            "Df": 0, 
+            "class_name": "wi_sub_pipeline", 
+            "nds_out": 1, 
+            "nfreq_out": 1024, 
+            "w_cutoff": 0, 
+            "Dt": 0
+        }
+    ]
+}
