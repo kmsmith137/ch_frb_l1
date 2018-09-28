@@ -11,7 +11,7 @@
 nbeams: 1
 nfreq: 16384
 nt_per_packet: 16
-
+nrfifreq: 1024
 
 # Configure the L1 server to use the loopback interface 127.0.0.1 and UDP port 6677.
 # The RPC server will run on TCP port 5555.
