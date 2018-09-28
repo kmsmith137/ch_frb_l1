@@ -839,7 +839,9 @@ void dedispersion_thread_context::_thread_main() const
                                         std::placeholders::_1,
                                         std::placeholders::_2));
     cout << "Found " << nchime << " chime_mask_counter stages in the RFI chain" << endl;
-    //assert(nchime == 1); //??
+    if (nchime != 1) {
+        throw runtime_error("ch-frb-l1: need exactly one chime_mask_counter in the RFI config JSON file, or else RFI masks cannot be captured.");
+    }
     
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);
