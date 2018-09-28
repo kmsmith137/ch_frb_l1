@@ -9,25 +9,6 @@ namespace ch_frb_l1 {
 }  // compiler pacifier
 #endif
 
-class mask_stats : public rf_pipelines::mask_counter_callback {
-public:
-    mask_stats(int beam_id, std::string where="", int nhistory=300);
-    virtual void mask_count(const struct rf_pipelines::mask_counter_measurements& m);
-    virtual ~mask_stats();
-    std::unordered_map<std::string, float> get_stats(float period);
-    std::vector<rf_pipelines::mask_counter_measurements> get_all_measurements();
-    
-    const int _beam_id;
-    std::string _where;
-private:
-    std::mutex _meas_mutex;
-    std::vector<rf_pipelines::mask_counter_measurements> _meas;
-    int _imeas;
-    int _maxmeas;
-};
-
-
-
 // Required to use a pair<int,string> as a key in an unordered_map.
 // From https://stackoverflow.com/questions/32685540/unordered-map-with-pair-as-key-not-compiling
 struct pair_hash {
@@ -39,10 +20,19 @@ struct pair_hash {
     }
 };
 
-// This is a map of <int beam_id, string where> to shared_ptr<mask_stats>
+// This is a map of <int beam_id, string where> to shared_ptr<mask_measurements_ringbuf>
 // "where" is a property (specified in the JSON) of the mask_counter_transform
-typedef std::unordered_map<std::pair<int,std::string>, std::shared_ptr<ch_frb_l1::mask_stats>, pair_hash> mask_stats_map;
+typedef std::unordered_map<std::pair<int,std::string>, std::shared_ptr<rf_pipelines::mask_measurements_ringbuf>, pair_hash> mask_stats_map;
 
+// Required to make shared_ptr<mask_stats_map> work in a "range-based for" loop
+template<typename T>
+auto inline begin(std::shared_ptr<T> ptr) -> typename T::iterator {
+    return ptr->begin();
+}
+template<typename T>
+auto inline end(std::shared_ptr<T> ptr) -> typename T::iterator {
+    return ptr->end();
+}
 
 }  // namespace ch_frb_l1
 

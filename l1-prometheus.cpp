@@ -15,7 +15,7 @@ using namespace ch_frb_l1;
 class L1PrometheusHandler : public CivetHandler {
 public:
     L1PrometheusHandler(shared_ptr<intensity_network_stream> stream,
-                        mask_stats_map ms) :
+                        shared_ptr<mask_stats_map> ms) :
         CivetHandler(),
         _stream(stream),
         _mask_stats(ms) {}
@@ -227,7 +227,7 @@ public:
         }
 
         // RFI masking stats per-beam.
-        if (_mask_stats.size()) {
+        if (_mask_stats->size()) {
             struct metric_stat ms5[] = {
                 {"rfi_mask_pct_masked", "rfi_mask_pct_masked",
                  "Total fraction of samples masked"},
@@ -264,7 +264,7 @@ public:
 
 protected:
     shared_ptr<intensity_network_stream> _stream;
-    ch_frb_l1::mask_stats_map _mask_stats;
+    shared_ptr<ch_frb_l1::mask_stats_map> _mask_stats;
 };
 
 class L1PrometheusServer : public CivetServer {
@@ -278,7 +278,7 @@ public:
 
 shared_ptr<L1PrometheusServer> start_prometheus_server(string ipaddr_port,
                                                        shared_ptr<intensity_network_stream> stream,
-                                                       mask_stats_map ms) {
+                                                       shared_ptr<mask_stats_map> ms) {
     //"document_root", DOCUMENT_ROOT, "listening_ports", PORT, 0};
     std::vector<std::string> options;
     // listening_ports = [ipaddr:]port

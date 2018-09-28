@@ -222,7 +222,7 @@ void l1_write_request::write_callback(const string &error_message)
 
 
 L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
-                         ch_frb_l1::mask_stats_map ms,
+                         shared_ptr<ch_frb_l1::mask_stats_map> ms,
                          const string &port,
                          const string &cmdline,
                          zmq::context_t *ctx) :
@@ -901,12 +901,12 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
         msgpack::sbuffer buffer;
         msgpack::packer<msgpack::sbuffer> pk(&buffer);
-        pk.pack_array(_mask_stats.size());
-        for (auto &it : _mask_stats) {
+        pk.pack_array(_mask_stats->size());
+        for (const auto &it : _mask_stats) {
             int beam_id = it.first.first;
             string where = it.first.second;
-            shared_ptr<ch_frb_l1::mask_stats> ms = it.second;
-            vector<rf_pipelines::mask_counter_measurements> meas = ms->get_all_measurements();
+            shared_ptr<rf_pipelines::mask_measurements_ringbuf> ms = it.second;
+            vector<rf_pipelines::mask_measurements> meas = ms->get_all_measurements();
             cout << "Got " << meas.size() << " measurements from beam " << beam_id << " where " << where << endl;
             pk.pack_array(4);
             pk.pack(beam_id);
@@ -939,12 +939,12 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
         msgpack::sbuffer buffer;
         msgpack::packer<msgpack::sbuffer> pk(&buffer);
-        pk.pack_array(_mask_stats.size());
+        pk.pack_array(_mask_stats->size());
         for (auto &it : _mask_stats) {
             int beam_id = it.first.first;
             string where = it.first.second;
-            shared_ptr<ch_frb_l1::mask_stats> ms = it.second;
-            vector<rf_pipelines::mask_counter_measurements> meas = ms->get_all_measurements();
+            shared_ptr<rf_pipelines::mask_measurements_ringbuf> ms = it.second;
+            vector<rf_pipelines::mask_measurements> meas = ms->get_all_measurements();
             cout << "Got " << meas.size() << " measurements from beam " << beam_id << " where " << where << endl;
             pk.pack_array(4);
             pk.pack(beam_id);

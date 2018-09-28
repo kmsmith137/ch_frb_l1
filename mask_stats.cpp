@@ -7,6 +7,7 @@ using namespace rf_pipelines;
 using namespace ch_frb_io;
 using namespace ch_frb_l1;
 
+#if 0
 typedef lock_guard<mutex> ulock;
 
 mask_stats::mask_stats(int beam_id, string where, int nhistory) :
@@ -19,7 +20,7 @@ mask_stats::mask_stats(int beam_id, string where, int nhistory) :
 mask_stats::~mask_stats() {
 }
 
-void mask_stats::mask_count(const struct rf_pipelines::mask_counter_measurements& meas) {
+void mask_stats::mask_count(const struct rf_pipelines::mask_measurements& meas) {
     cout << "mask_stats: beam " << _beam_id << " got pos " << meas.pos << ": N samples masked: " << meas.nsamples_masked << "/" << meas.nsamples << "; n times " << meas.nt_masked << "/" << meas.nt << "; n freqs " << meas.nf_masked << "/" << meas.nf << endl;
 
     {
@@ -40,9 +41,9 @@ void mask_stats::mask_count(const struct rf_pipelines::mask_counter_measurements
      */
 }
 
-vector<rf_pipelines::mask_counter_measurements>
+vector<rf_pipelines::mask_measurements>
 mask_stats::get_all_measurements() {
-    vector<rf_pipelines::mask_counter_measurements> copy;
+    vector<rf_pipelines::mask_measurements> copy;
     {
         ulock l(_meas_mutex);
         // Reorder the ring buffer.
@@ -94,3 +95,4 @@ unordered_map<string, float> mask_stats::get_stats(float history) {
     return stats;
 }
     
+#endif

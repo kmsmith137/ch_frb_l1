@@ -117,7 +117,7 @@ int main(int argc, char** argv) {
     stream->start_stream();
 
     prometheus_ip = prometheus_ip + to_string(prometheus_port);
-    ch_frb_l1::mask_stats_map ms;
+    shared_ptr<ch_frb_l1::mask_stats_map> ms = make_shared<ch_frb_l1::mask_stats_map>();
     shared_ptr<L1PrometheusServer> prometheus_server =
         start_prometheus_server(prometheus_ip, stream, ms);
     if (!prometheus_server) {

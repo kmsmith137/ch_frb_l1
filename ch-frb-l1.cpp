@@ -723,7 +723,7 @@ void l1_config::_have_warnings() const
 struct dedispersion_thread_context {
     l1_config config;
     shared_ptr<ch_frb_io::intensity_network_stream> sp;
-    mask_stats_map ms_map;
+    std::shared_ptr<mask_stats_map> ms_map;
     shared_ptr<bonsai::trigger_pipe> l1b_subprocess;   // warning: can be empty pointer!
     vector<int> allowed_cores;
     bool asynchronous_dedispersion;   // run RFI and dedispersion in separate threads?
@@ -748,19 +748,16 @@ static void pipeline_get_all(shared_ptr<rf_pipelines::pipeline_object> pipe,
     }
 }
 
-static void print_pipeline(shared_ptr<rf_pipelines::pipeline_object> pipe, string prefix) {
-  cout << prefix << pipe->name << " class " << pipe->class_name << endl;
-  if (pipe->class_name == "pipeline") {
-    shared_ptr<rf_pipelines::pipeline> pipeline = dynamic_pointer_cast<rf_pipelines::pipeline>(pipe);
-    for (int i=0; i<pipeline->size(); i++) {
-      shared_ptr<rf_pipelines::pipeline_object> stage = pipeline->elements[i];
-      print_pipeline(stage, "  "+prefix);
+static void print_pipeline(rf_pipelines::pipeline_object* pipe, int level) {
+    for (int i=0; i<level; i++)
+        cout << "  ";
+    cout << "class " << pipe->class_name;
+
+    rf_pipelines::wi_sub_pipeline* sub = dynamic_cast<rf_pipelines::wi_sub_pipeline*>(pipe);
+    if (sub) {
+        cout << " at subsampling " << sub->ini_params.Df << " in freq and " << sub->ini_params.Dt << " in time";
     }
-  } else if (pipe->class_name == "wi_sub_pipeline") {
-    shared_ptr<rf_pipelines::wi_sub_pipeline> pipeline = dynamic_pointer_cast<rf_pipelines::wi_sub_pipeline>(pipe);
-    cout << prefix << "at subsampling " << pipeline->ini_params.Df << " in freq and " << pipeline->ini_params.Dt << " in time" << endl;
-    print_pipeline(pipeline->sub_pipeline, "  " + prefix);
-  }
+    cout << endl;
 }
 
 // Note: only called if config.tflag == false.
@@ -815,9 +812,10 @@ void dedispersion_thread_context::_thread_main() const
 
     auto bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
 
-    //cout << "rfi_chain state: " << rfi_chain->state << endl;
-    //print_pipeline(rfi_chain, "");
+    cout << "RFI chain:" << endl;
+    rfi_chain->visit_pipeline(print_pipeline);
 
+    /*
     cout << "Finding mask_counter stages..." << endl;
     // Find mask_counter stage(s).
     vector<shared_ptr<rf_pipelines::pipeline_object> > stages;
@@ -844,7 +842,8 @@ void dedispersion_thread_context::_thread_main() const
             counter->set_stream(sp, beam_id);
         }
     }
-
+     */
+    
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);
     pipeline->add(rfi_chain);
@@ -977,7 +976,7 @@ struct l1_server {
     vector<shared_ptr<ch_frb_io::output_device>> output_devices;
     vector<shared_ptr<ch_frb_io::memory_slab_pool>> memory_slab_pools;
     vector<shared_ptr<ch_frb_io::intensity_network_stream>> input_streams;
-    vector<mask_stats_map> mask_stats_maps;
+    vector<shared_ptr<mask_stats_map> > mask_stats_maps;
     vector<shared_ptr<L1RpcServer>> rpc_servers;
     vector<shared_ptr<L1PrometheusServer>> prometheus_servers;
     vector<std::thread> rpc_threads;
@@ -1322,6 +1321,11 @@ void l1_server::make_prometheus_servers()
 
 void l1_server::make_mask_stats()
 {
+    for (int istream = 0; istream < config.nstreams; istream++) {
+        mask_stats_maps.push_back(make_shared<mask_stats_map>());
+    }
+}
+    /*
     // UGLY -- to collect mask stats, we need to create one mask_stats object
     // per mask_counter stage in the RFI chain (there can be > 1).
     // They need to be made here because the dedispersion_thread_context is
@@ -1351,7 +1355,8 @@ void l1_server::make_mask_stats()
         mask_stats_maps.push_back(mstats);
     }
 }
-       
+ */
+
 void l1_server::spawn_dedispersion_threads()
 {
     if (dedispersion_threads.size())
@@ -1378,7 +1383,7 @@ void l1_server::spawn_dedispersion_threads()
 	context.allowed_cores = this->dedispersion_cores[ibeam];
 	context.asynchronous_dedispersion = this->asynchronous_dedispersion;
 	context.ibeam = ibeam;
-	
+
 	if (config.l1_verbosity >= 2) {
 	    cout << "ch-frb-l1: spawning dedispersion thread " << ibeam << ", beam_id=" << config.beam_ids[ibeam] 
 		 << ", stream=" << context.sp->ini_params.ipaddr << ":" << context.sp->ini_params.udp_port
