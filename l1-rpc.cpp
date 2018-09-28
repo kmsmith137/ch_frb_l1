@@ -794,7 +794,24 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
         // grab WriteChunks_Request argument
         msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
-        WriteChunks_Request req = oh.get().as<WriteChunks_Request>();
+
+        bool need_rfi = false;
+        
+        //
+        msgpack::object obj = oh.get();
+        cout << "Write_chunks request: arguments size " << obj.via.array.size << endl;
+        WriteChunks_Request req;
+        if (obj.via.array.size == 9) {
+            req = oh.get().as<WriteChunks_Request>();
+        } else if (obj.via.array.size == 10) {
+            WriteChunks_Request_v2 req2 = oh.get().as<WriteChunks_Request_v2>();
+            cout << "Parsed v2 request" << endl;
+            req = req2;
+            need_rfi = req2.need_rfi;
+        }
+
+        //
+        //WriteChunks_Request req = oh.get().as<WriteChunks_Request>();
 
         /*
          cout << "WriteChunks request: FPGA range " << req.min_fpga << "--" << req.max_fpga << endl;
@@ -830,7 +847,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 	    w->token = token;
 
             // FIXME -- this could be set by an RPC argument.
-            w->need_rfi_mask = true;
+            w->need_rfi_mask = need_rfi;
 
 	    // Returns false if request failed to queue.  
 	    bool success = _output_devices.enqueue_write_request(w);

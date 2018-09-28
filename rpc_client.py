@@ -334,6 +334,7 @@ class RpcClient(object):
                      dm_error=0.,
                      sweep_width=0.,
                      frequency_binning=0,
+                     need_rfi=None,
                      servers=None, wait=True, timeout=-1, waitAll=True):
         '''
         Asks the RPC servers to write a set of chunks to disk.
@@ -360,7 +361,10 @@ class RpcClient(object):
         for k in servers:
             self.token += 1
             hdr = msgpack.packb(['write_chunks', self.token])
-            req = msgpack.packb([beams, min_fpga, max_fpga, dm, dm_error, sweep_width, frequency_binning, filename_pattern, priority])
+            request_args = [beams, min_fpga, max_fpga, dm, dm_error, sweep_width, frequency_binning, filename_pattern, priority]
+            if need_rfi in [True, False]:
+                request_args.append(need_rfi)
+            req = msgpack.packb(request_args)
             tokens.append(self.token)
             self.sockets[k].send(hdr + req)
         if not wait:
@@ -700,6 +704,7 @@ if __name__ == '__main__':
     parser.add_argument('--write', '-w', nargs=4, metavar='x',#['<comma-separated beams>', '<minfpga>', '<maxfpga>', '<filename-pattern>'],
                         help='Send write_chunks command: <comma-separated beams> <minfpga> <maxfpga> <filename-pattern>', action='append',
                         default=[])
+    parser.add_argument('--need-rfi', help='For --write / --awrite, set need_rfi flag.', action='store_true', default=None)
     parser.add_argument('--awrite', nargs=4, metavar='x',
                         help='Send async write_chunks command: <comma-separated beams> <minfpga> <maxfpga> <filename-pattern>', action='append',
         default=[])
@@ -880,7 +885,10 @@ if __name__ == '__main__':
             beams = [int(b,10) for b in beams]
             f0 = int(f0, 10)
             f1 = int(f1, 10)
-            R = client.write_chunks(beams, f0, f1, fnpat)
+            kwargs = {}
+            if opt.need_rfi:
+                kwargs.update(need_rfi = True)
+            R = client.write_chunks(beams, f0, f1, fnpat, **kwargs)
             print('Results:')
             if R is not None:
                 for r in R:
@@ -894,7 +902,11 @@ if __name__ == '__main__':
             beams = [int(b,10) for b in beams]
             f0 = int(f0, 10)
             f1 = int(f1, 10)
-            R = client.write_chunks(beams, f0, f1, fnpat, waitAll=False)
+            kwargs = {}
+            if opt.need_rfi:
+                kwargs.update(need_rfi = True)
+            R = client.write_chunks(beams, f0, f1, fnpat, waitAll=False,
+                                    **kwargs)
             print('Results:')
             if R is not None:
                 for r in R:
