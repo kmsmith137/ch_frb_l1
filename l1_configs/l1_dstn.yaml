@@ -19,7 +19,7 @@ nt_per_packet: 16
 ipaddr: "127.0.0.1"
 port: 6677
 rpc_address: "tcp://127.0.0.1:5555"
-prometheus_address: "127.0.0.1:8888"
+prometheus_address: "127.0.0.1:9999"
 
 # beam_ids: [ 139 ]
 

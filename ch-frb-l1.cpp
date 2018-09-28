@@ -733,21 +733,6 @@ struct dedispersion_thread_context {
     void _toy_thread_main() const;  // if -t command-line argument is specified
 };
 
-static void pipeline_get_all(shared_ptr<rf_pipelines::pipeline_object> pipe,
-                             vector<shared_ptr<rf_pipelines::pipeline_object> > &stages) {
-    stages.push_back(pipe);
-    if (pipe->class_name == "pipeline") {
-        shared_ptr<rf_pipelines::pipeline> pipeline = dynamic_pointer_cast<rf_pipelines::pipeline>(pipe);
-        for (int i=0; i<pipeline->size(); i++) {
-            shared_ptr<rf_pipelines::pipeline_object> stage = pipeline->elements[i];
-            pipeline_get_all(stage, stages);
-        }
-    } else if (pipe->class_name == "wi_sub_pipeline") {
-        shared_ptr<rf_pipelines::wi_sub_pipeline> pipeline = dynamic_pointer_cast<rf_pipelines::wi_sub_pipeline>(pipe);
-        pipeline_get_all(pipeline->sub_pipeline, stages);
-    }
-}
-
 static void print_pipeline(rf_pipelines::pipeline_object* pipe, int level) {
     for (int i=0; i<level; i++)
         cout << "  ";
@@ -758,6 +743,29 @@ static void print_pipeline(rf_pipelines::pipeline_object* pipe, int level) {
         cout << " at subsampling " << sub->ini_params.Df << " in freq and " << sub->ini_params.Dt << " in time";
     }
     cout << endl;
+}
+
+static void find_mask_counters(shared_ptr<mask_stats_map> msmap,
+                               int beam_id,
+                               rf_pipelines::pipeline_object* pipe,
+                               int level) {
+    rf_pipelines::mask_counter_transform* counter = dynamic_cast<rf_pipelines::mask_counter_transform*>(pipe);
+    if (!counter)
+        return;
+    cout << "Found mask counter: " << counter->class_name << ", " << counter->where << endl;
+    msmap->put(beam_id, counter->where, counter->get_ringbuf());
+}
+
+static void find_chime_mask_counters(int beam_id, shared_ptr<ch_frb_io::intensity_network_stream> sp,
+                                     int & nchime,
+                                     rf_pipelines::pipeline_object* pipe,
+                                     int level) {
+    rf_pipelines::chime_mask_counter* counter = dynamic_cast<rf_pipelines::chime_mask_counter*>(pipe);
+    if (!counter)
+        return;
+    cout << "Found CHIME mask counter: " << counter->class_name << ", " << counter->where << endl;
+    counter->set_stream(sp, beam_id);
+    nchime++;
 }
 
 // Note: only called if config.tflag == false.
@@ -815,34 +823,19 @@ void dedispersion_thread_context::_thread_main() const
     cout << "RFI chain:" << endl;
     rfi_chain->visit_pipeline(print_pipeline);
 
-    /*
     cout << "Finding mask_counter stages..." << endl;
-    // Find mask_counter stage(s).
-    vector<shared_ptr<rf_pipelines::pipeline_object> > stages;
-    pipeline_get_all(rfi_chain, stages);
-    for (auto &it : stages) {
-        //cout << "pipeline stage: class " << it->class_name << endl;
-        if ((it->class_name == "mask_counter") ||
-            (it->class_name == "chime_mask_counter")) {
-            shared_ptr<rf_pipelines::mask_counter_transform> counter =
-                dynamic_pointer_cast<rf_pipelines::mask_counter_transform>(it);
-            cout << "Found mask_counter_transform: " << counter->where << endl;
-            // Previously, in make_mask_stats(), we built up a map from
-            // beam_id + pipeline location to mask_stats object.
-            auto mit = ms_map.find(make_pair(beam_id, counter->where));
-            if (mit != ms_map.end())
-                counter->add_callback(mit->second);
-            else
-                cout << "Did not find a mask_stats object for beam " << beam_id << ", " << counter->where << endl;
-        }
-        if (it->class_name == "chime_mask_counter") {
-            shared_ptr<rf_pipelines::chime_mask_counter> counter =
-                dynamic_pointer_cast<rf_pipelines::chime_mask_counter>(it);
-            cout << "Found chime_mask_counter: " << counter->where << endl;
-            counter->set_stream(sp, beam_id);
-        }
-    }
-     */
+    rfi_chain->visit_pipeline(std::bind(find_mask_counters, ms_map, beam_id,
+                                        std::placeholders::_1,
+                                        std::placeholders::_2));
+
+    cout << "Finding chime_mask_counter stage..." << endl;
+    int nchime = 0;
+    rfi_chain->visit_pipeline(std::bind(find_chime_mask_counters, beam_id, sp,
+                                        std::ref(nchime),
+                                        std::placeholders::_1,
+                                        std::placeholders::_2));
+    cout << "Found " << nchime << " chime_mask_counter stages in the RFI chain" << endl;
+    //assert(nchime == 1); //??
     
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);
@@ -976,6 +969,8 @@ struct l1_server {
     vector<shared_ptr<ch_frb_io::output_device>> output_devices;
     vector<shared_ptr<ch_frb_io::memory_slab_pool>> memory_slab_pools;
     vector<shared_ptr<ch_frb_io::intensity_network_stream>> input_streams;
+
+    std::mutex mask_stats_mutex;
     vector<shared_ptr<mask_stats_map> > mask_stats_maps;
     vector<shared_ptr<L1RpcServer>> rpc_servers;
     vector<shared_ptr<L1PrometheusServer>> prometheus_servers;

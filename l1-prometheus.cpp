@@ -238,7 +238,15 @@ public:
             };
             vector<tuple<int, string, unordered_map<string, float> > > maskstats;
             float period = 15.;
-            for (auto &it : _mask_stats) {
+            for (auto &it : _mask_stats->map) {
+                cout << "prometheus mask stats: beam " << it.first.first
+                     << " where " << it.first.second << " stats:" << endl;
+                unordered_map<string, float> stats = it.second->get_stats(period);
+                cout << "stats: " << stats.size() << endl;
+                for (auto &sit : stats) {
+                    cout << "  " << sit.first << " = " << sit.second << endl;
+                }
+                
                 maskstats.push_back(make_tuple(it.first.first, it.first.second, it.second->get_stats(period)));
             }
             for (size_t i=0; i<sizeof(ms5)/sizeof(struct metric_stat); i++) {

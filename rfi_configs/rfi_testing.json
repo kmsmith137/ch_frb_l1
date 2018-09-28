@@ -50,6 +50,13 @@
             "nfreq_out": 1024, 
             "w_cutoff": 0, 
             "Dt": 0
+        },
+        {
+            "class_name": "spline_detrender", 
+            "epsilon": 0.0003, 
+            "nt_chunk": 0, 
+            "nbins": 6, 
+            "axis": "AXIS_FREQ"
         }
     ]
 }

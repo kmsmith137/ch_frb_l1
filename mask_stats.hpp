@@ -22,7 +22,23 @@ struct pair_hash {
 
 // This is a map of <int beam_id, string where> to shared_ptr<mask_measurements_ringbuf>
 // "where" is a property (specified in the JSON) of the mask_counter_transform
-typedef std::unordered_map<std::pair<int,std::string>, std::shared_ptr<rf_pipelines::mask_measurements_ringbuf>, pair_hash> mask_stats_map;
+//typedef std::unordered_map<std::pair<int,std::string>, std::shared_ptr<rf_pipelines::mask_measurements_ringbuf>, pair_hash> mask_stats_map;
+
+class mask_stats_map {
+public:
+    typedef std::unordered_map<std::pair<int,std::string>, std::shared_ptr<rf_pipelines::mask_measurements_ringbuf>, pair_hash> msm;
+
+    msm map;
+    std::mutex mutex;
+
+    void put(int, std::string, std::shared_ptr<rf_pipelines::mask_measurements_ringbuf>);
+    std::shared_ptr<rf_pipelines::mask_measurements_ringbuf> get(int, std::string) const;
+
+    size_t size() const {
+        return map.size();
+    }
+};
+
 
 // Required to make shared_ptr<mask_stats_map> work in a "range-based for" loop
 template<typename T>
