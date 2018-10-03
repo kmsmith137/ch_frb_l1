@@ -174,10 +174,10 @@ shared_ptr<l1_backend_queue::entry> l1_backend_queue::dequeue_write_reply()
 //
 // Reminder: the chunk-writing path now works as follows.  When we want to write a chunk, we
 // send an object of type 'ch_frb_io::write_chunk_request' to the I/O thread pool in ch_frb_io.
-// If the virtual "callback" write_chunk_request::write_callback() is defined, then the I/O thread
-// will call this function when the write request completes.
+// If the virtual write_chunk_request::status_changed() is defined, then the I/O thread
+// will call this function when the write request status changes (eg, when it completes).
 //
-// The l1_write_request is a subclass of ch_frb_io::write_chunk_request, whose callback function
+// The l1_write_request is a subclass of ch_frb_io::write_chunk_request, whose status_changed function
 // constructs a WriteChunks_Reply object, and puts it in the RpcServer's backend_queue.
 //
 // The upshot is: if the RpcServer submits l1_write_requests to the output_device_pool, then a
@@ -194,11 +194,12 @@ struct l1_write_request : public ch_frb_io::write_chunk_request {
     zmq::message_t *client = NULL;
     uint32_t token = 0;
 
-    virtual void write_callback(const string &error_message) override;
+    virtual void status_changed(bool finished, bool success,
+                                const string &error_message) override;
 };
 
-
-void l1_write_request::write_callback(const string &error_message)
+void l1_write_request::status_changed(bool finished, bool success,
+                                      const string &error_message)
 {
     shared_ptr<l1_backend_queue::entry> e = make_shared<l1_backend_queue::entry> ();
     e->client = this->client;
@@ -220,6 +221,36 @@ void l1_write_request::write_callback(const string &error_message)
 
 // -------------------------------------------------------------------------------------------------
 
+void chunk_status_map::set(const string& filename,
+                           const string& status,
+                           const string& error_message) {
+    ulock u(_status_mutex);
+    _write_chunk_status[filename] = make_pair(status, error_message);
+    u.unlock();
+}
+
+bool chunk_status_map::get(const string& filename,
+                           string& status, string& error_message) {
+    ulock u(_status_mutex);
+    // DEBUG
+    chdebug("Request for status of " << filename);
+    for (auto it=_write_chunk_status.begin(); it!=_write_chunk_status.end(); it++) {
+        chdebug("status[" << it->first << "] = " << it->second.first << ((it->first == filename) ? " ***" : ""));
+    }
+
+    auto val = _write_chunk_status.find(filename);
+    if (val == _write_chunk_status.end()) {
+        status = "UNKNOWN";
+        error_message = "";
+        return false;
+    } else {
+        status        = val->second.first;
+        error_message = val->second.second;
+        return true;
+    }
+}
+
+// -------------------------------------------------------------------------------------------------
 
 L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
                          shared_ptr<const ch_frb_l1::mask_stats_map> ms,
@@ -232,6 +263,7 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
     _frontend(*_ctx, ZMQ_ROUTER),
     _backend_queue(make_shared<l1_backend_queue>()),
     _output_devices(stream->ini_params.output_devices),
+    _chunk_status(make_shared<chunk_status_map>()),
     _shutdown(false),
     _stream(stream),
     _mask_stats(ms)
@@ -262,14 +294,9 @@ bool L1RpcServer::is_shutdown() {
 void L1RpcServer::set_writechunk_status(string filename,
                                         string status,
                                         string error_message) {
-    {
-        ulock u(_status_mutex);
-        _write_chunk_status[filename] = make_pair(status, error_message);
-	u.unlock();
-
-	string s = (error_message.size() > 0) ? (", error_message='" + error_message + "'") : "";
-	chlog("Set writechunk status for " << filename << " to " << status << s);
-    }
+    _chunk_status->set(filename, status, error_message);
+    string s = (error_message.size() > 0) ? (", error_message='" + error_message + "'") : "";
+    chlog("Set writechunk status for " << filename << " to " << status << s);
 }
 
 // For testing purposes, enqueue a chunk for writing as though an RPC
@@ -797,7 +824,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
         bool need_rfi = false;
         
-        //
+        // "v1" write_chunks requests have 9 arguments; "v2" have 10 arguments ("need_rfi" flag added)
         msgpack::object obj = oh.get();
         cout << "Write_chunks request: arguments size " << obj.via.array.size << endl;
         WriteChunks_Request req;
@@ -805,13 +832,9 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             req = oh.get().as<WriteChunks_Request>();
         } else if (obj.via.array.size == 10) {
             WriteChunks_Request_v2 req2 = oh.get().as<WriteChunks_Request_v2>();
-            cout << "Parsed v2 request" << endl;
             req = req2;
             need_rfi = req2.need_rfi;
         }
-
-        //
-        //WriteChunks_Request req = oh.get().as<WriteChunks_Request>();
 
         /*
          cout << "WriteChunks request: FPGA range " << req.min_fpga << "--" << req.max_fpga << endl;
@@ -845,8 +868,6 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 	    w->priority = req.priority;
 	    w->chunk = chunk;
 	    w->token = token;
-
-            // FIXME -- this could be set by an RPC argument.
             w->need_rfi_mask = need_rfi;
 
 	    // Returns false if request failed to queue.  
@@ -882,23 +903,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         // search the map of pathname -> (status, error_message)
         string status;
         string error_message;
-        {
-            ulock u(_status_mutex);
-
-	    // DEBUG
-	    chdebug("Request for status of " << pathname);
-	    for (auto it=_write_chunk_status.begin(); it!=_write_chunk_status.end(); it++) {
-	      chdebug("status[" << it->first << "] = " << it->second.first << ((it->first == pathname) ? " ***" : ""));
-	    }
-
-            auto val = _write_chunk_status.find(pathname);
-            if (val == _write_chunk_status.end()) {
-                status = "UNKNOWN";
-            } else {
-                status        = val->second.first;
-                error_message = val->second.second;
-            }
-        }
+        _chunk_status->get(pathname, status, error_message);
         pair<string, string> result(status, error_message);
 
         msgpack::sbuffer buffer;

@@ -16,6 +16,19 @@ const int default_port_l1_rpc = 5555;
 // implementation detail: a struct used to communicate between I/O threads and the RpcServer.
 class l1_backend_queue;
 
+class chunk_status_map {
+public:
+    void set(const std::string& filename, const std::string& status, const std::string& error_message);
+    bool get(const std::string& filename, std::string& status, std::string& error_message);
+protected:
+    // result codes for write_chunk_request() calls:
+    //  filename -> pair(status, error_message)
+    std::map<std::string, std::pair<std::string, std::string> > _write_chunk_status;
+    // (and the mutex for it)
+    std::mutex _status_mutex;
+};
+
+
 // The main L1 RPC server object.
 class L1RpcServer {
 public:
@@ -92,10 +105,7 @@ private:
     // Port the client-facing socket is listening on.
     std::string _port;
 
-    // a vector of result codes for write_chunk_request() calls.
-    std::map<std::string, std::pair<std::string, std::string> > _write_chunk_status;
-    // (and the mutex for it)
-    std::mutex _status_mutex;
+    std::shared_ptr<chunk_status_map> _chunk_status;
 
     // Only protects _shutdown!
     std::mutex _q_mutex;
