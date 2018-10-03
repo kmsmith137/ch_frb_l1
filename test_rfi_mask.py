@@ -50,7 +50,8 @@ print(client.get_statistics())
 
 print('Sending write request...')
 res = client.write_chunks([0], 0, (50 + 4) * 384 * 1024,
-                          'chunks-out-(FPGA0).msgpack', waitAll=False)
+                          'chunks-out-(FPGA0).msgpack', need_rfi=True,
+                          waitAll=False)
 print('Got write request result:', res)
 reqs,token = res
 req = reqs[0]
