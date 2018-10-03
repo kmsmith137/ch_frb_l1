@@ -43,6 +43,11 @@ class AssembledChunk(object):
         offsets = c[15]
         data    = c[16]
 
+        # optional
+        self.frame0_nano = 0
+        if len(c) == 18:
+            self.frame0_nano = c[17]
+
         if compressed:
            import pybitshuffle
            data = pybitshuffle.decompress(data, self.ndata)
@@ -74,16 +79,23 @@ class AssembledChunk(object):
         weights = ((self.data > 0) * (self.data < 255)) * np.float32(1.0)
 
         return intensities,weights
-        
+
+    def time_start(self):
+        # Nanoseconds per FPGA count
+        fpga_nano = 2560
+        return 1e-9 * (self.frame0_nano +
+                       self.fpga_counts_per_sample * fpga_nano * self.fpga0)
+
+    def time_end(self):
+        # Nanoseconds per FPGA count
+        fpga_nano = 2560
+        return 1e-9 * (self.frame0_nano +
+                       self.fpga_counts_per_sample * fpga_nano * (self.fpga0 + self.fpgaN))
 
 def read_msgpack_file(fn):
     f = open(fn, 'rb')
     m = msgpack.unpackb(f.read())
     return AssembledChunk(m)
-
-# c = read_msgpack_file('chunk-beam0077-chunk00000094+01.msgpack')
-# print('Got', c)
-
 
 class WriteChunkReply(object):
     '''
