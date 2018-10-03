@@ -54,11 +54,6 @@ public:
     // equivalent to receiving a shutdown() RPC.
     void do_shutdown();
 
-    // called by RPC worker threads to update status for a write_chunks request
-    void set_writechunk_status(std::string filename,
-                               std::string status,
-                               std::string error_message);
-
     // For testing: enqueue the given chunk for writing.
     void enqueue_write_request(std::shared_ptr<ch_frb_io::assembled_chunk>,
                                std::string filename,

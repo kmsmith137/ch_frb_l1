@@ -196,19 +196,19 @@ struct l1_write_request : public ch_frb_io::write_chunk_request {
     uint32_t token = 0;
 
     virtual void status_changed(bool finished, bool success,
+                                const string &state,
                                 const string &error_message) override;
 };
 
 void l1_write_request::status_changed(bool finished, bool success,
+                                      const std::string &state,
                                       const string &error_message)
 {
-    if (!finished) {
-        // just update status
-        if (chunk_status)
-            //// FIXME -- status string???
-            chunk_status->set(this->filename, "QUEUED", error_message);
+    // update status
+    if (chunk_status)
+        chunk_status->set(this->filename, state, error_message);
+    if (!finished)
         return;
-    }
 
     shared_ptr<l1_backend_queue::entry> e = make_shared<l1_backend_queue::entry> ();
     e->client = this->client;
@@ -218,7 +218,7 @@ void l1_write_request::status_changed(bool finished, bool success,
     rep.beam = chunk->beam_id;
     rep.fpga0 = chunk->fpga_begin;
     rep.fpgaN = chunk->fpga_end - chunk->fpga_begin;
-    rep.success = (error_message.size() == 0);
+    rep.success = success;
     rep.filename = this->filename;
     rep.error_message = error_message;
 
@@ -236,6 +236,9 @@ void chunk_status_map::set(const string& filename,
     ulock u(_status_mutex);
     _write_chunk_status[filename] = make_pair(status, error_message);
     u.unlock();
+
+    string s = (error_message.size() > 0) ? (", error_message='" + error_message + "'") : "";
+    chlog("Set writechunk status for " << filename << " to " << status << s);
 }
 
 bool chunk_status_map::get(const string& filename,
@@ -300,14 +303,6 @@ bool L1RpcServer::is_shutdown() {
     return _shutdown;
 }
 
-void L1RpcServer::set_writechunk_status(string filename,
-                                        string status,
-                                        string error_message) {
-    _chunk_status->set(filename, status, error_message);
-    string s = (error_message.size() > 0) ? (", error_message='" + error_message + "'") : "";
-    chlog("Set writechunk status for " << filename << " to " << status << s);
-}
-
 // For testing purposes, enqueue a chunk for writing as though an RPC
 // client requested it.
 void L1RpcServer::enqueue_write_request(std::shared_ptr<ch_frb_io::assembled_chunk> chunk,
@@ -327,7 +322,6 @@ void L1RpcServer::enqueue_write_request(std::shared_ptr<ch_frb_io::assembled_chu
 	throw runtime_error("L1RpcServer::enqueue_write_request: filename '" + filename + "' failed to queue");
     }
 }
-
 
 // Main thread for L1 RPC server.
 void L1RpcServer::run() {
@@ -875,6 +869,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
 	    // Fill remaining fields and enqueue the write request for the I/O threads.
 	    w->backend_queue = this->_backend_queue;
+            w->chunk_status = this->_chunk_status;
 	    w->priority = req.priority;
 	    w->chunk = chunk;
 	    w->token = token;
@@ -884,9 +879,11 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 	    bool success = _output_devices.enqueue_write_request(w);
 
 	    // Record the status for this filename.
-	    string status = success ? "QUEUED" : "FAILED";
-	    string error_message = success ? "" : "write_request failed to queue";
-	    set_writechunk_status(w->filename, status, error_message);
+            // (status will be set via a status_changed() call during
+            // enqueue_write_request.)
+	    string status;
+            string error_message;
+            _chunk_status->get(w->filename, status, error_message);
 
             WriteChunks_Reply rep;
             rep.beam = chunk->beam_id;
@@ -1022,8 +1019,8 @@ void L1RpcServer::_check_backend_queue()
 	const WriteChunks_Reply &rep = w->reply;
 	
 	// Set writechunk_status.
-	const char *status = rep.success ? "SUCCEEDED" : "FAILED";
-	set_writechunk_status(rep.filename, status, rep.error_message);
+	//const char *status = rep.success ? "SUCCEEDED" : "FAILED";
+        //_chunk_status->set(rep.filename, status, rep.error_message);
 
 	zmq::message_t *client = w->client;
         //cout << "Write request finished: " << rep.filename << " " << status << endl;
