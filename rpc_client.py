@@ -142,15 +142,6 @@ class MaskedFrequencies(object):
             where = where.decode()
             self.histories[(beam, where)] = np.array(hist).astype(np.float32) / nt
 
-class MaskedTimes(object):
-    def __init__(self, msgpack):
-        self.histories = {}
-        for m in msgpack:
-            (beam, where, nf, hist) = m
-            print('Where:', where, type(where))
-            where = where.decode()
-            self.histories[(beam, where)] = np.hstack(hist).astype(np.float32) / nf
-            
 class PacketRate(object):
     def __init__(self, msgpack):
         self.start = msgpack[0]
@@ -515,24 +506,6 @@ class RpcClient(object):
         parts = self.wait_for_tokens(tokens, timeout=timeout)
         # We expect one message part for each token.
         return [MaskedFrequencies(msgpack.unpackb(p[0])) if p is not None
-                else None
-                for p in parts]
-
-    def get_masked_times(self, servers=None, wait=True, timeout=-1):
-        if servers is None:
-            servers = self.servers.keys()
-        tokens = []
-        for k in servers:
-            self.token += 1
-            req = msgpack.packb(['get_masked_times', self.token])
-            #args = msgpack.packb([float(start), float(period)])
-            tokens.append(self.token)
-            self.sockets[k].send(req) # + args)
-        if not wait:
-            return tokens
-        parts = self.wait_for_tokens(tokens, timeout=timeout)
-        # We expect one message part for each token.
-        return [MaskedTimes(msgpack.unpackb(p[0])) if p is not None
                 else None
                 for p in parts]
 
