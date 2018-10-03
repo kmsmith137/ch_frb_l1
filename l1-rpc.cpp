@@ -191,6 +191,7 @@ struct l1_write_request : public ch_frb_io::write_chunk_request {
     //    int priority;
 
     shared_ptr<l1_backend_queue> backend_queue;
+    shared_ptr<chunk_status_map> chunk_status;
     zmq::message_t *client = NULL;
     uint32_t token = 0;
 
@@ -201,6 +202,14 @@ struct l1_write_request : public ch_frb_io::write_chunk_request {
 void l1_write_request::status_changed(bool finished, bool success,
                                       const string &error_message)
 {
+    if (!finished) {
+        // just update status
+        if (chunk_status)
+            //// FIXME -- status string???
+            chunk_status->set(this->filename, "QUEUED", error_message);
+        return;
+    }
+
     shared_ptr<l1_backend_queue::entry> e = make_shared<l1_backend_queue::entry> ();
     e->client = this->client;
     e->token = this->token;
@@ -309,6 +318,7 @@ void L1RpcServer::enqueue_write_request(std::shared_ptr<ch_frb_io::assembled_chu
     w->filename = filename;
     w->priority = priority;
     w->backend_queue = this->_backend_queue;
+    w->chunk_status = this->_chunk_status;
 
     bool ret = _output_devices.enqueue_write_request(w);
 
