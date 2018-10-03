@@ -507,7 +507,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             // Turn off streaming
             pattern = "";
             chlog("Turning off streaming");
-            _stream->stream_to_files(pattern, { }, 0);
+            _stream->stream_to_files(pattern, { }, 0, false);
             result.first = true;
             result.second = pattern;
         } else {
@@ -533,7 +533,8 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
                         }
                     }
                 }
-                _stream->stream_to_files(pattern, beam_ids, 0);
+                bool need_rfi = (_stream->ini_params.nrfifreq > 0);
+                _stream->stream_to_files(pattern, beam_ids, 0, need_rfi);
                 result.first = true;
                 result.second = pattern;
             } catch (const std::exception& e) {

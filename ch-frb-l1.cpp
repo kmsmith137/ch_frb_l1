@@ -1287,7 +1287,8 @@ void l1_server::make_input_streams()
 		sf_beam_ids.push_back(b);
 
 	// If config.stream_filename_pattern is an empty string, then stream_to_files() doesn't do anything.
-	input_streams[istream]->stream_to_files(config.stream_filename_pattern, sf_beam_ids, 0);   // (pattern, priority)
+        bool need_rfi = (config.nrfifreq > 0);
+	input_streams[istream]->stream_to_files(config.stream_filename_pattern, sf_beam_ids, 0, need_rfi);   // (pattern, priority)
     }
 }
 
