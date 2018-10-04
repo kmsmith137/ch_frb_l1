@@ -989,16 +989,12 @@ struct l1_server {
     vector<std::thread> rpc_threads;
     vector<std::thread> dedispersion_threads;
 
-    string frame0_txt;
-    uint64_t frame0_nano;
-
     // The constructor reads the configuration files, does a lot of sanity checks,
     // but does not initialize any "heavyweight" data structures.
     l1_server(int argc, char **argv);
 
     // These methods incrementally construct the "heavyweight" data structures.
     void start_logging();
-    void fetch_frame0();
     void spawn_l1b_subprocesses();
     void make_output_devices();
     void make_memory_slab_pools();
@@ -1252,7 +1248,6 @@ void l1_server::make_input_streams()
 	ini_params.nt_per_packet = config.nt_per_packet;
 	ini_params.fpga_counts_per_sample = config.fpga_counts_per_sample;
 	ini_params.stream_id = istream + 1;   // +1 here since first NFS mount is /frb-archive-1, not /frb-archive-0
-        ini_params.frame0_nano = frame0_nano;
         ini_params.frame0_url = config.frame0_url;
 	ini_params.force_fast_kernels = !config.slow_kernels;
 	ini_params.force_reference_kernels = config.slow_kernels;
@@ -1448,78 +1443,14 @@ void l1_server::print_statistics()
 
 // -------------------------------------------------------------------------------------------------
 
-static size_t
-CurlWriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp)
-{
-    size_t realsize = size * nmemb;
-    l1_server* l1 = (l1_server*)userp;
-    l1->frame0_txt += string((char*)contents, realsize);
-    return realsize;
-}
-
-void l1_server::fetch_frame0()
-{
-    if (config.frame0_url.size() == 0) {
-        cout << "No 'frame0_url' in config file; skipping." << endl;
-        return;
-    }
-    CURL *curl_handle;
-    CURLcode res;
-    // init the curl session
-    curl_handle = curl_easy_init();
-    // specify URL to get
-    curl_easy_setopt(curl_handle, CURLOPT_URL, config.frame0_url.c_str());
-    // set timeout
-    curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT_MS, 3000);
-    // set received-data callback
-    frame0_txt = "";
-    curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION,
-                     CurlWriteMemoryCallback);
-    curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)this);
-    // curl!
-    cout << "Fetching frame0_time from " << config.frame0_url << endl;
-    res = curl_easy_perform(curl_handle);
-    if (res != CURLE_OK) {
-        cout << "Fetch_frame0 failed: " << string(curl_easy_strerror(res)) << endl;
-        return;
-    }
-    curl_easy_cleanup(curl_handle);
-
-    cout << "Received frame0 text: " << frame0_txt << endl;
-    Json::Reader frame0_reader;
-    Json::Value frame0_json;
-    if (!frame0_reader.parse(frame0_txt, frame0_json)) {
-        cout << "ch-frb-l1: failed to parse 'frame0' string: '"
-             << frame0_txt << "'" << endl;
-        return;
-    }
-    cout << "Parsed: " << frame0_json << endl;
-    if (!frame0_json.isObject()) {
-        cout << "ch-frb-l1: 'frame0' was not a JSON 'Object' as expected" << endl;
-        return;
-    }
-    string key = "frame0_nano";
-    if (!frame0_json.isMember(key)) {
-        cout << "ch-frb-l1: 'frame0' did not contain key '" << key << "'" << endl;
-        return;
-    }
-    const Json::Value v = frame0_json[key];
-    if (!v.isIntegral()) {
-        cout << "ch-frb-l1: expected 'frame0[frame0_nano]' to be integral." << endl;
-        return;
-    }
-    frame0_nano = v.asUInt64();
-    cout << "Found frame0_nano: " << frame0_nano << endl;
-}
-
 int main(int argc, char **argv)
 {
+    // for fetching frame0_ctime
     curl_global_init(CURL_GLOBAL_ALL);
 
     l1_server server(argc, argv);
 
     server.start_logging();
-    server.fetch_frame0();
     server.spawn_l1b_subprocesses();
     server.make_output_devices();
     server.make_memory_slab_pools();
