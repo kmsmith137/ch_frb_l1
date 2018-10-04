@@ -57,7 +57,7 @@ before_script:
     - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then pip2 install --user numpy; fi
 
     - export NUMPY_INCDIR=$(python -c "import numpy; print(numpy.get_include())")
-    - echo "NUMPY_INCDIR: $NUMPY_INCDIR"
+    - echo "NUMPY_INCDIR is $NUMPY_INCDIR"
 
     - find /usr/local/lib/python2.7/
 
