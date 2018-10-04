@@ -108,7 +108,7 @@ before_script:
     # on osx it's pre-installed in site-packages?
     #- export NUMPY_INCDIR=/usr/lib/python2.7/dist-packages/numpy/core/include
     - export NUMPY_INCDIR=$(python -c "import numpy; print(numpy.get_include())")
-    - echo "NUMPY_INCDIR: $NUMPY_INCDIR"
+    - echo "NUMPY_INCDIR is $NUMPY_INCDIR"
     - export JSONCPP_INC_DIR=/usr/include/jsoncpp
     - export PYTHONPATH=${PYTHONPATH}:/usr/lib/python2.7/dist-packages
 
