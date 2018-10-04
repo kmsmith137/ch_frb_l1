@@ -9,7 +9,12 @@
 #sudo: yes
 #dist: trusty
 
-os: osx
+os:
+  - osx
+  - linux
+
+sudo: false
+dist: trusty
 
 # Formerly:
 # use containerized infrastructure (for faster startup; no sudo)
