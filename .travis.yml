@@ -28,9 +28,15 @@ compiler:
   - clang
 
 before_install:
-    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update          ; fi
+    - echo "TRAVIS_OS_NAME is $TRAVIS_OS_NAME"
+    - echo "HOMEBREW_CACHE: $HOMEBREW_CACHE"
+    - echo "HOMEBREW_TEMP: $HOMEBREW_TEMP"
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update; fi
     - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install lz4 yaml-cpp jsoncpp; fi
-    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install fftw --without-fortran; fi
+    # fftw: depends on gcc if --with-fortran (the default).
+    #- if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install fftw --without-fortran; fi
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install fftw --ignore-dependencies; fi
+
     # boost: already installed
     # fftw: problematic
 
@@ -39,6 +45,8 @@ before_script:
 
     - pip2 install --user cpp-coveralls
     - pip2 install --user Cython
+    # for simpulse
+    - pip2 install --user numpy
 
     # for cython
     - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then export PATH=${PATH}:~/Library/Python/2.7/bin; fi
