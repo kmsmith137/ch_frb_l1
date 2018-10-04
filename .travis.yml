@@ -112,6 +112,9 @@ before_script:
     - export JSONCPP_INC_DIR=/usr/include/jsoncpp
     - export PYTHONPATH=${PYTHONPATH}:/usr/lib/python2.7/dist-packages
 
+    # for simpulse
+    - export LIBS_PYMODULE="-lPython"
+
     - cd
     - git clone https://github.com/CHIMEFRB/ch_frb_io.git
     - cd ch_frb_io
