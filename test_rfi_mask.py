@@ -4,7 +4,7 @@ import numpy as np
 from rpc_client import read_msgpack_file, RpcClient
 from time import sleep
 
-if False:
+if True:
     beam_id = 0
     fpga_counts_per_sample = 384
     nt = 1024
@@ -13,16 +13,17 @@ if False:
     nt_coarse = nt // 16
     nf_coarse = 1024
     
-    data = np.clip(128. + 20. * np.random.normal(size=(nf, nt)), 0, 255)
-    offset = np.empty((nf_coarse, nt_coarse), np.float64)
-    scale = np.empty((nf_coarse, nt_coarse), np.float64)
-    rfi = np.zeros((nrfi, nt), np.bool)
+    data = np.clip(128. + 20. * np.random.normal(size=(nf, nt)), 0, 255).astype(np.uint8)
+    offset = np.empty((nf_coarse, nt_coarse), np.float32)
+    scale = np.empty((nf_coarse, nt_coarse), np.float32)
+    #rfi = np.zeros((nrfi, nt), np.bool)
+    rfi = None
     
     offset[:,:] = -128.
     scale[:,:] = 1.
     
     for i in range(10):
-        data = np.clip(128. + 20. * np.random.normal(size=(nf, nt)), 1, 254)
+        data = np.clip(128. + 20. * np.random.normal(size=(nf, nt)), 1, 254).astype(np.uint8)
         data[:, i*50:i*50+100] = 200
         ichunk = i + 50
         
@@ -32,6 +33,9 @@ if False:
     
     ch2 = read_msgpack_file('chunk.msgpack')
 
+    import sys
+    sys.exit(0)
+    
 
 l0 = simulate_l0.l0sim('l0_configs/l0_rfi.yml', 1.0)
 

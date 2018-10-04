@@ -185,7 +185,6 @@ static PyObject* chunk_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
  data: (constants::nfreq_coarse * nupfreq, constants::nt_per_assembled_Chunk)
  offsets, scales: (constants:nfreq_coarse, nt_coarse)
  rfi: (nrfifreq, nt_per_assembled_chunk) <--- not bit-packed
-
  */
 static int chunk_init(chunk *self, PyObject *args, PyObject *keywords) {
     Py_ssize_t n;
@@ -204,11 +203,12 @@ static int chunk_init(chunk *self, PyObject *args, PyObject *keywords) {
     PyObject* py_scale;
     PyObject* py_offset;
     PyObject* py_rfi;
+    bool have_rfi;
 
-    PyArray_Descr* dtype = PyArray_DescrFromType(NPY_DOUBLE);
+    PyArray_Descr* ftype = PyArray_DescrFromType(NPY_FLOAT);
     PyArray_Descr* btype = PyArray_DescrFromType(NPY_BOOL);
-    int req = NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED
-        | NPY_ARRAY_ELEMENTSTRIDES;
+    PyArray_Descr* utype = PyArray_DescrFromType(NPY_UINT8);
+    int req = NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED | NPY_ARRAY_ELEMENTSTRIDES;
 
     n = PyTuple_Size(args);
     if (n != 7) {
@@ -216,47 +216,52 @@ static int chunk_init(chunk *self, PyObject *args, PyObject *keywords) {
         return -1;
     }
     // Try parsing as an array.
-    if (!PyArg_ParseTuple(args, "iiiO!O!O!O!",
+    if (!PyArg_ParseTuple(args, "iiiO!O!O!O",
                           &beam_id, &fpga_counts_per_sample, &ichunk,
                           &PyArray_Type, &py_data,
                           &PyArray_Type, &py_scale,
                           &PyArray_Type, &py_offset,
-                          &PyArray_Type, &py_rfi)) {
+                          &py_rfi)) {
         PyErr_SetString(PyExc_ValueError, "Failed to parse args: need: (int beam_id, int fpga_counts_per_sample, array data, array scale, array offset, array rfi)");
         return -1;
     }
 
-    Py_INCREF(dtype);
-    py_data = PyArray_FromAny(py_data, dtype, 2, 2, req, NULL);
+    have_rfi = (py_rfi != Py_None);
+    
+    Py_INCREF(utype);
+    py_data = PyArray_FromAny(py_data, utype, 2, 2, req, NULL);
     if (!py_data) {
         PyErr_SetString(PyExc_ValueError, "Failed to convert 'data' array");
         return -1;
     }
-    Py_INCREF(dtype);
-    py_offset = PyArray_FromAny(py_offset, dtype, 2, 2, req, NULL);
+    Py_INCREF(ftype);
+    py_offset = PyArray_FromAny(py_offset, ftype, 2, 2, req, NULL);
     if (!py_offset) {
         PyErr_SetString(PyExc_ValueError, "Failed to convert 'offset' array");
         return -1;
     }
-    Py_INCREF(dtype);
-    py_scale = PyArray_FromAny(py_scale, dtype, 2, 2, req, NULL);
+    Py_INCREF(ftype);
+    py_scale = PyArray_FromAny(py_scale, ftype, 2, 2, req, NULL);
     if (!py_scale) {
         PyErr_SetString(PyExc_ValueError, "Failed to convert 'scale' array");
         return -1;
     }
-    Py_INCREF(btype);
-    py_rfi = PyArray_FromAny(py_rfi, btype, 2, 2, req, NULL);
-    if (!py_rfi) {
-        PyErr_SetString(PyExc_ValueError, "Failed to convert 'rfi' array");
-        return -1;
+
+    if (have_rfi) {
+        Py_INCREF(btype);
+        py_rfi = PyArray_FromAny(py_rfi, btype, 2, 2, req, NULL);
+        if (!py_rfi) {
+            PyErr_SetString(PyExc_ValueError, "Failed to convert 'rfi' array");
+            return -1;
+        }
     }
 
     if (PyArray_NDIM(py_data) != 2) {
         PyErr_SetString(PyExc_ValueError, "data array must be two-dimensional");
         return -1;
     }
-    if (PyArray_TYPE(py_data) != NPY_DOUBLE) {
-        PyErr_SetString(PyExc_ValueError, "data array must contain doubles");
+    if (PyArray_TYPE(py_data) != NPY_UINT8) {
+        PyErr_SetString(PyExc_ValueError, "data array must contain uint8 values");
         return -1;
     }
     nf = PyArray_DIM(py_data, 0);
@@ -273,8 +278,8 @@ static int chunk_init(chunk *self, PyObject *args, PyObject *keywords) {
         PyErr_SetString(PyExc_ValueError, "scale array must be two-dimensional");
         return -1;
     }
-    if (PyArray_TYPE(py_scale) != NPY_DOUBLE) {
-        PyErr_SetString(PyExc_ValueError, "scale array must contain doubles");
+    if (PyArray_TYPE(py_scale) != NPY_FLOAT) {
+        PyErr_SetString(PyExc_ValueError, "scale array must contain floats");
         return -1;
     }
     d1 = (int)PyArray_DIM(py_scale, 0);
@@ -289,8 +294,8 @@ static int chunk_init(chunk *self, PyObject *args, PyObject *keywords) {
         PyErr_SetString(PyExc_ValueError, "offset array must be two-dimensional");
         return -1;
     }
-    if (PyArray_TYPE(py_offset) != NPY_DOUBLE) {
-        PyErr_SetString(PyExc_ValueError, "offset array must contain doubles");
+    if (PyArray_TYPE(py_offset) != NPY_FLOAT) {
+        PyErr_SetString(PyExc_ValueError, "offset array must contain floats");
         return -1;
     }
     d1 = (int)PyArray_DIM(py_offset, 0);
@@ -302,22 +307,25 @@ static int chunk_init(chunk *self, PyObject *args, PyObject *keywords) {
         return -1;
     }
 
-    if (PyArray_NDIM(py_rfi) != 2) {
-        PyErr_SetString(PyExc_ValueError, "rfi array must be two-dimensional");
-        return -1;
-    }
-    if (PyArray_TYPE(py_rfi) != NPY_BOOL) {
-        PyErr_SetString(PyExc_ValueError, "rfi array must contain booleans");
-        return -1;
-    }
-    d1 = (int)PyArray_DIM(py_rfi, 0);
-    d2 = (int)PyArray_DIM(py_rfi, 1);
+    if (have_rfi) {
+        if (PyArray_NDIM(py_rfi) != 2) {
+            PyErr_SetString(PyExc_ValueError, "rfi array must be two-dimensional");
+            return -1;
+        }
+        if (PyArray_TYPE(py_rfi) != NPY_BOOL) {
+            PyErr_SetString(PyExc_ValueError, "rfi array must contain booleans");
+            return -1;
+        }
+        d1 = (int)PyArray_DIM(py_rfi, 0);
+        d2 = (int)PyArray_DIM(py_rfi, 1);
+        if (d2 != ch_frb_io::constants::nt_per_assembled_chunk) {
+            PyErr_SetString(PyExc_ValueError, "rfi array must have nt_per_assembled_chunk samples!");
+            return -1;
+        }
+        nrfifreq = d1;
 
-    nrfifreq = d1;
-    
-    if (d2 != ch_frb_io::constants::nt_per_assembled_chunk) {
-        PyErr_SetString(PyExc_ValueError, "rfi array must have nt_per_assembled_chunk samples!");
-        return -1;
+    } else {
+        nrfifreq = 0;
     }
 
     /////////////////////////////////
@@ -330,35 +338,38 @@ static int chunk_init(chunk *self, PyObject *args, PyObject *keywords) {
     ini.ichunk = ichunk;
     self->chunk = ch_frb_io::assembled_chunk::make(ini);
 
-    double* d;
-    d = (double*)PyArray_DATA(py_data);
-    for (int i=0; i<self->chunk->ndata; i++) {
-        self->chunk->data[i] = (uint8_t)(d[i]);
-    }
-    d = (double*)PyArray_DATA(py_offset);
-    for (int i=0; i<self->chunk->nscales; i++) {
-        self->chunk->offsets[i] = (uint8_t)(d[i]);
-    }
-    d = (double*)PyArray_DATA(py_scale);
-    for (int i=0; i<self->chunk->nscales; i++) {
-        self->chunk->scales[i] = (uint8_t)(d[i]);
-    }
-    bool* b = (bool*)PyArray_DATA(py_rfi);
-    for (int i=0; i<self->chunk->nrfimaskbytes/8; i++) {
-        uint8_t bval = 0;
-        for (int j=0; j<8; j++) {
-            bval |= (b[i] * (1<<j));
+    uint8_t* du;
+    du = (uint8_t*)PyArray_DATA(py_data);
+    memcpy(self->chunk->data, du, self->chunk->ndata);
+    float* f;
+    f = (float*)PyArray_DATA(py_offset);
+    memcpy(self->chunk->offsets, f, self->chunk->nscales * sizeof(float));
+    //for (int i=0; i<self->chunk->nscales; i++) {
+    //self->chunk->offsets[i] = (uint8_t)(d[i]);
+    //}
+    f = (float*)PyArray_DATA(py_scale);
+    memcpy(self->chunk->scales, f, self->chunk->nscales * sizeof(float));
+    //for (int i=0; i<self->chunk->nscales; i++) {
+    //self->chunk->scales[i] = (uint8_t)(d[i]);
+    //}
+    if (have_rfi) {
+        bool* b = (bool*)PyArray_DATA(py_rfi);
+        for (int i=0; i<self->chunk->nrfimaskbytes/8; i++) {
+            uint8_t bval = 0;
+            for (int j=0; j<8; j++)
+                bval |= (b[i] * (1<<j));
+            self->chunk->rfi_mask[i] = bval;
         }
-        self->chunk->rfi_mask[i] = bval;
+        self->chunk->has_rfi_mask = true;
     }
-    self->chunk->has_rfi_mask = true;
 
     Py_DECREF(py_data);
     Py_DECREF(py_offset);
     Py_DECREF(py_scale);
     Py_DECREF(py_rfi);
-    Py_INCREF(dtype);
+    Py_INCREF(ftype);
     Py_INCREF(btype);
+    Py_INCREF(utype);
     return 0;
 }
 

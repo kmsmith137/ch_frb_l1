@@ -118,6 +118,7 @@ Makefile.local: ;
 Makefile: ;
 %.cpp: ;
 %.hpp: ;
+%.py: ;
 
 # Cancel stupid implicit rules.
 %: %,v
