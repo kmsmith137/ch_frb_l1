@@ -79,6 +79,7 @@ struct l1_config
 
     bool tflag = false;
     bool fflag = false;
+    bool iflag = false;
     bool l1b_pipe_io_debug = false;
     bool memory_pool_debug = false;
     bool write_chunk_debug = false;
@@ -225,6 +226,7 @@ l1_config::l1_config(int argc, char **argv)
         ("m,memory", "Enables a very verbose debug trace of the memory_slab_pool allocation")
         ("w,write", "Eables a very verbose debug trace of the logic for writing chunks")
         ("c,crash", "Deliberately crash dedispersion thread (for debugging, obviously)")
+        ("i,ignore", "Ignore end-of-stream packets; stay alive")
         ("t,toy", "Starts a \"toy server\" which assembles packets, but does not run RFI removal, dedispersion, or L1B (if -t is specified, then the last 3 arguments are optional)")
         ("a,acq", "Stream data to disk, saving it to this acquisition directory name", cxxopts::value<std::string>(acq_name))
         ("n,nfs", "For streaming data acquisition, stream to NFS, not SSD")
@@ -248,6 +250,8 @@ l1_config::l1_config(int argc, char **argv)
         this->deliberately_crash = true;
     if (opts.count("t"))
         this->tflag = true;
+    if (opts.count("i"))
+        this->iflag = true;
 
     if (opts.count("help") || (args.size() == 0) || (!((args.size() == 4) || ((args.size() == 1) && (this->tflag)))) ){
         std::cout << parser.help({""}) << endl;
@@ -282,6 +286,8 @@ l1_config::l1_config(int argc, char **argv)
     		this->deliberately_crash = true;
     	    else if (argv[i][j] == 't')
     		this->tflag = true;
+    	    else if (argv[i][j] == 'i')
+    		this->iflag = true;
     	    else
     		usage();
     	}
@@ -713,6 +719,7 @@ void l1_config::_have_warnings() const
 struct dedispersion_thread_context {
     l1_config config;
     shared_ptr<ch_frb_io::intensity_network_stream> sp;
+    mask_stats_map ms;
     shared_ptr<bonsai::trigger_pipe> l1b_subprocess;   // warning: can be empty pointer!
     vector<int> allowed_cores;
     bool asynchronous_dedispersion;   // run RFI and dedispersion in separate threads?
@@ -721,6 +728,36 @@ struct dedispersion_thread_context {
     void _thread_main() const;
     void _toy_thread_main() const;  // if -t command-line argument is specified
 };
+
+static void pipeline_get_all(shared_ptr<rf_pipelines::pipeline_object> pipe,
+                             vector<shared_ptr<rf_pipelines::pipeline_object> > &stages) {
+    stages.push_back(pipe);
+    if (pipe->class_name == "pipeline") {
+        shared_ptr<rf_pipelines::pipeline> pipeline = dynamic_pointer_cast<rf_pipelines::pipeline>(pipe);
+        for (int i=0; i<pipeline->size(); i++) {
+            shared_ptr<rf_pipelines::pipeline_object> stage = pipeline->elements[i];
+            pipeline_get_all(stage, stages);
+        }
+    } else if (pipe->class_name == "wi_sub_pipeline") {
+        shared_ptr<rf_pipelines::wi_sub_pipeline> pipeline = dynamic_pointer_cast<rf_pipelines::wi_sub_pipeline>(pipe);
+        pipeline_get_all(pipeline->sub_pipeline, stages);
+    }
+}
+
+static void print_pipeline(shared_ptr<rf_pipelines::pipeline_object> pipe, string prefix) {
+  cout << prefix << pipe->name << " class " << pipe->class_name << endl;
+  if (pipe->class_name == "pipeline") {
+    shared_ptr<rf_pipelines::pipeline> pipeline = dynamic_pointer_cast<rf_pipelines::pipeline>(pipe);
+    for (int i=0; i<pipeline->size(); i++) {
+      shared_ptr<rf_pipelines::pipeline_object> stage = pipeline->elements[i];
+      print_pipeline(stage, "  "+prefix);
+    }
+  } else if (pipe->class_name == "wi_sub_pipeline") {
+    shared_ptr<rf_pipelines::wi_sub_pipeline> pipeline = dynamic_pointer_cast<rf_pipelines::wi_sub_pipeline>(pipe);
+    cout << prefix << "at subsampling " << pipeline->ini_params.Df << " in freq and " << pipeline->ini_params.Dt << " in time" << endl;
+    print_pipeline(pipeline->sub_pipeline, "  " + prefix);
+  }
+}
 
 
 // Note: only called if config.tflag == false.
@@ -774,7 +811,26 @@ void dedispersion_thread_context::_thread_main() const
 	dedisperser->add_processor(l1b_subprocess);
 
     auto bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
-	
+
+    //cout << "rfi_chain state: " << rfi_chain->state << endl;
+    //print_pipeline(rfi_chain, "");
+
+    cout << "Finding mask_counter stages..." << endl;
+    // Find mask_counter stage(s).
+    vector<shared_ptr<rf_pipelines::pipeline_object> > stages;
+    pipeline_get_all(rfi_chain, stages);
+    for (auto &it : stages) {
+        //cout << "pipeline stage: class " << it->class_name << endl;
+        if (it->class_name == "mask_counter") {
+            shared_ptr<rf_pipelines::mask_counter_transform> counter =
+                dynamic_pointer_cast<rf_pipelines::mask_counter_transform>(it);
+            cout << "Found mask_counter_transform: " << counter->where << endl;
+            auto mit = ms.find(make_pair(beam_id, counter->where));
+            if (mit != ms.end())
+                counter->add_callback(mit->second);
+        }
+    }
+
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);
     pipeline->add(rfi_chain);
@@ -886,7 +942,7 @@ static void dedispersion_thread_main(const dedispersion_thread_context &context)
 
 struct l1_server {        
     using corelist_t = vector<int>;
-    
+
     const l1_config config;
     
     int ncpus = 0;
@@ -907,6 +963,7 @@ struct l1_server {
     vector<shared_ptr<ch_frb_io::output_device>> output_devices;
     vector<shared_ptr<ch_frb_io::memory_slab_pool>> memory_slab_pools;
     vector<shared_ptr<ch_frb_io::intensity_network_stream>> input_streams;
+    vector<mask_stats_map> mask_stats_objects;
     vector<shared_ptr<L1RpcServer>> rpc_servers;
     vector<shared_ptr<L1PrometheusServer>> prometheus_servers;
     vector<std::thread> rpc_threads;
@@ -922,6 +979,7 @@ struct l1_server {
     void make_output_devices();
     void make_memory_slab_pools();
     void make_input_streams();
+    void make_mask_stats();
     void make_rpc_servers();
     void make_prometheus_servers();
     void spawn_dedispersion_threads();
@@ -1182,7 +1240,9 @@ void l1_server::make_input_streams()
 	ini_params.memory_pool = memory_slab_pool;
 	ini_params.output_devices = this->output_devices;
 	ini_params.sleep_hack = this->sleep_hack;
-	
+        if (config.iflag)
+            ini_params.accept_end_of_stream_packets = false;
+
 	// Setting the 'throw_exception_on_buffer_drop' flag means that an exception 
 	// will be thrown if either:
 	//
@@ -1228,7 +1288,7 @@ void l1_server::make_rpc_servers()
     this->rpc_threads.resize(config.nstreams);
     
     for (int istream = 0; istream < config.nstreams; istream++) {
-	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], config.rpc_address[istream], command_line);
+	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], mask_stats_objects[istream], config.rpc_address[istream], command_line);
 	rpc_threads[istream] = rpc_servers[istream]->start();
     }
 }
@@ -1239,13 +1299,42 @@ void l1_server::make_prometheus_servers()
 	throw("ch-frb-l1 internal error: double call to make_prometheus_servers()");
     if (input_streams.size() != size_t(config.nstreams))
 	throw("ch-frb-l1 internal error: make_prometheus_servers() was called, without first calling make_input_streams()");
-
     this->prometheus_servers.resize(config.nstreams);
     for (int istream = 0; istream < config.nstreams; istream++) {
-	prometheus_servers[istream] = start_prometheus_server(config.prometheus_address[istream], input_streams[istream]);
+        prometheus_servers[istream] = start_prometheus_server(config.prometheus_address[istream], input_streams[istream], mask_stats_objects[istream]);
     }
 }
 
+void l1_server::make_mask_stats()
+{
+    // UGLY -- to collect mask stats, we need to create one mask_stats object
+    // per mask_counter stage in the RFI chain (there can be > 1).
+    // They need to be made here because the dedispersion_thread_context is
+    // const when the dedispersion threads start.
+    // Find mask_counter stage(s).
+    auto rfi_chain = rf_pipelines::pipeline_object::from_json(config.rfi_transform_chain_json);
+    vector<string> mask_counters_where;
+    vector<shared_ptr<rf_pipelines::pipeline_object> > stages;
+    pipeline_get_all(rfi_chain, stages);
+    for (auto &it : stages)
+        if (it->class_name == "mask_counter") {
+            shared_ptr<rf_pipelines::mask_counter_transform> counter = dynamic_pointer_cast<rf_pipelines::mask_counter_transform>(it);
+            mask_counters_where.push_back(counter->where);
+        }
+    cout << "Found " << mask_counters_where.size() << " mask_counter stages in the RFI chain" << endl;
+    int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
+    for (int istream = 0; istream < config.nstreams; istream++) {
+        // Create one mask_stats object per beam * mask_counter; one vector per stream.
+        mask_stats_map ms;
+        for (int ibeam = 0; ibeam < nbeams_per_stream; ibeam++) {
+            int beam_id = config.beam_ids[istream*nbeams_per_stream + ibeam];
+            for (const auto &wit : mask_counters_where) {
+                ms[make_pair(beam_id, wit)] = make_shared<mask_stats>(beam_id, wit);
+            }
+        }
+        mask_stats_objects.push_back(ms);
+    }
+}
        
 void l1_server::spawn_dedispersion_threads()
 {
@@ -1264,10 +1353,11 @@ void l1_server::spawn_dedispersion_threads()
     for (int ibeam = 0; ibeam < config.nbeams; ibeam++) {
 	int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
 	int istream = ibeam / nbeams_per_stream;
-    
+
 	dedispersion_thread_context context;
 	context.config = this->config;
 	context.sp = this->input_streams[istream];
+        context.ms = this->mask_stats_objects[istream];
 	context.l1b_subprocess = this->l1b_subprocesses[ibeam];
 	context.allowed_cores = this->dedispersion_cores[ibeam];
 	context.asynchronous_dedispersion = this->asynchronous_dedispersion;
@@ -1364,6 +1454,7 @@ int main(int argc, char **argv)
     server.make_output_devices();
     server.make_memory_slab_pools();
     server.make_input_streams();
+    server.make_mask_stats();
     server.make_rpc_servers();
     server.make_prometheus_servers();
     server.spawn_dedispersion_threads();

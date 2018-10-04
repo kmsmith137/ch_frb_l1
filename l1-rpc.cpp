@@ -222,6 +222,7 @@ void l1_write_request::write_callback(const string &error_message)
 
 
 L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
+                         ch_frb_l1::mask_stats_map ms,
                          const string &port,
                          const string &cmdline,
                          zmq::context_t *ctx) :
@@ -232,7 +233,8 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
     _backend_queue(make_shared<l1_backend_queue>()),
     _output_devices(stream->ini_params.output_devices),
     _shutdown(false),
-    _stream(stream)
+    _stream(stream),
+    _mask_stats(ms)
 {
     if (port.length())
         _port = port;
@@ -886,6 +888,82 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         return _send_frontend_message(*client, *token_to_message(token),
                                       *reply);
 
+    } else if (funcname == "get_masked_frequencies") {
+
+        // no arguments?
+
+        // Returns:
+        // list of [beam_id, where, nt, [ measurements ] ]
+        // where measurements is a list of uint16_ts, one per freq bin
+
+        msgpack::sbuffer buffer;
+        msgpack::packer<msgpack::sbuffer> pk(&buffer);
+        pk.pack_array(_mask_stats.size());
+        for (auto &it : _mask_stats) {
+            int beam_id = it.first.first;
+            string where = it.first.second;
+            shared_ptr<ch_frb_l1::mask_stats> ms = it.second;
+            vector<rf_pipelines::mask_counter_measurements> meas = ms->get_all_measurements();
+            cout << "Got " << meas.size() << " measurements from beam " << beam_id << " where " << where << endl;
+            pk.pack_array(4);
+            pk.pack(beam_id);
+            pk.pack(where);
+            int nt = 0;
+            if (meas.size())
+                nt = meas[0].nt;
+            pk.pack(nt);
+            pk.pack_array(meas.size());
+            for (const auto &m : meas) {
+                pk.pack_array(m.nf);
+                uint16_t* fm = m.freqs_masked.get();
+                for (int k=0; k<m.nf; k++)
+                    pk.pack(fm[k]);
+            }
+        }
+
+        //  Send reply back to client.
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(*client, *token_to_message(token),
+                                      *reply);
+
+    } else if (funcname == "get_masked_times") {
+
+        // no arguments?
+
+        // Returns:
+        // list of [beam_id, where, nf, [ measurements ] ]
+        // where measurements is a list of uint16_t values, one per time bin
+
+        msgpack::sbuffer buffer;
+        msgpack::packer<msgpack::sbuffer> pk(&buffer);
+        pk.pack_array(_mask_stats.size());
+        for (auto &it : _mask_stats) {
+            int beam_id = it.first.first;
+            string where = it.first.second;
+            shared_ptr<ch_frb_l1::mask_stats> ms = it.second;
+            vector<rf_pipelines::mask_counter_measurements> meas = ms->get_all_measurements();
+            cout << "Got " << meas.size() << " measurements from beam " << beam_id << " where " << where << endl;
+            pk.pack_array(4);
+            pk.pack(beam_id);
+            pk.pack(where);
+            int nf = 0;
+            if (meas.size())
+                nf = meas[0].nf;
+            pk.pack(nf);
+            pk.pack_array(meas.size());
+            for (const auto &m : meas) {
+                pk.pack_array(m.nf);
+                uint16_t* tm = m.times_masked.get();
+                for (int k=0; k<m.nt; k++)
+                    pk.pack(tm[k]);
+            }
+        }
+
+        //  Send reply back to client.
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(*client, *token_to_message(token),
+                                      *reply);
+        
     } else {
         // Silent failure?
         chlog("Error: unknown RPC function name: " << funcname);

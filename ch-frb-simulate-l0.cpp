@@ -23,7 +23,7 @@ struct l0_params {
 
     l0_params(const string &filename);
 
-    shared_ptr<ch_frb_io::intensity_network_ostream> make_ostream(int ithread) const;
+    shared_ptr<ch_frb_io::intensity_network_ostream> make_ostream(int ithread, double gbps) const;
 
     void write(ostream &os) const;
 
@@ -163,7 +163,7 @@ l0_params::l0_params(const string &filename)
 }
 
 
-shared_ptr<ch_frb_io::intensity_network_ostream> l0_params::make_ostream(int ithread) const
+shared_ptr<ch_frb_io::intensity_network_ostream> l0_params::make_ostream(int ithread, double gbps) const
 {
     assert(ithread >= 0 && ithread < nthreads_tot);
 
@@ -180,7 +180,8 @@ shared_ptr<ch_frb_io::intensity_network_ostream> l0_params::make_ostream(int ith
     ini_params.nt_per_packet = nt_per_packet;
     ini_params.fpga_counts_per_sample = fpga_counts_per_sample;
     ini_params.print_status_at_end = false;
-
+    ini_params.target_gbps = gbps;
+    
     // only one distinguished thread will send end-of-stream packets
     ini_params.send_end_of_stream_packets = (jthread == nthreads_per_stream-1);
 
@@ -259,23 +260,120 @@ void sim_thread_main(const shared_ptr<ch_frb_io::intensity_network_ostream> &ost
 }
 
 
+void data_thread_main(const shared_ptr<ch_frb_io::intensity_network_ostream> &ostream,
+                      const vector<string> &filenames)
+{
+    assert(ostream->target_gbps > 0.0);
+
+    vector<pair<vector<float>,vector<float> > > data;
+
+    for (const string &fn : filenames) {
+        cout << "Reading chunk " << fn << endl;
+        shared_ptr<ch_frb_io::assembled_chunk> chunk = ch_frb_io::assembled_chunk::read_msgpack_file(fn);
+        if (!chunk) {
+            cout << "Failed to read msgpack file " << fn << endl;
+            return;
+        }
+
+        cout << "chunk: nupfreq " << chunk->nupfreq  << ", nt_per_packet " << chunk->nt_per_packet << ", fgpa_counts_per_sample " << chunk->fpga_counts_per_sample << ", nt_coarse " << chunk->nt_coarse << ", nscales " << chunk->nscales << ", ndata " << chunk->ndata << ", beam " << chunk->beam_id << ", fpga_begin " << chunk->fpga_begin <<endl;
+
+        //cout << "elts per chunk " << ostream->elts_per_chunk << ", nt per chunk " << ostream->nt_per_chunk << endl;
+        int nsub = chunk->nt_coarse * chunk->nt_per_packet / ostream->nt_per_chunk;
+        cout << "splitting assembled chunk into " << nsub << " pieces" << endl;
+        for (int i=0; i<nsub; i++) {
+            vector<float> intensity(ostream->elts_per_chunk, 0.0);
+            vector<float> weights(ostream->elts_per_chunk, 1.0);
+            chunk->decode_subset(intensity.data(), weights.data(),
+                                 i * ostream->nt_per_chunk,
+                                 ostream->nt_per_chunk,
+                                 ostream->nt_per_chunk,
+                                 ostream->nt_per_chunk);
+
+            /*
+            float mean_acc = 0, var_acc = 0, wt_acc = 0;
+            int nz_weights = 0;
+            for (int j=0; j<ostream->elts_per_chunk; j++) {
+                mean_acc += intensity[j] * weights[j];
+                var_acc += intensity[j]*intensity[j] * weights[j];
+                wt_acc += weights[j];
+                if (weights[j] > 0.0)
+                    nz_weights++;
+            }
+            mean_acc /= wt_acc;
+            var_acc = var_acc / wt_acc - mean_acc*mean_acc;
+            cout << "sub-chunk: " << nz_weights << " of " << ostream->elts_per_chunk << " > 0; mean " << mean_acc << ", var " << var_acc << endl;
+             */
+
+            data.push_back(make_pair(intensity, weights));
+        }
+    }
+
+
+    for (int ichunk = 0; ichunk < data.size(); ichunk++) {
+	int64_t fpga_count = int64_t(ichunk) * int64_t(ostream->fpga_counts_per_chunk);
+        int stride = ostream->nt_per_chunk;
+        pair<vector<float>,vector<float> > iw = data[ichunk];
+
+        /*
+        vector<float> intensity = iw.first;
+        vector<float> weights = iw.second;
+        float mean_acc = 0, var_acc = 0, wt_acc = 0;
+        int nz_weights = 0;
+        int nel = intensity.size();
+        for (int j=0; j<nel; j++) {
+            mean_acc += intensity[j] * weights[j];
+            var_acc += intensity[j]*intensity[j] * weights[j];
+            wt_acc += weights[j];
+            if (weights[j] > 0.0)
+                nz_weights++;
+        }
+        mean_acc /= wt_acc;
+        var_acc = var_acc / wt_acc - mean_acc*mean_acc;
+        cout << "sending chunk: " << nz_weights << " of " << nel << " > 0; mean " << mean_acc << ", var " << var_acc << endl;
+         */
+        cout << "sending chunk " << ichunk << endl;
+        ostream->send_chunk(iw.first.data(), stride,
+                            iw.second.data(), stride,
+                            fpga_count);
+    }
+
+    // We don't call ostream->end_stream() here.  This is because end_stream() has the side effect
+    // of sending end-of-stream packets in one distinguished thread (see above).  We want to make
+    // sure that all threads have finished transmitting before the end-of-stream packets are sent.
+    //
+    // Therefore, we postpone the call to ostream->end_stream() until all sim_threads have finished
+    // and joined (see main() below).
+}
+
+
+
+
 static void usage()
 {
-    cerr << "Usage: ch-frb-simulate-l0 <l0_params.yaml> <num_seconds>\n";
+    cerr << "Usage: ch-frb-simulate-l0 <l0_params.yaml> <num_seconds OR target_gbps if msgpack files given> [msgpack-chunk-files ...]\n";
     exit(2);
 }
 
 
 int main(int argc, char **argv)
 {
-    if (argc != 3)
+    if (argc < 3)
 	usage();
 
     string filename = argv[1];
     double num_seconds = lexical_cast<double> (argv[2]);
+    double gbps = 0.0;
+    
+    vector<string> datafiles;
+    for (int a=3; a<argc; a++) {
+        datafiles.push_back(string(argv[a]));
+    }
 
-    if (num_seconds <= 0.0)
-	usage();
+    if (datafiles.size())
+        gbps = num_seconds;
+    else
+        if (num_seconds <= 0.0)
+            usage();
 
     l0_params p(filename);
     p.write(cout);
@@ -286,13 +384,18 @@ int main(int argc, char **argv)
     vector<std::thread> threads(nthreads);
 
     for (int ithread = 0; ithread < p.nthreads_tot; ithread++) {
-	streams[ithread] = p.make_ostream(ithread);
+	streams[ithread] = p.make_ostream(ithread, gbps);
 	streams[ithread]->print_status();
     }
 
-    for (int ithread = 0; ithread < p.nthreads_tot; ithread++)
-	threads[ithread] = std::thread(sim_thread_main, streams[ithread], num_seconds);
-
+    if (datafiles.size() == 0) {
+        for (int ithread = 0; ithread < p.nthreads_tot; ithread++)
+            threads[ithread] = std::thread(sim_thread_main, streams[ithread], num_seconds);
+    } else {
+        for (int ithread = 0; ithread < p.nthreads_tot; ithread++)
+            threads[ithread] = std::thread(data_thread_main, streams[ithread], datafiles);
+    }
+    
     for (int ithread = 0; ithread < p.nthreads_tot; ithread++)
 	threads[ithread].join();
 

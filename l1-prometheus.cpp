@@ -4,17 +4,21 @@
 #include <ch_frb_io.hpp>
 #include <l1-rpc.hpp>
 #include <chlog.hpp>
+#include <mask_stats.hpp>
 
 using namespace std;
 using namespace ch_frb_io;
+using namespace ch_frb_l1;
 
 #include "CivetServer.h"
 
 class L1PrometheusHandler : public CivetHandler {
 public:
-    L1PrometheusHandler(shared_ptr<intensity_network_stream> stream) :
+    L1PrometheusHandler(shared_ptr<intensity_network_stream> stream,
+                        mask_stats_map ms) :
         CivetHandler(),
-        _stream(stream) {}
+        _stream(stream),
+        _mask_stats(ms) {}
 
     bool handleGet(CivetServer *server, struct mg_connection *conn) {
         mg_printf(conn,
@@ -221,22 +225,48 @@ public:
                 }
             }
         }
+
+        // RFI masking stats per-beam.
+        if (_mask_stats.size()) {
+            struct metric_stat ms5[] = {
+                {"rfi_mask_pct_masked", "rfi_mask_pct_masked",
+                 "Total fraction of samples masked"},
+                {"rfi_mask_pct_t_masked", "rfi_mask_pct_times_masked",
+                 "Total fraction of times samples that are fully masked"},
+                {"rfi_mask_pct_f_masked", "rfi_mask_pct_frequencies_masked",
+                 "Total fraction of frequency channels that are fully masked"},
+            };
+            vector<tuple<int, string, unordered_map<string, float> > > maskstats;
+            float period = 15.;
+            for (auto &it : _mask_stats) {
+                maskstats.push_back(make_tuple(it.first.first, it.first.second, it.second->get_stats(period)));
+            }
+            for (size_t i=0; i<sizeof(ms5)/sizeof(struct metric_stat); i++) {
+                const char* name = ms5[i].metric;
+                mg_printf(conn,
+                          "# HELP %s %s\n"
+                          "# TYPE %s %s\n", name, ms5[i].help, name, ms5[i].type);
+                for (size_t ib=0; ib<maskstats.size(); ib++) {
+                    int beam_id;
+                    string where;
+                    unordered_map<string, float> mstats;
+                    std::tie(beam_id, where, mstats) = maskstats[ib];
+                    const char* key = ms5[i].key;
+                    mg_printf(conn, "%s{beam=\"%i\",where=\"%s\"} %.2f\n", name,
+                              beam_id, where.c_str(), mstats[key]);
+                }
+            }
+            
+        }
         
         return true;
     }
 
 protected:
     shared_ptr<intensity_network_stream> _stream;
+    ch_frb_l1::mask_stats_map _mask_stats;
 };
 
-/*
-class PrometheusServer {
-public:
-    PrometheusServer(shared_ptr<CivetServer> cs) :
-        _civet(cs) {}
-protected:
-};
- */
 class L1PrometheusServer : public CivetServer {
 public:
     L1PrometheusServer(std::vector<std::string> options,
@@ -247,7 +277,8 @@ public:
 };
 
 shared_ptr<L1PrometheusServer> start_prometheus_server(string ipaddr_port,
-                                                       shared_ptr<intensity_network_stream> stream) {
+                                                       shared_ptr<intensity_network_stream> stream,
+                                                       mask_stats_map ms) {
     //"document_root", DOCUMENT_ROOT, "listening_ports", PORT, 0};
     std::vector<std::string> options;
     // listening_ports = [ipaddr:]port
@@ -265,7 +296,7 @@ shared_ptr<L1PrometheusServer> start_prometheus_server(string ipaddr_port,
         return server;
     }
     // we're going to memory-leak this handler object
-    L1PrometheusHandler* h = new L1PrometheusHandler(stream);
+    L1PrometheusHandler* h = new L1PrometheusHandler(stream, ms);
     server->addHandler("/metrics", h);
     return server;
 }
