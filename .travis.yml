@@ -13,7 +13,11 @@ os:
   - osx
   - linux
 
-sudo: false
+# This has AVX but not AVX2
+# sudo: false
+# dist: trusty
+
+sudo: true
 dist: trusty
 
 # Formerly:
