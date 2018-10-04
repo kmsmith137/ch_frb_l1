@@ -28,6 +28,8 @@ compiler:
   - clang
 
 before_install:
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then sysctl -a kern.ostype kern.osrelease kern.version kern.osversion hw.machine hw.model hw.ncpu hw.byteorder hw.physmem hw.cpufrequency hw.memsize hw.optional.x86_64 hw.cpu64bit_capable machdep.cpu.brand_string machdep.cpu.features machdep.cpu.leaf7_features machdep.cpu.extfeatures; fi
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then sysctl -a; fi
     - echo "TRAVIS_OS_NAME is $TRAVIS_OS_NAME"
     - echo "HOMEBREW_CACHE is $HOMEBREW_CACHE"
     - echo "HOMEBREW_TEMP is $HOMEBREW_TEMP"
