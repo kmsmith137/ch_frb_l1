@@ -43,10 +43,16 @@ class AssembledChunk(object):
         offsets = c[15]
         data    = c[16]
 
-        if len(c) == 20:
-            self.nrfifreq = c[17]
-            self.has_rfi_mask = c[18]
-            mask = c[19]
+        # "v1.1" extra arguments
+        self.frame0_nano = 0
+        self.nrfifreq = 0
+        self.has_rfi_mask = False
+        self.rfi_mask = None
+        if len(c) == 21:
+            self.frame0_nano = c[17]
+            self.nrfifreq = c[18]
+            self.has_rfi_mask = c[19]
+            mask = c[20]
             # to numpy
             #print('mask:', type(mask))
             mask = np.fromstring(mask, dtype=np.uint8)
@@ -60,10 +66,6 @@ class AssembledChunk(object):
             for i in range(8):
                 self.rfi_mask[:,i::8] = (mask & (1<<i)) > 0
             #print('Expanded mask:', self.rfi_mask.shape)
-        else:
-            self.nrfifreq = 0
-            self.has_rfi_mask = False
-            self.rfi_mask = None
 
         if compressed:
            import pybitshuffle
@@ -96,16 +98,23 @@ class AssembledChunk(object):
         weights = ((self.data > 0) * (self.data < 255)) * np.float32(1.0)
 
         return intensities,weights
-        
+
+    def time_start(self):
+        # Nanoseconds per FPGA count
+        fpga_nano = 2560
+        return 1e-9 * (self.frame0_nano +
+                       self.fpga_counts_per_sample * fpga_nano * self.fpga0)
+
+    def time_end(self):
+        # Nanoseconds per FPGA count
+        fpga_nano = 2560
+        return 1e-9 * (self.frame0_nano +
+                       self.fpga_counts_per_sample * fpga_nano * (self.fpga0 + self.fpgaN))
 
 def read_msgpack_file(fn):
     f = open(fn, 'rb')
     m = msgpack.unpackb(f.read())
     return AssembledChunk(m)
-
-# c = read_msgpack_file('chunk-beam0077-chunk00000094+01.msgpack')
-# print('Got', c)
-
 
 class WriteChunkReply(object):
     '''
