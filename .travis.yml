@@ -29,8 +29,8 @@ compiler:
 
 before_install:
     - echo "TRAVIS_OS_NAME is $TRAVIS_OS_NAME"
-    - echo "HOMEBREW_CACHE: $HOMEBREW_CACHE"
-    - echo "HOMEBREW_TEMP: $HOMEBREW_TEMP"
+    - echo "HOMEBREW_CACHE is $HOMEBREW_CACHE"
+    - echo "HOMEBREW_TEMP is $HOMEBREW_TEMP"
     - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update; fi
     - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install lz4 yaml-cpp jsoncpp; fi
     # fftw: depends on gcc if --with-fortran (the default).
