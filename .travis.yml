@@ -113,7 +113,8 @@ before_script:
     - export PYTHONPATH=${PYTHONPATH}:/usr/lib/python2.7/dist-packages
 
     # for simpulse
-    - export LIBS_PYMODULE="-lPython"
+    #- export LIBS_PYMODULE="-lPython"
+    - export LIBS_PYMODULE=$(python-config --ldflags --libs)
 
     - cd
     - git clone https://github.com/CHIMEFRB/ch_frb_io.git
