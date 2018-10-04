@@ -40,19 +40,24 @@ before_install:
     # boost: already installed
     # fftw: problematic
 
+    - which python
+    - which python2
+
 before_script:
     - if [[ "$TRAVIS_OS_NAME" != "osx" ]]; then cat /proc/cpuinfo; fi
 
     - pip2 install --user cpp-coveralls
     - pip2 install --user Cython
-    # for simpulse
-    - pip2 install --user numpy
 
     # for cython
     - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then export PATH=${PATH}:~/Library/Python/2.7/bin; fi
     - which cython
 
-    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then pip2 install numpy; fi
+    # for simpulse
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then pip2 install --user numpy; fi
+
+    - export NUMPY_INCDIR=$(python -c "import numpy; print(numpy.get_include())")
+    - echo "NUMPY_INCDIR: $NUMPY_INCDIR"
 
     - find /usr/local/lib/python2.7/
 
@@ -100,7 +105,10 @@ before_script:
     - export HAVE_BONSAI=y
     - export PYDIR=~/chime/lib/python2.7/site-packages
     - export PYTHON_INCDIR=/usr/include/python2.7
-    - export NUMPY_INCDIR=/usr/lib/python2.7/dist-packages/numpy/core/include
+    # on osx it's pre-installed in site-packages?
+    #- export NUMPY_INCDIR=/usr/lib/python2.7/dist-packages/numpy/core/include
+    - export NUMPY_INCDIR=$(python -c "import numpy; print(numpy.get_include())")
+    - echo "NUMPY_INCDIR: $NUMPY_INCDIR"
     - export JSONCPP_INC_DIR=/usr/include/jsoncpp
     - export PYTHONPATH=${PYTHONPATH}:/usr/lib/python2.7/dist-packages
 
