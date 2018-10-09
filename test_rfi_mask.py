@@ -4,6 +4,9 @@ import numpy as np
 from rpc_client import read_msgpack_file, RpcClient
 from time import sleep
 
+l0 = simulate_l0.l0sim('l0_configs/l0_rfi.yml', 1.0)
+client = RpcClient({'a':'tcp://127.0.0.1:5555'})
+
 if True:
     beam_id = 0
     fpga_counts_per_sample = 384
@@ -13,10 +16,8 @@ if True:
     nt_coarse = nt // 16
     nf_coarse = 1024
     
-    data = np.clip(128. + 20. * np.random.normal(size=(nf, nt)), 0, 255).astype(np.uint8)
     offset = np.empty((nf_coarse, nt_coarse), np.float32)
     scale = np.empty((nf_coarse, nt_coarse), np.float32)
-    #rfi = np.zeros((nrfi, nt), np.bool)
     rfi = None
     
     offset[:,:] = -128.
@@ -29,9 +30,12 @@ if True:
         
         ch = simulate_l0.assembled_chunk(beam_id, fpga_counts_per_sample, ichunk,
                                          data, offset, scale, rfi)
-        ch.write('chunk-%02i.msgpack' % i)
-    
-    ch2 = read_msgpack_file('chunk.msgpack')
+        #ch.write('chunk-%02i.msgpack' % i)
+
+        print('Sending chunk...')
+        l0.send_chunk(0, ch)
+        
+    #ch2 = read_msgpack_file('chunk.msgpack')
 
     import sys
     sys.exit(0)
