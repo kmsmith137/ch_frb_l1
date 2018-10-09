@@ -20,9 +20,15 @@ for fn in fns:
 l0 = simulate_l0.l0sim('l0_configs/l0_rfi.yml', 1.0)
 client = RpcClient({'a':'tcp://127.0.0.1:5555'})
 
-l1cmd = './ch-frb-l1 -fv l1_configs/l1_dstn.yaml rfi_configs/rfi_testing.json bonsai_production_noups_nbeta1_v2.hdf5 xxx'
-l1 = subprocess.Popen(l1cmd, shell=True)
+if False:
+    l1cmd = './ch-frb-l1 -fv l1_configs/l1_rfi.yml rfi_configs/rfi_testing.json bonsai_production_noups_nbeta1_v2.hdf5 xxx'
+    need_rfi = True
+else:
+    l1cmd = './ch-frb-l1 -fv l1_configs/l1_norfi.yml rfi_configs/rfi_testing_no.json bonsai_production_noups_nbeta1_v2.hdf5 xxx'
+    need_rfi = False
 
+l1 = subprocess.Popen(l1cmd, shell=True)
+# wait until L1 is ready to receive
 sleep(5)
 
 beam_id = 0
@@ -54,11 +60,9 @@ for i in range(20):
     
     ch = simulate_l0.assembled_chunk(beam_id, fpga_counts_per_sample, ichunk,
                                      data, offset, scale, rfi)
-    print('Chunk:', ch)
-    
+    #print('Chunk:', ch)
     print('Sending chunk...')
     l0.send_chunk(0, ch)
-
 
     if i == 5:
         os.system(prom_cmd)
@@ -68,7 +72,7 @@ for i in range(20):
         
         print('Sending write request...')
         res = client.write_chunks([0], 0, (50 + 4) * 384 * 1024,
-                                  'chunk-test-rfi-mask-(FPGA0).msgpack', need_rfi=True,
+                                  'chunk-test-rfi-mask-(FPGA0).msgpack', need_rfi=need_rfi,
                                   waitAll=False)
         print('Got write request result:', res)
         reqs,token = res

@@ -494,8 +494,8 @@ l1_config::l1_config(int argc, char **argv)
 
     if (nbeams <= 0)
 	throw runtime_error(l1_config_filename + ": 'nbeams' must be >= 1");
-    if (nrfifreq <= 0)
-	throw runtime_error(l1_config_filename + ": 'nrfifreq' must be positive, and must match the number of downsampled frequencies in the RFI chain JSON file -- probably 1024.");
+    if (nrfifreq < 0)
+	throw runtime_error(l1_config_filename + ": 'nrfifreq' must be positive (or zero), and must match the number of downsampled frequencies in the RFI chain JSON file -- probably 1024.");
     if (!tflag && (nfreq != bonsai_config.nfreq))
 	throw runtime_error("ch-frb-l1: 'nfreq' values in l1 config file and bonsai config file must match");
     if (nfreq <= 0)
@@ -689,6 +689,11 @@ l1_config::l1_config(int argc, char **argv)
     if (!p.check_for_unused_params(false))  // fatal=false
 	have_warnings = true;
 
+    if (nrfifreq == 0) {
+        cout << "Warning: nrfifreq was set to zero (or not set) -- RFI masks will not be saved in callback data!" << endl;
+	have_warnings = true;
+    }
+    
     if ((l1b_executable_filename.size() > 0) && (l1b_buffer_nsamples == 0) && (l1b_pipe_timeout <= 1.0e-6)) {
 	cout << l1_config_filename << ": should specify either l1b_buffer_nsamples > 0, or l1b_pipe_timeout > 0.0, see MANUAL.md for discussion." << endl;
 	have_warnings = true;
@@ -845,7 +850,7 @@ void dedispersion_thread_context::_thread_main() const
                                         std::placeholders::_1,
                                         std::placeholders::_2));
     cout << "Found " << nchime << " chime_mask_counter stages in the RFI chain" << endl;
-    if (nchime != 1) {
+    if ((config.nrfifreq > 0) && (nchime != 1)) {
         throw runtime_error("ch-frb-l1: need exactly one chime_mask_counter in the RFI config JSON file, or else RFI masks cannot be captured.");
     }
     
