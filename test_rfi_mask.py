@@ -1,4 +1,8 @@
 from __future__ import print_function
+import matplotlib
+matplotlib.use('Agg')
+import pylab as plt
+
 import simulate_l0
 import numpy as np
 from rpc_client import read_msgpack_file, RpcClient
@@ -84,3 +88,23 @@ for i in range(20):
 os.system(prom_cmd)
 
 l1.terminate()
+
+# Check contents of msgpack files.
+fns = glob('chunk-test-rfi-mask-*.msgpack')
+assert(len(fns) == 4)
+fns.sort()
+for i,fn in enumerate(fns):
+    chunk = read_msgpack_file(fn)
+    print('Chunk: ', chunk)
+
+    assert(chunk.rfi_mask is not None)
+    nf,nt = chunk.rfi_mask.shape
+    sample0 = chunk.fpga0 / chunk.fpga_counts_per_sample
+
+    plt.clf()
+    plt.imshow(chunk.rfi_mask, interpolation='nearest', origin='lower',
+               vmin=0, vmax=1, cmap='gray',
+               extent=[sample0, sample0+nt * chunk.binning, 0, nf])
+    fn = 'chunk-%i.png' % i
+    plt.savefig(fn)
+    print('Wrote', fn)
