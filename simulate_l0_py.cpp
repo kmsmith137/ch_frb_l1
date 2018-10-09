@@ -12,8 +12,7 @@
 #include <ch_frb_io.hpp>
 using namespace ch_frb_io;
 
-
-
+////// Python wrapper for ch_frb_io::assembled_chunk //////
 
 typedef struct {
     PyObject_HEAD
@@ -231,6 +230,15 @@ static int chunk_init(chunk *self, PyObject *args, PyObject *keywords) {
     return 0;
 }
 
+static PyObject* chunk_str(chunk* self) {
+    shared_ptr<ch_frb_io::assembled_chunk> ch = self->chunk;
+    return PyUnicode_FromFormat("assembled_chunk: beam %i, nupfreq %i, nrfifreq %i, nt_per_packet %i, nt_coarse %i, nscales %i, ndata %i, nrfimaskbytes %i, fpga_per_sample %i, ichunk %i, has_rfi %s",
+                                ch->beam_id, ch->nupfreq, ch->nrfifreq,
+                                ch->nt_per_packet, ch->nt_coarse, ch->nscales,
+                                ch->ndata, ch->nrfimaskbytes, ch->fpga_counts_per_sample,
+                                (int)ch->ichunk, ch->has_rfi_mask ? "yes" : "no");
+}
+
 static PyObject* chunk_write(chunk* self, PyObject* args) {
     char* fn;
 #if defined(IS_PY3K)
@@ -289,7 +297,7 @@ static PyTypeObject ChunkType = {
     0,                         /* tp_as_mapping */
     0,                         /* tp_hash  */
     0,                         /* tp_call */
-    0,                         /* tp_str */
+    (reprfunc)chunk_str,                         /* tp_str */
     0,                         /* tp_getattro */
     0,                         /* tp_setattro */
     0,                         /* tp_as_buffer */
@@ -411,7 +419,6 @@ static PyObject* l0sim_send_chunk_file(l0sim* self, PyObject* args) {
 
 static PyObject* l0sim_send_chunk(l0sim* self, PyObject* args) {
     int istream;
-    //ChunkType pychunk;
     chunk* pychunk;
 
     if (!PyArg_ParseTuple(args, "iO!", &istream, &ChunkType, &pychunk)) {
@@ -419,6 +426,16 @@ static PyObject* l0sim_send_chunk(l0sim* self, PyObject* args) {
     }
 
     std::vector<std::shared_ptr<ch_frb_io::assembled_chunk> > chunks;
+
+    std::shared_ptr<ch_frb_io::assembled_chunk> ch = pychunk->chunk;
+    /*
+     printf("l0sim_send_chunk: assembled_chunk: beam %i, nupfreq %i, nrfifreq %i, nt_per_packet %i, nt_coarse %i, nscales %i, ndata %i, nrfimaskbytes %i, fpga_per_sample %i, ichunk %i, has_rfi %s\n",
+     ch->beam_id, ch->nupfreq, ch->nrfifreq,
+     ch->nt_per_packet, ch->nt_coarse, ch->nscales,
+     ch->ndata, ch->nrfimaskbytes, ch->fpga_counts_per_sample,
+     (int)ch->ichunk, ch->has_rfi_mask ? "yes" : "no");
+     */
+    
     chunks.push_back(pychunk->chunk);
     self->l0.send_chunks(istream, chunks);
 
