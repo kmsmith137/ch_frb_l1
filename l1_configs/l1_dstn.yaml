@@ -34,9 +34,14 @@ slow_kernels: False
 # Buffer configuration.  For documentation on these parameters, see 
 # "Config file reference: L1 server" in MANUAL.md.
 
-assembled_ringbuf_nsamples: 4096
-telescoping_ringbuf_nsamples: [ 4096, 4096, 4096 ]
+#assembled_ringbuf_nsamples: 4096
+#telescoping_ringbuf_nsamples: [ 4096, 4096, 4096 ]
+
+assembled_ringbuf_nsamples: 16384
+telescoping_ringbuf_nsamples: [ 16384, 4096, 4096 ]
 write_staging_area_gb: 0.1
+
+output_devices: [ "/" ]
 
 
 # L1b configuration.
