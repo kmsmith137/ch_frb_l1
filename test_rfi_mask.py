@@ -20,7 +20,7 @@ for fn in fns:
 l0 = simulate_l0.l0sim('l0_configs/l0_rfi.yml', 1.0)
 client = RpcClient({'a':'tcp://127.0.0.1:5555'})
 
-if False:
+if True:
     l1cmd = './ch-frb-l1 -fv l1_configs/l1_rfi.yml rfi_configs/rfi_testing.json bonsai_production_noups_nbeta1_v2.hdf5 xxx'
     need_rfi = True
 else:
