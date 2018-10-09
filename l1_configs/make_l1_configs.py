@@ -30,7 +30,7 @@ def main():
         'nfreq': 16384,
         'nt_per_packet': 16,
         'beam_ids': [0, 1, 2, 3, 4, 5, 6, 7],
-        'intensity_prescale': 0.01,
+        'intensity_prescale': 0.0001,
         'ipaddr': [ "eno1",
                   "eno2" ],
         'port': 1313,
@@ -51,11 +51,14 @@ def main():
     l1_status = yaml.load(open('l1_node_status.yaml'))
     racks = l1_status.keys()
     racks.sort()
+    print (racks)
     node_status = []
     for rack in racks:
         nodes = l1_status[rack].keys()
         nodes.sort()
+        print (nodes)
         for node in nodes:
+            print (node)
             node_status.append(l1_status[rack][node])
     beam_offset = 0
     for i in range(len(node_status)):
@@ -69,7 +72,7 @@ def main():
             if beam_offset in [256, 1256, 2256]: #jump by 1000 
                 beam_offset+= 1000-256
             #node_info = update_enos(node_info, rack) ### Currently even 10.8 and 10.9 subnets are on eno1/eno2.
-            node_info = update_output_devices(node_info, rack) ### Currently even 10.8 and 10.9 subnets are on eno1/eno2.
+            #node_info = update_output_devices(node_info, rack) ### Currently even 10.8 and 10.9 subnets are on eno1/eno2.
             with open ("l1_production_8beam_rack%s_node%s.yaml"%(rack.lower(), node), "w") as outfile:
                 yaml.dump(node_info, outfile)
 
