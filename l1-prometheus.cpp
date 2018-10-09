@@ -232,10 +232,12 @@ public:
             struct metric_stat ms5[] = {
                 {"rfi_mask_pct_masked", "rfi_mask_pct_masked",
                  "Total fraction of samples masked"},
-                {"rfi_mask_pct_t_masked", "rfi_mask_pct_times_masked",
+                /*
+                 {"rfi_mask_pct_t_masked", "rfi_mask_pct_times_masked",
                  "Total fraction of times samples that are fully masked"},
-                {"rfi_mask_pct_f_masked", "rfi_mask_pct_frequencies_masked",
+                 {"rfi_mask_pct_f_masked", "rfi_mask_pct_frequencies_masked",
                  "Total fraction of frequency channels that are fully masked"},
+                 */
             };
             vector<tuple<int, string, unordered_map<string, float> > > maskstats;
             float period = 15.;
