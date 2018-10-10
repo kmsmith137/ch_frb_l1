@@ -45,7 +45,7 @@ def get_cnc_client():
         client = CncClient(ctx=app.zmq)
         return client
     from cnc_ssh import CncSsh
-    client = CncSsh(ssh_options='-o "User=l1operator" -i ~/.ssh/id_rsa')
+    client = CncSsh(ssh_options='-o "User=l1operator" -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa')
     return client
 
 def get_db_session():
@@ -192,7 +192,7 @@ def l1_service():
                          timeout=3000)
     rr = []
     rack = []
-    previous_rack = "0"
+    previous_rack = "1"
     for node,r in zip(app.cnc_nodes, results):
         current_rack = str(int(node.split('.')[2])-200)
         current_rack = { '10': 'A', '11': 'B', '12': 'C', '13': 'D' }.get(current_rack, current_rack)
