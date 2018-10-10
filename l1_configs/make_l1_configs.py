@@ -6,6 +6,7 @@ def update_beam_ids(info, beam_offset):
     info['beam_ids'] = range(beam_offset, beam_offset+8)
     return info
 
+## NOTE, not currently used
 def update_output_devices(info, rack):
     if rack in ['0','2','4','6','8','A','C']:
         info['output_devices'] = ["/local", "/frb-archiver-3", "/frb-archiver-4"]
@@ -13,6 +14,7 @@ def update_output_devices(info, rack):
         info['output_devices'] = ["/local", "/frb-archiver-1", "/frb-archiver-2"]
     return info
 
+## NOTE, not currently used
 def update_enos(info, rack):
     if rack in ['0','2','4','6','8','A','C']:
         info['ipaddr'] = ["eno3", "eno4"]
@@ -28,6 +30,7 @@ def main():
     info = {
         'nbeams': 8,
         'nfreq': 16384,
+        'nrfifreq': 1024,
         'nt_per_packet': 16,
         'beam_ids': [0, 1, 2, 3, 4, 5, 6, 7],
         'intensity_prescale': 0.0001,
