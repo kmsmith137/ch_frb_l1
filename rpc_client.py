@@ -79,6 +79,17 @@ class AssembledChunk(object):
         self.data = np.frombuffer(data, dtype=np.uint8)
         self.data = self.data.reshape((-1, self.nt))
 
+    def __str__(self):
+        if self.has_rfi_mask:
+            h,w = self.rfi_mask.shape
+            masked = np.sum(self.rfi_mask == 0)
+            rfistr = ('yes, %i freqs, %i%% masked' %
+                      (self.nrfifreq, int(100. * masked / (h*w))))
+        else:
+            rfistr = 'no'
+        return ('AssembledChunk: beam %i, nt %i, fpga0 %i, rfi %s' %
+                (self.beam, self.nt, self.fpga0, rfistr))
+
     def decode(self):
         # Returns (intensities,weights) as floating-point
         nf = self.data.shape[1]
