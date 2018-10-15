@@ -783,6 +783,22 @@ static void find_chime_mask_counters(int beam_id, shared_ptr<ch_frb_io::intensit
     nchime++;
 }
 
+static void find_slow_pulsar_writer(const rf_pipelines::chime_slow_pulsar_writer::real_time_state &rt_state,
+				    shared_ptr<rf_pipelines::chime_slow_pulsar_writer> &sp_writer,
+				    const shared_ptr<rf_pipelines::pipeline_object> &pipe,
+				    int level)
+{
+    shared_ptr<rf_pipelines::chime_slow_pulsar_writer> sp = dynamic_pointer_cast<rf_pipelines::chime_slow_pulsar_writer> (pipe);
+    
+    if (!sp)
+        return;
+    if (sp_writer)
+	throw runtime_error("fatal: multiple chime_slow_pulsar_writers found in chain");
+    
+    sp->init_real_time_state(rt_state);
+    sp_writer = sp;
+}
+
 // Note: only called if config.tflag == false.
 void dedispersion_thread_context::_thread_main() const
 {
@@ -856,6 +872,23 @@ void dedispersion_thread_context::_thread_main() const
     if ((config.nrfifreq > 0) && (nchime != 1)) {
         throw runtime_error("ch-frb-l1: need exactly one chime_mask_counter in the RFI config JSON file, or else RFI masks cannot be captured.");
     }
+
+    rf_pipelines::chime_slow_pulsar_writer::real_time_state sp_rts;
+    sp_rts.beam_id = beam_id;
+    sp_rts.memory_pool = sp->ini_params.memory_pool;
+    sp_rts.output_devices = make_shared<ch_frb_io::output_device_pool> (sp->ini_params.output_devices);
+
+    shared_ptr<rf_pipelines::chime_slow_pulsar_writer> sp_writer;
+
+    rf_pipelines::visit_pipeline(std::bind(find_slow_pulsar_writer,
+					   sp_rts, std::ref(sp_writer),
+					   std::placeholders::_1,
+					   std::placeholders::_2),
+				 rfi_chain);
+
+    // FIXME should make it a configurable option to run server with/without the slow_pulsar_writer.
+    if (!sp_writer)
+	throw runtime_error("ch-frb-l1: fatal: expected RFI json file to contain a chime_slow_pulsar_writer");
     
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);
