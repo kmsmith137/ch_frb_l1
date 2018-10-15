@@ -748,12 +748,12 @@ struct dedispersion_thread_context {
     void _toy_thread_main() const;  // if -t command-line argument is specified
 };
 
-static void print_pipeline(rf_pipelines::pipeline_object* pipe, int level) {
+static void print_pipeline(const shared_ptr<rf_pipelines::pipeline_object> &pipe, int level) {
     for (int i=0; i<level; i++)
         cout << "  ";
     cout << "class " << pipe->class_name;
 
-    rf_pipelines::wi_sub_pipeline* sub = dynamic_cast<rf_pipelines::wi_sub_pipeline*>(pipe);
+    shared_ptr<rf_pipelines::wi_sub_pipeline> sub = dynamic_pointer_cast<rf_pipelines::wi_sub_pipeline>(pipe);
     if (sub) {
         cout << " at subsampling " << sub->ini_params.Df << " in freq and " << sub->ini_params.Dt << " in time";
     }
@@ -762,9 +762,9 @@ static void print_pipeline(rf_pipelines::pipeline_object* pipe, int level) {
 
 static void find_mask_counters(shared_ptr<mask_stats_map> msmap,
                                int beam_id,
-                               rf_pipelines::pipeline_object* pipe,
+                               const shared_ptr<rf_pipelines::pipeline_object> &pipe,
                                int level) {
-    rf_pipelines::mask_counter_transform* counter = dynamic_cast<rf_pipelines::mask_counter_transform*>(pipe);
+    shared_ptr<rf_pipelines::mask_counter_transform> counter = dynamic_pointer_cast<rf_pipelines::mask_counter_transform> (pipe);
     if (!counter)
         return;
     cout << "Found mask counter: " << counter->class_name << ", " << counter->where << endl;
@@ -773,9 +773,9 @@ static void find_mask_counters(shared_ptr<mask_stats_map> msmap,
 
 static void find_chime_mask_counters(int beam_id, shared_ptr<ch_frb_io::intensity_network_stream> sp,
                                      int & nchime,
-                                     rf_pipelines::pipeline_object* pipe,
+                                     const shared_ptr<rf_pipelines::pipeline_object> &pipe,
                                      int level) {
-    rf_pipelines::chime_mask_counter* counter = dynamic_cast<rf_pipelines::chime_mask_counter*>(pipe);
+    shared_ptr<rf_pipelines::chime_mask_counter> counter = dynamic_pointer_cast<rf_pipelines::chime_mask_counter> (pipe);
     if (!counter)
         return;
     cout << "Found CHIME mask counter: " << counter->class_name << ", " << counter->where << endl;
@@ -836,19 +836,22 @@ void dedispersion_thread_context::_thread_main() const
     auto bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
 
     cout << "RFI chain:" << endl;
-    rfi_chain->visit_pipeline(print_pipeline);
+    rf_pipelines::visit_pipeline(print_pipeline, rfi_chain);
 
     cout << "Finding mask_counter stages..." << endl;
-    rfi_chain->visit_pipeline(std::bind(find_mask_counters, ms_map, beam_id,
-                                        std::placeholders::_1,
-                                        std::placeholders::_2));
+    rf_pipelines::visit_pipeline(std::bind(find_mask_counters, ms_map, beam_id,
+					   std::placeholders::_1,
+					   std::placeholders::_2),
+				 rfi_chain);
 
     cout << "Finding chime_mask_counter stage..." << endl;
     int nchime = 0;
-    rfi_chain->visit_pipeline(std::bind(find_chime_mask_counters, beam_id, sp,
-                                        std::ref(nchime),
-                                        std::placeholders::_1,
-                                        std::placeholders::_2));
+    rf_pipelines::visit_pipeline(std::bind(find_chime_mask_counters, beam_id, sp,
+					   std::ref(nchime),
+					   std::placeholders::_1,
+					   std::placeholders::_2),
+				 rfi_chain);
+    
     cout << "Found " << nchime << " chime_mask_counter stages in the RFI chain" << endl;
     if ((config.nrfifreq > 0) && (nchime != 1)) {
         throw runtime_error("ch-frb-l1: need exactly one chime_mask_counter in the RFI config JSON file, or else RFI masks cannot be captured.");
