@@ -793,6 +793,94 @@ if __name__ == '__main__':
             print('Got rate:', r)
         doexit = True
 
+    if opt.masked_freqs or opt.masked_times:
+        import matplotlib
+        matplotlib.use('Agg')
+        import pylab as plt
+
+    if opt.masked_freqs:
+        freqs = client.get_masked_frequencies()
+        print('Received masked frequencies:')
+        for f in freqs:
+            print('  ', f)
+
+            for k,v in f.histories.items():
+                (beam,where) = k
+                hist = v
+                print('Beam', beam, 'at', where, ':', hist.shape, hist.dtype,
+                      hist.min(), hist.max())
+                plt.clf()
+                plt.imshow(hist, interpolation='nearest', origin='lower',
+                           vmin=0, vmax=1, cmap='gray', aspect='auto')
+                plt.xlabel('Frequency bin')
+                plt.ylabel('Time (s)')
+                plt.title('Beam %i, %s' % (beam, where))
+                plt.savefig('masked-f-%i-%s.png' % (beam, where))
+        doexit = True
+
+    if opt.masked_times:
+        times = client.get_masked_times()
+        for t in times:
+            allbeams = set()
+            for k,v in t.histories.items():
+                (beam,where) = k
+                allbeams.add(beam)
+                hist = v
+                print('Beam', beam, 'at', where, ':', hist.shape, hist.dtype,
+                      hist.min(), hist.max())
+                plt.clf()
+                plt.plot(hist, '-')
+                plt.xlabel('Time (s)')
+                plt.ylabel('Fraction of masked samples')
+                plt.title('Beam %i, %s' % (beam, where))
+                plt.ylim(-0.01, 1.01)
+                plt.savefig('masked-t-%i-%s.png' % (beam, where))
+
+                plt.clf()
+                plt.plot(hist, '.', alpha=0.01)
+                # Compute average in 1-second chunks
+                avgs = np.zeros(len(hist)//1000)
+                for i in range(len(avgs)):
+                    avgs[i] = np.mean(hist[i*1000:(i+1)*1000])
+                avgts = 500 + np.arange(len(avgs))*1000
+                plt.plot(avgts, avgs, 'b-')
+                plt.xlabel('Time (s)')
+                plt.ylabel('Fraction of masked samples')
+                plt.title('Beam %i, %s' % (beam, where))
+                plt.ylim(-0.01, 1.01)
+                plt.savefig('masked-t2-%i-%s.png' % (beam, where))
+            allbeams = list(allbeams)
+            allbeams.sort()
+            for b in allbeams:
+                plt.clf()
+                for ii,(k,v) in enumerate(t.histories.items()):
+                    (beam,where) = k
+                    if beam != b:
+                        continue
+                    hist = v
+                    cc = 'brgm'[ii%4]
+                    # Compute average in 100-ms chunks
+                    avgs = np.zeros(len(hist)//100)
+                    for i in range(len(avgs)):
+                        avgs[i] = np.mean(hist[i*100:(i+1)*100])
+                    avgts = 50 + np.arange(len(avgs))*100
+                    plt.plot(avgts, avgs, '.', alpha=0.1, color=cc, label=where + ' (100 ms avg)')
+                    #plt.plot(hist, '.', alpha=0.1, color=cc, label=where)
+                    # Compute average in 1-second chunks
+                    avgs = np.zeros(len(hist)//1000)
+                    for i in range(len(avgs)):
+                        avgs[i] = np.mean(hist[i*1000:(i+1)*1000])
+                    avgts = 500 + np.arange(len(avgs))*1000
+                    plt.plot(avgts, avgs, '-', color=cc, label=where + ' (1 s avg)')
+                plt.xlabel('Time (s)')
+                plt.ylabel('Fraction of masked samples')
+                plt.title('Beam %i' % (beam))
+                plt.ylim(-0.01, 1.01)
+                plt.legend()
+                plt.savefig('masked-t-%i.png' % (beam))
+
+        doexit = True
+
     if opt.rate_history:
         kwa = {}
         if len(opt.l0):
