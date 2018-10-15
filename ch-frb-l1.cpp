@@ -1509,6 +1509,7 @@ int main(int argc, char **argv)
     server.make_memory_slab_pools();
     server.make_input_streams();
     server.make_mask_stats();
+    server.make_slow_pulsar_writer_hashes();
     server.make_rpc_servers();
     server.make_prometheus_servers();
     server.spawn_dedispersion_threads();
