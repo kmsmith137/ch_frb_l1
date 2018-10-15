@@ -703,6 +703,8 @@ if __name__ == '__main__':
         default=[])
     parser.add_argument('--list', action='store_true', default=False,
                         help='Just send list_chunks command and exit.')
+    parser.add_argument('--stats', action='store_true', default=False,
+                        help='Just request stats and exit.')
     parser.add_argument('--identity', help='(ignored)')
     parser.add_argument('--stream', help='Stream to files')
     parser.add_argument('--stream-base', help='Stream base directory')
@@ -751,6 +753,22 @@ if __name__ == '__main__':
         for chunklist in chunks:
             for beam,f0,f1,where in chunklist:
                 print('  beam %4i, FPGA range %i to %i' % (beam, f0, f1))
+        doexit = True
+
+    if opt.stats:
+        stats = client.get_statistics(timeout=10)
+        for s,server in zip(stats, servers.values()):
+            print('', server)
+            if s is None:
+                print('  None')
+                continue
+            print()
+            for d in s:
+                keys = d.keys()
+                keys.sort()
+                for k in keys:
+                    print('  ', k, '=', d[k])
+                print()
         doexit = True
 
     if opt.stream:
