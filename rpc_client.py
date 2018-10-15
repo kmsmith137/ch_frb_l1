@@ -717,6 +717,10 @@ if __name__ == '__main__':
                         help='Send packet rate history request')
     parser.add_argument('--l0', action='append', default=[],
                         help='Request rate history for the list of L0 nodes')
+    parser.add_argument('--masked-freqs', action='store_true', default=False,
+                        help='Send request for masked frequencies history')
+    parser.add_argument('--masked-times', action='store_true', default=False,
+                        help='Send request for masked times history')
     parser.add_argument('ports', nargs='*',
                         help='Addresses or port numbers of RPC servers to contact')
     opt = parser.parse_args()
