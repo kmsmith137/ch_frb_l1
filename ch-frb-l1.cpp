@@ -835,16 +835,15 @@ void dedispersion_thread_context::_thread_main() const
 
     auto bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
 
-    cout << "RFI chain:" << endl;
-    rf_pipelines::visit_pipeline(print_pipeline, rfi_chain);
+    // cout << "RFI chain:" << endl;
+    // rf_pipelines::visit_pipeline(print_pipeline, rfi_chain);
 
-    cout << "Finding mask_counter stages..." << endl;
+    // cout << "Finding mask_counter stages..." << endl;
     rf_pipelines::visit_pipeline(std::bind(find_mask_counters, ms_map, beam_id,
 					   std::placeholders::_1,
 					   std::placeholders::_2),
 				 rfi_chain);
-
-    cout << "Finding chime_mask_counter stage..." << endl;
+    
     int nchime = 0;
     rf_pipelines::visit_pipeline(std::bind(find_chime_mask_counters, beam_id, sp,
 					   std::ref(nchime),
@@ -852,7 +851,8 @@ void dedispersion_thread_context::_thread_main() const
 					   std::placeholders::_2),
 				 rfi_chain);
     
-    cout << "Found " << nchime << " chime_mask_counter stages in the RFI chain" << endl;
+    // cout << "Found " << nchime << " chime_mask_counter stages in the RFI chain" << endl;
+
     if ((config.nrfifreq > 0) && (nchime != 1)) {
         throw runtime_error("ch-frb-l1: need exactly one chime_mask_counter in the RFI config JSON file, or else RFI masks cannot be captured.");
     }
