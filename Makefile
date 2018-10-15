@@ -45,7 +45,7 @@ all: $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES)
 
 .PHONY: all install uninstall
 
-INCFILES := ch_frb_l1.hpp l0-sim.hpp l1-rpc.hpp rpc.hpp
+INCFILES := ch_frb_l1.hpp l0-sim.hpp l1-rpc.hpp rpc.hpp mask_stats.hpp slow_pulsar_writer_hash.hpp
 
 L1_OBJS := l1-rpc.o mask_stats.o
 

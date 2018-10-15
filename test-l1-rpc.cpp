@@ -118,6 +118,7 @@ int main(int argc, char** argv) {
 
     prometheus_ip = prometheus_ip + to_string(prometheus_port);
     shared_ptr<ch_frb_l1::mask_stats_map> ms = make_shared<ch_frb_l1::mask_stats_map>();
+    shared_ptr<ch_frb_l1::slow_pulsar_writer_hash> sp = make_shared<ch_frb_l1::slow_pulsar_writer_hash>();
     shared_ptr<L1PrometheusServer> prometheus_server =
         start_prometheus_server(prometheus_ip, stream, ms);
     if (!prometheus_server) {
@@ -134,7 +135,7 @@ int main(int argc, char** argv) {
         port = "tcp://127.0.0.1:" + to_string(portnum);
 
     chlog("Starting RPC server on port " << port);
-    L1RpcServer rpc(stream, ms, port);
+    L1RpcServer rpc(stream, ms, sp, port);
     std::thread rpc_thread = rpc.start();
 
     std::random_device rd;

@@ -266,6 +266,7 @@ bool chunk_status_map::get(const string& filename,
 
 L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
                          shared_ptr<const ch_frb_l1::mask_stats_map> ms,
+			 shared_ptr<ch_frb_l1::slow_pulsar_writer_hash> sp,
                          const string &port,
                          const string &cmdline,
                          zmq::context_t *ctx) :
@@ -278,7 +279,8 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
     _chunk_status(make_shared<chunk_status_map>()),
     _shutdown(false),
     _stream(stream),
-    _mask_stats(ms)
+    _mask_stats(ms),
+    _slow_pulsar_writer_hash(sp)
 {
     if (port.length())
         _port = port;

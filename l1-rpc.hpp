@@ -10,6 +10,7 @@
 #include <zmq.hpp>
 #include <ch_frb_io.hpp>
 #include <mask_stats.hpp>
+#include <slow_pulsar_writer_hash.hpp>
 
 const int default_port_l1_rpc = 5555;
 
@@ -36,6 +37,7 @@ public:
     // from the ring buffers of the given stream.
     L1RpcServer(std::shared_ptr<ch_frb_io::intensity_network_stream> stream,
                 std::shared_ptr<const ch_frb_l1::mask_stats_map> maskstats,
+		std::shared_ptr<ch_frb_l1::slow_pulsar_writer_hash> sp_writer_hash,
                 const std::string &port = "",
                 const std::string &cmdline = "",
                 zmq::context_t* ctx = NULL);
@@ -113,6 +115,9 @@ private:
 
     // objects holding RFI mask statistics
     std::shared_ptr<const ch_frb_l1::mask_stats_map> _mask_stats;
+
+    // hash (beam id) -> (chime_slow_pulsar_writer object)
+    std::shared_ptr<ch_frb_l1::slow_pulsar_writer_hash> _slow_pulsar_writer_hash;
 
     // server start time
     struct timeval _time0;
