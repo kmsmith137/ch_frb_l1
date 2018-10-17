@@ -128,6 +128,8 @@ struct l1_config
 
     // Optional URL to get frame0-ctime
     string frame0_url;
+    // Timeout (in ms) for retrieving frame0-ctime
+    int frame0_timeout;
 
     // A vector of length nbeams, containing the beam_ids that will be processed on this L1 server.
     // It is currently assumed that these are known in advance and never change!
@@ -379,6 +381,7 @@ l1_config::l1_config(int argc, char **argv)
     this->prometheus_address = p.read_vector<string> ("prometheus_address");
     this->logger_address = p.read_scalar<string> ("logger_address", "");
     this->frame0_url = p.read_scalar<string> ("frame0_url", "");
+    this->frame0_timeout = p.read_scalar<int> ("frame0_timeout", 3000);
     this->slow_kernels = p.read_scalar<bool> ("slow_kernels", false);
     this->unassembled_ringbuf_nsamples = p.read_scalar<int> ("unassembled_ringbuf_nsamples", 4096);
     this->assembled_ringbuf_nsamples = p.read_scalar<int> ("assembled_ringbuf_nsamples", 8192);
@@ -1257,6 +1260,7 @@ void l1_server::make_input_streams()
 	ini_params.fpga_counts_per_sample = config.fpga_counts_per_sample;
 	ini_params.stream_id = istream + 1;   // +1 here since first NFS mount is /frb-archive-1, not /frb-archive-0
         ini_params.frame0_url = config.frame0_url;
+        ini_params.frame0_timeout = config.frame0_timeout;
 	ini_params.force_fast_kernels = !config.slow_kernels;
 	ini_params.force_reference_kernels = config.slow_kernels;
 	ini_params.deliberately_crash = config.deliberately_crash;
