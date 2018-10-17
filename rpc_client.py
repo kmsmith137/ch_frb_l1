@@ -20,7 +20,12 @@ class AssembledChunk(object):
         c = msgpacked_chunk
         # print('header', c[0])
         version = c[1]
-        assert(version == 1)
+        assert(version in [1, 2])
+        if version == 1:
+            assert(len(c) == 17)
+        if version == 2:
+            assert(len(c) == 21)
+        self.version = version
         # print('version', version)
         compressed = c[2]
         # print('compressed?', compressed)
@@ -43,29 +48,23 @@ class AssembledChunk(object):
         offsets = c[15]
         data    = c[16]
 
-        # "v1.1" extra arguments
+        # version 2: extra arguments
         self.frame0_nano = 0
         self.nrfifreq = 0
         self.has_rfi_mask = False
         self.rfi_mask = None
-        if len(c) == 21:
+        if self.version == 2:
             self.frame0_nano = c[17]
             self.nrfifreq = c[18]
             self.has_rfi_mask = c[19]
             mask = c[20]
             # to numpy
-            #print('mask:', type(mask))
             mask = np.fromstring(mask, dtype=np.uint8)
             mask = mask.reshape((self.nrfifreq, self.nt//8))
-            #print('mask:', len(mask), mask.dtype)
-            #print('Nrfifreq:', self.nrfifreq)
-            #print('NT:', self.nt)
-            #print('Mask:', len(mask))
             # Expand mask!
             self.rfi_mask = np.zeros((self.nrfifreq, self.nt), bool)
             for i in range(8):
                 self.rfi_mask[:,i::8] = (mask & (1<<i)) > 0
-            #print('Expanded mask:', self.rfi_mask.shape)
 
         if compressed:
            import pybitshuffle
