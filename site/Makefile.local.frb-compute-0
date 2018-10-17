@@ -14,9 +14,9 @@ INCDIR ?= $(HOME)/include
 #
 DEBUG ?= no
 ifeq ($(DEBUG),no)
-     CPP=g++ -std=c++11 -pthread -fPIC -march=native -Wall -O3 -ffast-math -funroll-loops -I. -I/usr/include/jsoncpp -I$(HOME)/include
+     CPP=g++ -std=c++11 -pthread -fPIC -march=native -Wall -O3 -ffast-math -funroll-loops -I. -I/usr/include/jsoncpp -I$(INCDIR)
 else
-     CPP=g++ -std=c++11 -pthread -fPIC -march=native -Wall -O0 -g -ffast-math -funroll-loops -I. -I/usr/include/jsoncpp -I$(HOME)/include
+     CPP=g++ -std=c++11 -pthread -fPIC -march=native -Wall -O0 -g -ffast-math -funroll-loops -I. -I/usr/include/jsoncpp -I$(INCDIR)
 endif
 
 # Any C++ flags which should only be specified when linking 
