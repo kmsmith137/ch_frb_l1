@@ -1,3 +1,6 @@
+#ifndef _CH_FRB_RPC_HPP
+#define _CH_FRB_RPC_HPP
+
 #include <vector>
 #include <iostream>
 
@@ -5,6 +8,7 @@
 
 #include <ch_frb_io.hpp>
 #include <assembled_chunk_msgpack.hpp>
+#include <rf_pipelines_inventory.hpp>
 
 /*
  This header contains code for both RPC clients (if in C++) and servers.
@@ -218,3 +222,10 @@ public:
     std::unordered_map<std::string, uint64_t> packets;
     MSGPACK_DEFINE(start, period, packets);
 };
+
+// FIXME -- should probably hand-craft this!
+struct inject_data_request : public rf_pipelines::inject_data {
+    MSGPACK_DEFINE(beam, mode, fpga0, fpga_offset, ndata, data);
+};
+
+#endif

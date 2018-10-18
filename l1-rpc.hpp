@@ -10,6 +10,7 @@
 #include <zmq.hpp>
 #include <ch_frb_io.hpp>
 #include <rf_pipelines.hpp>
+#include <rpc.hpp>
 
 const int default_port_l1_rpc = 5555;
 
@@ -68,6 +69,8 @@ protected:
                                zmq::message_t& tokenmsg,
                                zmq::message_t& contentmsg);
 
+    std::string _check_inject_data(std::shared_ptr<inject_data_request> inj);
+    
 private:
     // The command line that launched this L1 process
     std::string _command_line;

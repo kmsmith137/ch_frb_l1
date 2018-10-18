@@ -888,12 +888,90 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         return _send_frontend_message(*client, *token_to_message(token),
                                       *reply);
 
+    } else if (funcname == "inject_data") {
+
+        // argument: inject_data_request object
+        // FIXME -- hand-craft this?
+        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
+        shared_ptr<inject_data_request> injdata = make_shared<inject_data_request>();
+        msgpack::object obj = oh.get();
+        obj.convert(injdata);
+        string result = "";
+
+        cout << "Received inject_data RPC: beam " << injdata->beam << ", mode " << injdata->mode << ", nfreq " << injdata->fpga_offset.size() << ", FPGA0 " << injdata->fpga0 << endl;
+        shared_ptr<rf_pipelines::injector> inject;
+
+        result = _check_inject_data(injdata);
+        // no error string ==> ok, carry on!
+        if (result == "") {
+            // set fpga_max element
+            uint32_t maxoffset = 0;
+            for (uint32_t o : injdata->fpga_offset)
+                if (o > maxoffset)
+                    maxoffset = o;
+            injdata->fpga_max = injdata->fpga0 + maxoffset;
+
+            // find the injector for this beam; check that the first FPGAcount has not already passed!
+            for (ssize_t i=0; i<_stream->ini_params.beam_ids.size(); i++)
+                if (_stream->ini_params.beam_ids[i] == injdata->beam) {
+                    inject = _injectors[i];
+                    break;
+                }
+            assert(inject);
+
+            uint64_t last_fpga = inject->get_last_fpgacount_seen();
+            if (injdata->fpga0 < last_fpga) {
+                result = "inject_data: FPGA0 " + to_string(injdata->fpga0) + " is in the past!  Injector last saw " + to_string(last_fpga);
+            } else {
+                inject->inject(injdata);
+            }
+        }
+
+        msgpack::sbuffer buffer;
+        msgpack::pack(buffer, result);
+        //  Send reply back to client.
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(*client, *token_to_message(token), *reply);
+        
     } else {
         // Silent failure?
         chlog("Error: unknown RPC function name: " << funcname);
         return -1;
     }
 }
+
+
+string L1RpcServer::_check_inject_data(shared_ptr<inject_data_request> inj) {
+    assert(_stream.get());
+    // Check beam number -- do I have the requested beam?
+    bool found = false;
+    for (int beam : _stream->ini_params.beam_ids)
+        if (beam == inj->beam) {
+            found = true;
+            break;
+        }
+    if (!found)
+        return "inject_data: beam=" + to_string(inj->beam) + " which is not a beam that I am handling";
+    
+    // Check mode.
+    if (inj->mode != 0)
+        return "inject_data: mode=" + to_string(inj->mode) + " but only mode=0 is known";
+
+    // Check array sizes
+    int nfreq = _stream->ini_params.nupfreq * ch_frb_io::constants::nfreq_coarse_tot;
+
+    if (inj->fpga_offset.size() != nfreq)
+        return "inject_data: fpga_offset array has size " + to_string(inj->fpga_offset.size()) + ", expected nfreq=" + to_string(nfreq);
+    if (inj->ndata.size() != nfreq)
+        return "inject_data: ndata array has size " + to_string(inj->ndata.size()) + ", expected nfreq=" + to_string(nfreq);
+    int nd = 0;
+    for (uint16_t n : inj->ndata)
+        nd += n;
+    if (inj->data.size() != nd)
+        return "inject_data: data array has size " + to_string(inj->data.size()) + ", expected sum(ndata)=" + to_string(nd);
+    return "";
+}
+
 
 
 // Called periodically by the RpcServer thread.
