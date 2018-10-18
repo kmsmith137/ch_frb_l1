@@ -805,14 +805,16 @@ void dedispersion_thread_context::_init_mask_counters(const shared_ptr<rf_pipeli
     }
 
     for (unsigned int i = 0; i < mask_counters.size(); i++) {
+	rf_pipelines::mask_counter_transform::runtime_attrs attrs;
+	attrs.ringbuf_nhistory = 300;
+	attrs.chime_beam_id = beam_id;
+
 	// If RFI masks are requested, then the last mask_counter in the chain fills assembled_chunks.
-	bool fill_assembled_chunks = (config.nrfifreq > 0) && ((i+1) == mask_counters.size());
+	if ((config.nrfifreq > 0) && ((i+1) == mask_counters.size()))
+	    attrs.chime_stream = this->sp;
 
-	auto s = fill_assembled_chunks ? this->sp : shared_ptr<ch_frb_io::intensity_network_stream>();
-	auto callbacks = make_shared<rf_pipelines::chime_mask_counter_callbacks> (s, beam_id);
-
-	mask_counters[i]->set_callbacks(callbacks);
-	this->ms_map->put(beam_id, mask_counters[i]->where, callbacks->ringbuf);
+	mask_counters[i]->set_runtime_attrs(attrs);
+	this->ms_map->put(beam_id, mask_counters[i]->where, mask_counters[i]->ringbuf);
     }
 }
 
