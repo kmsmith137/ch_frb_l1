@@ -131,6 +131,9 @@ struct l1_config
     // Timeout (in ms) for retrieving frame0-ctime
     int frame0_timeout;
 
+    // Size of RFI mask measurement ringbuffer (15 seconds required for prometheus; more could be useful for other monitoring tools)
+    int rfi_mask_meas_history;
+
     // A vector of length nbeams, containing the beam_ids that will be processed on this L1 server.
     // It is currently assumed that these are known in advance and never change!
     // If unspecified, 'beam_ids' defaults to { 0, ..., nbeams-1 }.
@@ -382,6 +385,7 @@ l1_config::l1_config(int argc, char **argv)
     this->logger_address = p.read_scalar<string> ("logger_address", "");
     this->frame0_url = p.read_scalar<string> ("frame0_url", "");
     this->frame0_timeout = p.read_scalar<int> ("frame0_timeout", 3000);
+    this->rfi_mask_meas_history = p.read_scalar<int>("rfi_mask_meas_history", 300);
     this->slow_kernels = p.read_scalar<bool> ("slow_kernels", false);
     this->unassembled_ringbuf_nsamples = p.read_scalar<int> ("unassembled_ringbuf_nsamples", 4096);
     this->assembled_ringbuf_nsamples = p.read_scalar<int> ("assembled_ringbuf_nsamples", 8192);
@@ -809,7 +813,7 @@ void dedispersion_thread_context::_init_mask_counters(const shared_ptr<rf_pipeli
 
     for (unsigned int i = 0; i < mask_counters.size(); i++) {
 	rf_pipelines::mask_counter_transform::runtime_attrs attrs;
-	attrs.ringbuf_nhistory = 300;
+	attrs.ringbuf_nhistory = config.rfi_mask_meas_history;
 	attrs.chime_beam_id = beam_id;
 
 	// If RFI masks are requested, then the last mask_counter in the chain fills assembled_chunks.
