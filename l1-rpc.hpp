@@ -9,6 +9,7 @@
 #include <condition_variable>
 #include <zmq.hpp>
 #include <ch_frb_io.hpp>
+#include <rf_pipelines.hpp>
 
 const int default_port_l1_rpc = 5555;
 
@@ -21,6 +22,7 @@ public:
     // Creates a new RPC server listening on the given port, and reading
     // from the ring buffers of the given stream.
     L1RpcServer(std::shared_ptr<ch_frb_io::intensity_network_stream> stream,
+                std::vector<std::shared_ptr<rf_pipelines::injector> > injectors,
                 const std::string &port = "",
                 const std::string &cmdline = "",
                 zmq::context_t* ctx = NULL);
@@ -103,6 +105,9 @@ private:
 
     // the stream we are serving RPC requests for.
     std::shared_ptr<ch_frb_io::intensity_network_stream> _stream;
+
+    // the injector_transforms for the beams we are running.
+    std::vector<std::shared_ptr<rf_pipelines::injector> > _injectors;
 
     // server start time
     struct timeval _time0;

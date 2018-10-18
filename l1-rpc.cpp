@@ -222,6 +222,7 @@ void l1_write_request::write_callback(const string &error_message)
 
 
 L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
+                         vector<shared_ptr<rf_pipelines::injector> > injectors,
                          const string &port,
                          const string &cmdline,
                          zmq::context_t *ctx) :
@@ -232,7 +233,8 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
     _backend_queue(make_shared<l1_backend_queue>()),
     _output_devices(stream->ini_params.output_devices),
     _shutdown(false),
-    _stream(stream)
+    _stream(stream),
+    _injectors(injectors)
 {
     if (port.length())
         _port = port;

@@ -714,6 +714,7 @@ struct dedispersion_thread_context {
     l1_config config;
     shared_ptr<ch_frb_io::intensity_network_stream> sp;
     shared_ptr<bonsai::trigger_pipe> l1b_subprocess;   // warning: can be empty pointer!
+    shared_ptr<rf_pipelines::injector> injector_transform;
     vector<int> allowed_cores;
     bool asynchronous_dedispersion;   // run RFI and dedispersion in separate threads?
     int ibeam;
@@ -774,9 +775,12 @@ void dedispersion_thread_context::_thread_main() const
 	dedisperser->add_processor(l1b_subprocess);
 
     auto bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
-	
+
+    //auto injector_transform = rf_pipelines::make_injector(ch_frb_io::constants::nt_per_assembled_chunk);
+    
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);
+    pipeline->add(injector_transform);
     pipeline->add(rfi_chain);
     pipeline->add(bonsai_transform);
 
@@ -911,6 +915,7 @@ struct l1_server {
     vector<shared_ptr<L1PrometheusServer>> prometheus_servers;
     vector<std::thread> rpc_threads;
     vector<std::thread> dedispersion_threads;
+    vector<shared_ptr<rf_pipelines::injector> > injectors;
 
     // The constructor reads the configuration files, does a lot of sanity checks,
     // but does not initialize any "heavyweight" data structures.
@@ -1228,7 +1233,13 @@ void l1_server::make_rpc_servers()
     this->rpc_threads.resize(config.nstreams);
     
     for (int istream = 0; istream < config.nstreams; istream++) {
-	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], config.rpc_address[istream], command_line);
+        // Make a copy of the vector of injectors for beams operated by this stream.
+	int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
+        vector<shared_ptr<rf_pipelines::injector> > inj(nbeams_per_stream);
+        for (int i=0; i<nbeams_per_stream; i++)
+            inj[i] = injectors[istream * nbeams_per_stream + i];
+
+	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, config.rpc_address[istream], command_line);
 	rpc_threads[istream] = rpc_servers[istream]->start();
     }
 }
@@ -1257,17 +1268,21 @@ void l1_server::spawn_dedispersion_threads()
 	throw("ch-frb-l1 internal error: spawn_dedispersion_threads() was called, without first calling spawn_l1b_subprocesses()");
 
     this->dedispersion_threads.resize(config.nbeams);
-    
+    this->injectors.resize(config.nbeams);
+
     if (config.l1_verbosity >= 1)
 	cout << "ch-frb-l1: spawning " << config.nbeams << " dedispersion thread(s)" << endl;
 
     for (int ibeam = 0; ibeam < config.nbeams; ibeam++) {
 	int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
 	int istream = ibeam / nbeams_per_stream;
-    
+
+        this->injectors[ibeam] = rf_pipelines::make_injector(ch_frb_io::constants::nt_per_assembled_chunk);
+
 	dedispersion_thread_context context;
 	context.config = this->config;
 	context.sp = this->input_streams[istream];
+        context.injector_transform = this->injectors[ibeam];
 	context.l1b_subprocess = this->l1b_subprocesses[ibeam];
 	context.allowed_cores = this->dedispersion_cores[ibeam];
 	context.asynchronous_dedispersion = this->asynchronous_dedispersion;

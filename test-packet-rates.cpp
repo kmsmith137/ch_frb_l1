@@ -100,7 +100,8 @@ int main(int argc, char** argv) {
         streams.push_back(stream);
         
         string rpc_addr = "tcp://127.0.0.1:" + to_string(rpc_port + i);
-        shared_ptr<L1RpcServer> rpc = make_shared<L1RpcServer>(stream, rpc_addr);
+        std::vector<std::shared_ptr<rf_pipelines::injector> > inj;
+        shared_ptr<L1RpcServer> rpc = make_shared<L1RpcServer>(stream, inj, rpc_addr);
         rpcs.push_back(rpc);
         rpc_threads[i] = rpc->start();
         
