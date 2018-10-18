@@ -55,7 +55,9 @@ writereq = None
 for i in range(20):
     data = np.clip(128. + 20. * np.random.normal(size=(nf, nt)), 1, 254).astype(np.uint8)
     # Make an RFI spike
-    data[:, i*50:i*50+100] = 200
+    #data[:, i*50:i*50+100] = 200
+    # in the frequency direction (where we have better counting)
+    data[i*50:i*50+100, :] = 200
     ichunk = i + chunk0
     
     ch = simulate_l0.assembled_chunk(beam_id, fpga_counts_per_sample, ichunk,
