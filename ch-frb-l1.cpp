@@ -758,18 +758,6 @@ struct dedispersion_thread_context {
     void _init_mask_counters(const shared_ptr<rf_pipelines::pipeline_object> &pipeline, int beam_id) const;
 };
 
-static void print_pipeline(const shared_ptr<rf_pipelines::pipeline_object> &pipe, int level) {
-    for (int i=0; i<level; i++)
-        cout << "  ";
-    cout << "class " << pipe->class_name;
-
-    shared_ptr<rf_pipelines::wi_sub_pipeline> sub = dynamic_pointer_cast<rf_pipelines::wi_sub_pipeline>(pipe);
-    if (sub) {
-        cout << " at subsampling " << sub->ini_params.Df << " in freq and " << sub->ini_params.Dt << " in time";
-    }
-    cout << endl;
-}
-
 
 void dedispersion_thread_context::_init_mask_counters(const shared_ptr<rf_pipelines::pipeline_object> &pipeline, int beam_id) const
 {
@@ -879,7 +867,7 @@ void dedispersion_thread_context::_thread_main() const
     auto bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
 
     // cout << "RFI chain:" << endl;
-    // rf_pipelines::visit_pipeline(print_pipeline, rfi_chain);
+    // rf_pipelines::print_pipeline(rfi_chain);
 
     _init_mask_counters(rfi_chain, beam_id);
     
