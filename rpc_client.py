@@ -118,7 +118,31 @@ class PacketRate(object):
 
     def __str__(self):
         return 'PacketRate: start %g, period %g, packets: ' % (self.start, self.period) + str(self.packets)
-        
+
+class InjectData(object):
+    # matching rf_pipelines_inventory :: inject_data + ch_frb_l1 :: rpc.hpp
+    def __init__(self, beam, mode, fpga0, fpga_offsets, data):
+        '''
+        *mode*: 0 = ADD to stream.
+        *data*: list of numpy arrays, one per frequency.
+        *fpga_offsets*: int, numpy array, one per frequency.
+        '''
+        self.beam = beam
+        self.mode = mode
+        self.fpga0 = fpga0
+        self.fpga_offsets = fpga_offsets
+        self.data = data
+
+    def to_msgpack(self):
+        ndata = []
+        alldata = []
+        for d in self.data:
+            alldata.extend(list(d))
+            ndata.append(len(d))
+        msgpack = [self.beam, self.mode, self.fpga0, list(self.fpga_offsets),
+                   ndata, alldata]
+        return msgpack
+    
 class RpcClient(object):
     def __init__(self, servers, context=None, identity=None):
         '''
@@ -223,6 +247,29 @@ class RpcClient(object):
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
 
+    def inject_data(self, inj,
+                    servers=None, wait=True, timeout=-1):
+        '''
+        inj: InjectData object
+        '''
+        if servers is None:
+            servers = self.servers.keys()
+        tokens = []
+        for k in servers:
+            self.token += 1
+            req = msgpack.packb(['inject_data', self.token])
+            # Ensure correct argument types
+            args = msgpack.packb(inj.to_msgpack())
+            print('inject_data argument:', len(args), 'bytes')
+            tokens.append(self.token)
+            self.sockets[k].send(req + args)
+        if not wait:
+            return tokens
+        parts = self.wait_for_tokens(tokens, timeout=timeout)
+        # We expect one message part for each token.
+        return [msgpack.unpackb(p[0]) if p is not None else None
+                for p in parts]
+    
     ## the acq_beams should perhaps be a list of lists of beam ids,
     ## one list per L1 server.
     def stream(self, acq_name, acq_dev='', acq_meta='', acq_beams=[],
@@ -633,13 +680,17 @@ if __name__ == '__main__':
     parser.add_argument('--stream-base', help='Stream base directory')
     parser.add_argument('--stream-meta', help='Stream metadata', default='')
     parser.add_argument('--stream-beams', action='append', default=[], help='Stream a subset of beams.  Can be a comma-separated list of integers.  Can be repeated.')
-    
+
     parser.add_argument('--rate', action='store_true', default=False,
                         help='Send packet rate matrix request')
     parser.add_argument('--rate-history', action='store_true', default=False,
                         help='Send packet rate history request')
     parser.add_argument('--l0', action='append', default=[],
                         help='Request rate history for the list of L0 nodes')
+
+    parser.add_argument('--inject', action='store_true', default=False,
+                        help='Inject some data')
+
     parser.add_argument('ports', nargs='*',
                         help='Addresses or port numbers of RPC servers to contact')
     opt = parser.parse_args()
@@ -732,6 +783,21 @@ if __name__ == '__main__':
                     print('  ', r)
         doexit = True
 
+    if opt.inject:
+        beam = 0
+        fpga0 = 52 * 1024 * 384
+        nfreq = 16384
+        fpga_offsets = np.zeros(nfreq, np.int32)
+        fpga_counts_per_sample = 384
+        data = []
+        for f in range(nfreq):
+            fpga_offsets[f] = int(0.2 * fpga_counts_per_sample)
+            data.append(100. * np.ones(len(100), np.float32))
+        inj = InjectData(beam, 0, fpga0, fpga_offsets, data)
+        R = client.inject_data(inj, wait=True)
+        print('Results:', R)
+        doexit = True
+        
     if doexit:
         sys.exit(0)
     
