@@ -16,7 +16,7 @@
             "axis": "AXIS_TIME"
         },
 	{
-	    "class_name": "chime_mask_counter",
+	    "class_name": "mask_counter",
 	    "nt_chunk": 1024,
 	    "where": "after_rfi"
 	}
