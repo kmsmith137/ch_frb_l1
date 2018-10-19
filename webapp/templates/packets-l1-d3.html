@@ -5,10 +5,12 @@
 
 <script type="text/javascript" src="{{ url_for('static', filename='jquery.js') }}"></script>
 <script type="text/javascript" src="{{ url_for('static', filename='d3.min.js') }}"></script>
+<link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='bootstrap-4/css/bootstrap.min.css') }}">
 
 </head>
 
 <body id="thebody">
+{% include 'includes/_navbar.html'%}
 
 <h3>Packet rate graph for L1 node {{node}}</h3>
 
