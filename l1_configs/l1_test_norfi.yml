@@ -14,6 +14,7 @@ ipaddr: "127.0.0.1"
 port: 6677
 rpc_address: "tcp://127.0.0.1:5555"
 prometheus_address: "127.0.0.1:9999"
+frame0_url: ""
 
 # beam_ids: [ 139 ]
 

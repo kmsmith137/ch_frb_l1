@@ -14,6 +14,10 @@ port: 6677
 rpc_address: "tcp://127.0.0.1:5555"
 prometheus_address: "127.0.0.1:9999"
 
+# If you set up an ssh tunnel, you can test this:
+#frame0_url: "http://localhost:54321/get-frame0-time"
+frame0_url: ""
+
 # beam_ids: [ 139 ]
 
 # This configures the L1 server to use a single I/O thread for all writes.
