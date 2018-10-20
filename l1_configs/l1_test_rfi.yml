@@ -1,12 +1,5 @@
-# This is "example 1", in the section "Quick-start examples
-# which can be run on a laptop" in MANUAL.md.
-
-
-# This toy L1 server instance expects 1 beam, with 1024 frequencies.
-#
-# In subscale test programs, the value of 'nt_per_packet' isn't very important, but
-# should be the same on the L0 simulator and the L1 server.  (For discussion, see
-# "Config file reference: L1 server" in MANUAL.md.)
+# This is an L1 config file used by the test_rfi_mask.py script.
+# It runs a single-beam, 16k, RFI-masking server with a minimal ring buffer.
 
 nbeams: 1
 nfreq: 16384
@@ -25,24 +18,13 @@ prometheus_address: "127.0.0.1:9999"
 
 # This configures the L1 server to use a single I/O thread for all writes.
 # See 'output_devices' in MANUAL.md for discussion!
-output_devices: ""
-
+output_devices: [ "/" ]
 
 slow_kernels: False
-
-
-# Buffer configuration.  For documentation on these parameters, see 
-# "Config file reference: L1 server" in MANUAL.md.
-
-#assembled_ringbuf_nsamples: 4096
-#telescoping_ringbuf_nsamples: [ 4096, 4096, 4096 ]
 
 assembled_ringbuf_nsamples: 16384
 telescoping_ringbuf_nsamples: [ 16384, 4096, 4096 ]
 write_staging_area_gb: 0.1
-
-output_devices: [ "/" ]
-
 
 # L1b configuration.
 #
@@ -58,4 +40,3 @@ l1b_executable_filename: "./toy-l1b.py"
 l1b_buffer_nsamples: 0
 l1b_pipe_timeout: 5.0
 
-#stream_acqname: "test_acq"
