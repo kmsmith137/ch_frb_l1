@@ -1231,7 +1231,12 @@ void l1_server::make_rpc_servers()
 
     this->rpc_servers.resize(config.nstreams);
     this->rpc_threads.resize(config.nstreams);
-    
+
+    this->injectors.resize(config.nbeams);
+
+    for (int ibeam = 0; ibeam < config.nbeams; ibeam++)
+        this->injectors[ibeam] = rf_pipelines::make_injector(ch_frb_io::constants::nt_per_assembled_chunk);
+
     for (int istream = 0; istream < config.nstreams; istream++) {
         // Make a copy of the vector of injectors for beams operated by this stream.
 	int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
@@ -1266,9 +1271,10 @@ void l1_server::spawn_dedispersion_threads()
 	throw("ch-frb-l1 internal error: spawn_dedispersion_threads() was called, without first calling make_input_streams()");
     if (l1b_subprocesses.size() != size_t(config.nbeams))
 	throw("ch-frb-l1 internal error: spawn_dedispersion_threads() was called, without first calling spawn_l1b_subprocesses()");
+    if (injectors.size() != size_t(config.nbeams))
+        throw("ch-frb-l1 internal error: spawn_dedispersion_threads() was called, without first calling make_rpc_servers()");
 
     this->dedispersion_threads.resize(config.nbeams);
-    this->injectors.resize(config.nbeams);
 
     if (config.l1_verbosity >= 1)
 	cout << "ch-frb-l1: spawning " << config.nbeams << " dedispersion thread(s)" << endl;
@@ -1276,8 +1282,6 @@ void l1_server::spawn_dedispersion_threads()
     for (int ibeam = 0; ibeam < config.nbeams; ibeam++) {
 	int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
 	int istream = ibeam / nbeams_per_stream;
-
-        this->injectors[ibeam] = rf_pipelines::make_injector(ch_frb_io::constants::nt_per_assembled_chunk);
 
 	dedispersion_thread_context context;
 	context.config = this->config;
