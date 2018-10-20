@@ -383,7 +383,7 @@ l1_config::l1_config(int argc, char **argv)
     this->rpc_address = p.read_vector<string> ("rpc_address");
     this->prometheus_address = p.read_vector<string> ("prometheus_address");
     this->logger_address = p.read_scalar<string> ("logger_address", "");
-    this->frame0_url = p.read_scalar<string> ("frame0_url", "");
+    this->frame0_url = p.read_scalar<string> ("frame0_url");
     this->frame0_timeout = p.read_scalar<int> ("frame0_timeout_ms", 3000);
     this->rfi_mask_meas_history = p.read_scalar<int>("rfi_mask_meas_history", 300);
     this->slow_kernels = p.read_scalar<bool> ("slow_kernels", false);
