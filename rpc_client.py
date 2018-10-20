@@ -137,12 +137,20 @@ class InjectData(object):
         ndata = []
         alldata = []
         for d in self.data:
-            alldata.extend(list(d))
+            #alldata.extend(list(d))
+            alldata.extend([float(di) for di in d])
             ndata.append(len(d))
-        msgpack = [self.beam, self.mode, self.fpga0, list(self.fpga_offsets),
+        #list(self.fpga_offsets),
+        msgpack = [self.beam, self.mode, self.fpga0,
+                   [int(o) for o in self.fpga_offsets],
                    ndata, alldata]
         return msgpack
-    
+
+    def pack(self):
+        packer = msgpack.Packer(use_single_float=True)
+        b = packer.pack(self.to_msgpack())
+        return b
+
 class RpcClient(object):
     def __init__(self, servers, context=None, identity=None):
         '''
@@ -259,7 +267,8 @@ class RpcClient(object):
             self.token += 1
             req = msgpack.packb(['inject_data', self.token])
             # Ensure correct argument types
-            args = msgpack.packb(inj.to_msgpack())
+            #args = msgpack.packb(inj.to_msgpack())
+            args = inj.pack()
             print('inject_data argument:', len(args), 'bytes')
             tokens.append(self.token)
             self.sockets[k].send(req + args)
@@ -785,14 +794,16 @@ if __name__ == '__main__':
 
     if opt.inject:
         beam = 0
-        fpga0 = 52 * 1024 * 384
+        #fpga0 = 52 * 1024 * 384
+        fpga0 = 5 * 1024 * 384
         nfreq = 16384
         fpga_offsets = np.zeros(nfreq, np.int32)
         fpga_counts_per_sample = 384
         data = []
         for f in range(nfreq):
-            fpga_offsets[f] = int(0.2 * fpga_counts_per_sample)
-            data.append(100. * np.ones(len(100), np.float32))
+            fpga_offsets[f] = int(0.2 * fpga_counts_per_sample * f)
+            data.append(100. * np.ones(100, np.float32))
+        print('Injecting data spanning', np.max(fpga_offsets)/fpga_counts_per_sample, ' samples')
         inj = InjectData(beam, 0, fpga0, fpga_offsets, data)
         R = client.inject_data(inj, wait=True)
         print('Results:', R)
