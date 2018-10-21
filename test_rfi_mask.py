@@ -108,6 +108,9 @@ for i in range(20):
 
 os.system(prom_cmd)
 
+l0.end_streams()
+sleep(5)
+
 l1.terminate()
 
 # Check contents of msgpack files.

@@ -3,7 +3,7 @@
     "elements": [
         {
             "class_name": "chime_file_writer",
-            "filename": "intensity.hd5",
+            "filename": "intensity.h5",
             "clobber": true,
             "bitshuffle": 0,
             "nt_chunk": 1024
