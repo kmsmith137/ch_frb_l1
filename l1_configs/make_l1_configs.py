@@ -6,6 +6,7 @@ def update_beam_ids(info, beam_offset):
     info['beam_ids'] = range(beam_offset, beam_offset+8)
     return info
 
+## NOTE, not currently used
 def update_output_devices(info, rack):
     if rack in ['0','2','4','6','8','A','C']:
         info['output_devices'] = ["/local", "/frb-archiver-3", "/frb-archiver-4"]
@@ -13,6 +14,7 @@ def update_output_devices(info, rack):
         info['output_devices'] = ["/local", "/frb-archiver-1", "/frb-archiver-2"]
     return info
 
+## NOTE, not currently used
 def update_enos(info, rack):
     if rack in ['0','2','4','6','8','A','C']:
         info['ipaddr'] = ["eno3", "eno4"]
@@ -28,6 +30,7 @@ def main():
     info = {
         'nbeams': 8,
         'nfreq': 16384,
+        'nrfifreq': 1024,
         'nt_per_packet': 16,
         'beam_ids': [0, 1, 2, 3, 4, 5, 6, 7],
         'intensity_prescale': 0.0001,
@@ -39,7 +42,8 @@ def main():
         'prometheus_address': [ "eno1:8888",
                               "eno2:8888" ],
         'logger_address': "tcp://10.6.213.19:5555",
-        'output_devices': [ "/local", "/frb-archiver-1", "/frb-archiver-2"],
+        'frame0_url': "http://carillon.chime:54321/get-frame0-time",
+        'output_devices': [ "/frb-archiver-1", "/frb-archiver-2"],
         'slow_kernels': False,
         'assembled_ringbuf_nsamples': 10000,
         'telescoping_ringbuf_nsamples': [ 60000, 120000, 240000 ], # Currently half of what it should be.

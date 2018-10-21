@@ -47,7 +47,7 @@ all: $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES)
 
 INCFILES := ch_frb_l1.hpp l0-sim.hpp l1-rpc.hpp rpc.hpp
 
-L1_OBJS := l1-rpc.o
+L1_OBJS := l1-rpc.o mask_stats.o
 
 # Append compile flags
 CPP_CFLAGS ?=
@@ -69,13 +69,22 @@ rpc-client: rpc_client.o
 	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lch_frb_io -lzmq
 
 ch-frb-l1: ch-frb-l1.o file_utils.o yaml_paramfile.o $(L1_OBJS) $(CIVET_OBJS)
-	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lrf_pipelines -lbonsai -lch_frb_io -lrf_kernels -lzmq -lyaml-cpp -ljsoncpp -ldl
+	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lrf_pipelines -lbonsai -lch_frb_io -lrf_kernels -lzmq -lyaml-cpp -ljsoncpp -ldl -lcurl
 
 sim-l0-set: sim-l0-set.cpp l0-sim.cpp
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io
 
-ch-frb-simulate-l0: ch-frb-simulate-l0.o l0-sim.o file_utils.o yaml_paramfile.o
+ch-frb-simulate-l0: ch-frb-simulate-l0.o l0-sim.o simulate-l0.o file_utils.o yaml_paramfile.o
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io -lyaml-cpp
+
+PYTHON ?= python
+
+simulate_l0.so: simulate_l0_py.cpp setup.py simulate-l0.o file_utils.o yaml_paramfile.o
+	LINKFLAGS="$(CPP_LFLAGS) -lch_frb_io -lyaml-cpp" \
+	CPPFLAGS="$(CPP_CFLAGS)" \
+	OBJS="simulate-l0.o file_utils.o yaml_paramfile.o" \
+	CPP="$(CPP)" \
+	$(PYTHON) setup.py build_ext --inplace --force --build-temp .
 
 ch-frb-test: ch-frb-test.cpp $(L1_OBJS)
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io -lzmq -lhdf5
@@ -109,6 +118,7 @@ Makefile.local: ;
 Makefile: ;
 %.cpp: ;
 %.hpp: ;
+%.py: ;
 
 # Cancel stupid implicit rules.
 %: %,v

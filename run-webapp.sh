@@ -1,5 +1,7 @@
 #!/bin/bash
 
+export PATH="/home/l1operator/anaconda2/bin:$PATH"
+
 if [[ $# -ne 1 ]]; then
     echo "usage: run-webapp.sh <l1_config.yaml>"
     echo

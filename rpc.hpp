@@ -204,6 +204,15 @@ public:
     MSGPACK_DEFINE(beams, min_fpga, max_fpga, dm, dm_error, sweep_width, frequency_binning, filename_pattern, priority);
 };
 
+class WriteChunks_Request_v2 : public WriteChunks_Request {
+public:
+    bool need_rfi = true;
+    MSGPACK_DEFINE(beams, min_fpga, max_fpga, dm, dm_error, sweep_width, frequency_binning, filename_pattern, priority, need_rfi);
+};
+
+
+
+
 class WriteChunks_Reply {
 public:
     uint64_t beam;

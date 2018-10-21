@@ -29,6 +29,7 @@ rpc_address: [ "tcp://10.2.1.101:5555",
 	       "tcp://10.2.3.101:5555", 
 	       "tcp://10.2.4.101:5555" ]
 
+frame0_url: ""
 
 # The L1 node is configured so that it "thinks" the NFS server is four different
 # servers, mounted on directories /frb-archiver1, /frb-archiver2, /frb-archiver3,

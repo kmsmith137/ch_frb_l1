@@ -9,8 +9,7 @@ except:
     # py3
     basestring = str
 
-from flask import Flask, render_template, jsonify, request, redirect
-
+from flask import Flask, render_template, jsonify, request, redirect, url_for, session, flash
 import os
 import sys
 from datetime import datetime, timedelta
@@ -20,12 +19,17 @@ import msgpack
 import numpy as np
 import sqlalchemy
 from sqlalchemy.orm import sessionmaker, scoped_session
+from subprocess import check_output
+from functools import wraps
+from passlib.hash import sha256_crypt
 from chlog_database import LogMessage
+from chime_frb_operations import UserAccounts, Acquisition, SignUpForMonitoring, Base
 
 #print('Python version:', sys.version)
 # 2.7 on cf0g9
 
 app = Flask(__name__)
+app.secret_key="pm30c6DBBOpmA4A4PmJw"
 
 _rpc_client = None
 def get_rpc_client():
@@ -37,7 +41,7 @@ def get_rpc_client():
         _rpc_client = RpcClient(servers)
     return _rpc_client
 
-def get_cnc_client():
+def get_cnc_client(user="l1operator"):
     # SSH
     if False:
         #from webapp.cnc_client import CncClient
@@ -45,11 +49,20 @@ def get_cnc_client():
         client = CncClient(ctx=app.zmq)
         return client
     from cnc_ssh import CncSsh
-    client = CncSsh(ssh_options='-o "User=l1operator" -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa')
+    client = CncSsh(ssh_options='-o "User=%s" -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa'%user)
     return client
 
 def get_db_session():
     return app.make_db_session()
+
+def get_acq_db_session():
+    return app.make_acq_db_session()
+
+def get_operations_db_session():
+    return app.make_operations_db_session()
+
+def get_monitoring_db_session():
+    return app.make_monitoring_db_session()
 
 def parse_config(app):
     """
@@ -111,7 +124,7 @@ def parse_config(app):
 
     # SSH
     app.cnc_nodes = [n.replace('tcp://', '').replace(':9999','') for n in cnc_nodes]
-
+    app.head_nodes = ['10.5.2.1']
 
     # FIXME(?): check the format of the node strings here?
     # (Should be something like 'tcp://10.0.0.101:5555')
@@ -120,17 +133,89 @@ def parse_config(app):
     engine = sqlalchemy.create_engine(database)
     app.make_db_session = scoped_session(sessionmaker(bind=engine))
 
+    operations_database = y.get('chime_frb_operations_database', 'sqlite:///chime_frb_operations.sqlite3')
+    acq_engine = sqlalchemy.create_engine(operations_database)
+    Base.metadata.create_all(acq_engine)
+    app.make_acq_db_session = scoped_session(sessionmaker(bind=acq_engine))
+
+    operations_engine = sqlalchemy.create_engine(operations_database)
+    Base.metadata.create_all(operations_engine)
+    app.make_operations_db_session = scoped_session(sessionmaker(bind=operations_engine))
+
+    monitoring_engine = sqlalchemy.create_engine(operations_database)
+    Base.metadata.create_all(monitoring_engine)
+    app.make_monitoring_db_session = scoped_session(sessionmaker(bind=monitoring_engine))
+
 parse_config(app)
 
 import zmq
 app.zmq = zmq.Context()
 
 @app.route('/')
-def index():
+def home():
+    return render_template('home.html')
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'logged_in' in session:
+            return f(*args, **kwargs)
+        else:
+            flash('Unauthorized, Please login', 'danger')
+            return redirect(url_for('login'))
+    return decorated_function
+
+@app.route('/calendar', methods=['GET', 'POST'])
+@login_required
+def calendar():
+    if request.method=="POST":
+        monitoring_session = get_monitoring_db_session()
+        monitoring_info = monitoring_session.query(SignUpForMonitoring).all()
+        monitoring_info = [info.as_dict() for info in monitoring_info]
+        return jsonify(monitoring_info)
+    return render_template('sign_up_for_observations.html')
+
+@app.route('/sign_up_for_monitoring', methods=['POST'])
+@login_required
+def sign_up_for_monitoring():
+    monitoring_session = get_monitoring_db_session()
+    args = request.get_json()
+    print (args)
+    monitoring_id = int(args['monitoring_id'])
+    if args['to_delete']:
+        obj =  monitoring_session.query(SignUpForMonitoring).get(monitoring_id)
+        monitoring_session.delete(obj)
+        monitoring_session.commit()
+    else:
+        name = args['name'] 
+        email = args['email'] 
+        monitoring_start = args['start'] 
+        monitoring_stop = args['stop']
+        notes = args['notes']
+        to_add = {
+                  'name': name,
+                  'email': email,
+                  'monitoring_start': monitoring_start,
+                  'monitoring_stop': monitoring_stop,
+                  'notes': notes
+                 }
+
+        if monitoring_id:
+            monitoring_session.query(SignUpForMonitoring).filter_by(monitoring_id=monitoring_id).update(to_add)
+            monitoring_session.commit()
+        else:
+            add_monitoring_info = SignUpForMonitoring(**to_add)
+            monitoring_session.add(add_monitoring_info)
+            monitoring_session.commit()
+    return jsonify("success")
+    
+@app.route('/operations')
+@login_required
+def operations():
     nodes = [n.replace('tcp://','') for n in app.nodes]
     nicenodes = [(n.replace('tcp://','').replace(':5555',''), n.replace('tcp://',''))
                  for n in app.nodes]
-    return render_template('index-newer.html',
+    return render_template('operations.html',
                            nodes = nodes,
                            nicenodes = nicenodes,
                            ecnodes = list(enumerate(app.cnc_nodes)),
@@ -144,13 +229,69 @@ def index():
                            cnc_kill_url='/cnc-kill',
         )
 
+@app.route('/diagnostics')
+@login_required
+def diagnostics():
+    nodes = [n.replace('tcp://','') for n in app.nodes]
+    nicenodes = [(n.replace('tcp://','').replace(':5555',''), n.replace('tcp://',''))
+                 for n in app.nodes]
+    return render_template('diagnostics.html',
+                           nodes = nodes,
+                           nicenodes = nicenodes,
+                           ecnodes = list(enumerate(app.cnc_nodes)),
+                           node_status_url='/node-status',
+                           packet_matrix_url='/packet-matrix',
+                           packet_matrix_image_url='/packet-matrix.png',
+                           packet_matrix_d3_url='/packet-matrix-d3',
+                           l0_node_map_url='/l0-node-map',
+                           cnc_run_url='/cnc-run',
+                           cnc_follow_url='/cnc-poll',
+                           cnc_kill_url='/cnc-kill',
+        )
+
+#user login
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        # Get Form Fields
+        username = request.form['username']
+        password_candidate = request.form['password']
+        operations_session = get_operations_db_session()
+        user = operations_session.query(UserAccounts).filter(UserAccounts.username == username).all()
+        if len(user):
+            data = user[0].as_dict()
+            password = data['password']
+            if sha256_crypt.verify(password_candidate, password):
+                session['logged_in'] = True
+                session['username'] = username
+                
+                flash('You are now logged in', 'success')
+                return redirect(url_for('operations'))
+            else:
+                error = "Invalid Login!"
+                return render_template('login.html', error=error)
+        else:
+            error = "Username not found !"
+            return render_template('login.html', error=error)
+    return render_template('login.html')
+
+#user logout
+@app.route('/logout')
+@login_required
+def logout():
+    session.clear()
+    flash('You are now logged out.', 'success')
+    return redirect(url_for('home')) 
+
 @app.route('/acq')
+@login_required
 def acq_page():
     nodes = [n.replace('tcp://','') for n in app.nodes]
     return render_template('acq.html',
-                           enodes = list(enumerate(nodes)))
+                           nodes = list(enumerate(nodes)))
 
 @app.route('/acq-status-json')
+@login_required
 def acq_status_json():
     client = get_rpc_client()
     # Make RPC requests for list_chunks and get_statistics asynchronously
@@ -160,8 +301,13 @@ def acq_status_json():
     return jsonify(stat)
 
 @app.route('/acq-start', methods=['POST'])
+@login_required
 def acq_start():
     client = get_rpc_client()
+    #servers_to_exclude = {'0', 'tcp://10.6.201.10:5555'}
+    #print (client.servers.keys())
+    #del(client.servers['0'])
+    #print (client.servers.keys())
     # Make RPC requests for list_chunks and get_statistics asynchronously
     timeout = 5000.
     args = request.get_json()
@@ -181,15 +327,116 @@ def acq_start():
     stat = client.stream(acqname, acq_dev=acqdev, acq_meta=acqmeta,
                          acq_beams=acqbeams, new_stream=acqnew,
                          timeout=timeout)
+    #add the excluded server back
+    #client.servers['0'] = 'tcp://10.6.201.10:5555'
+    #print (client.servers.keys())
+    if len(acqbeams): # start acquisition
+        acq_session = get_acq_db_session()
+        tinfo = check_output('curl carillon:54321/get-frame-time', shell=1)
+        frame0_ctime_us = int(1e6*json.loads(tinfo)['frame0_ctime'])
+        to_add = {
+                  'acquisition_name': acqname,
+                  'acquisition_device': acqdev,
+                  'acquisition_start': datetime.now(),
+                  'beams': str(acqbeams),
+                  'frame0_ctime_us': frame0_ctime_us,
+                  'notes': acqmeta,
+                  'user': session['username']
+                 }
+        acq = Acquisition(**to_add)
+        acq_session.add(acq)
+        acq_session.commit()
     print('Start stream status:', stat)
     return jsonify(stat)
 
+@app.route('/acq-history')
+@login_required
+def acq_history():
+    args = request.get_json()
+    acq_session = get_acq_db_session()
+    acqs = acq_session.query(Acquisition).all()
+    columns = [m.key for m in Acquisition.__table__.columns]
+    return render_template('acq_history.html',
+                           columns=columns,
+                           acqs=acqs)
+
+
+
+@app.route('/node-service')
+@login_required
+def node_service():
+    # Retrieve systemd/journalctl logs for ch-frb-l1 systemd processes.
+    client = get_cnc_client(user="frbadmin")
+    #results = client.run('cctl power on cf', app.cnc_nodes,
+    #                     timeout=3000)
+    #results = client.run('cctl power on cf1n8', app.head_nodes,
+    #                     timeout=3000)
+    #print ("results", results)
+    rr = []
+    rack = []
+    previous_rack = "1"
+    #for node,r in zip(app.cnc_nodes, results):
+    for node in app.cnc_nodes:
+        try:
+            r = check_output(["fping", "-c", "1", "-t100", node])
+        except:
+            r = None
+        current_rack = str(int(node.split('.')[2])-200)
+        current_rack = { '10': 'A', '11': 'B', '12': 'C', '13': 'D' }.get(current_rack, current_rack)
+        if not (current_rack == previous_rack):
+            rr.append({previous_rack: rack})
+            rack = []
+            previous_rack = current_rack
+        if r is None:
+            err = '(Node or Network is down)'
+            summary = "Off"
+            rack.append((node, summary, err))
+        else:
+            r = (r, "Node is up!", "")
+            (rtn, out, err) = r
+            print(rtn, out, err)
+            out = out.decode('utf-8')
+            err = err.decode('utf-8')
+
+            lines = (out + err).split('\n')
+            summary = "On"
+            rack.append((node, summary, out + err))
+    rr.append({previous_rack: rack})
+    results = rr
+    return render_template('node-service.html',
+                           status=results,
+                           service_url='/node-service-action')
+
+@app.route('/node-service-action/<action>/<node>')
+@login_required
+def node_service_action(action=None, node=None):
+    assert(action in ['on','off','cycle'])
+    if node == 'all':
+        perform_action = "cf" 
+    elif 'rack' in node:
+        perform_action = "cf"+node[4:]
+    else:
+        perform_action = get_dns_of_node(node)
+
+    client = get_cnc_client(user="frbadmin")
+    if (action == 'cycle'):
+        cmd = 'cctl power cycle %s' % perform_action
+    elif (action == 'off'):
+        cmd = 'cctl power off %s' % perform_action
+    else:
+        cmd = 'cctl power on %s' % perform_action
+    rtn = client.run(cmd, app.head_nodes)
+    print('Return value:', rtn)
+    return redirect('/node-service')
+
 @app.route('/l1-service')
+@login_required
 def l1_service():
     # Retrieve systemd/journalctl logs for ch-frb-l1 systemd processes.
     client = get_cnc_client()
     results = client.run('sudo -n /bin/systemctl status ch-frb-l1', app.cnc_nodes,
                          timeout=3000)
+    print (app.cnc_nodes)
     rr = []
     rack = []
     previous_rack = "1"
@@ -224,6 +471,7 @@ def l1_service():
                            service_url='/l1-service-action')
 
 @app.route('/l1-service-action/<action>/<node>')
+@login_required
 def l1_service_action(action=None, node=None):
     if node == 'all':
         nodes = app.cnc_nodes
@@ -246,7 +494,15 @@ def get_rack_of_nodes(rack):
     rack = int(rack)+200
     return [node for node in app.cnc_nodes if "."+str(rack)+"." in node]
 
+def get_dns_of_node(node):
+    node_split = node.split('.')
+    rack = str(int(node_split[2])-200)
+    rack = { 'A': '10', 'B': '11', 'C': '12', 'D': '13' }.get(rack, rack)
+    node_num = str(int(node_split[-1])-10)
+    return "cf"+rack+"n"+node_num
+
 @app.route('/l1-logs-stdout')
+@login_required
 def l1_logs_stdout():
     # Retrieve systemd/journalctl logs for ch-frb-l1 systemd processes.
     client = get_cnc_client()
@@ -281,16 +537,18 @@ def l1_logs_stdout():
                            logmsgs=logmsgs)
 
 @app.route('/l1-logs-recent')
+@login_required
 def l1_logs_recent():
-    session = get_db_session()
+    log_session = get_db_session()
     datecut = datetime.now() - timedelta(0, 60)
-    logs = session.query(LogMessage).filter(LogMessage.date >= datecut)
+    logs = log_session.query(LogMessage).filter(LogMessage.date >= datecut)
     filters = [('date after ' + str(datecut), 'date_gt_%s' % str(datecut).replace(' ','_'))]
     return render_template('l1-logs-recent.html',
                            logs=logs,
                            logfilters=filters)
 
 @app.route('/l0-node-map')
+@login_required
 def l0_node_map():
     return render_template('l0-node-map.html',
                            packet_matrix_json_url='/packet-matrix.json',
@@ -451,6 +709,7 @@ def get_packet_matrix(group_l0=None):
     return senders, sender_names, packetrates
     
 @app.route('/packet-matrix-d3')
+@login_required
 def packet_matrix_d3():
     nl0 = request.args.get('nl0', 256)
     return render_template('packets-d3.html',
@@ -461,6 +720,7 @@ def packet_matrix_d3():
                            packet_matrix_json_url='/packet-matrix.json',)
 
 @app.route('/packets-l0/<name>/<ip>')
+@login_required
 def packets_l0(name=None, ip=None):
     return render_template('packets-l0-d3.html',
                            node0name=name,
@@ -468,6 +728,7 @@ def packets_l0(name=None, ip=None):
                            nodes1=app.nodes)
 
 @app.route('/packets-l1/<name>')
+@login_required
 def packets_l1(name=None):
     return render_template('packets-l1-d3.html',
                            node=name)
@@ -596,10 +857,14 @@ def packet_matrix_json():
     return jsonify(rtn)
     
 @app.route('/packet-matrix')
+@login_required
 def packet_matrix():
     senders, sender_names, packets = get_packet_matrix()
-    
-    html = '<html><body>'
+   
+    #html = '<html><body>'
+    html = '<html>'
+    html +='<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">'
+    html += '<body>'
     html += '<table><tr><td></td>'
     for i,l0 in enumerate(sender_names):
         html += '<td><a href="l0/%s">%s</a></td>' % (l0,l0)
@@ -617,6 +882,7 @@ def packet_matrix():
 
 
 @app.route('/xxx')
+@login_required
 def index_xxx():
 
     import requests
@@ -680,6 +946,7 @@ def index_xxx():
 
 
 @app.route('/node/<name>')
+@login_required
 def node(name=None):
     return render_template('node-status.html',
                            node=name,
@@ -703,6 +970,7 @@ def node_status_json(name=None):
 
 
 @app.route('/packet-matrix.png')
+@login_required
 def packet_matrix_png():
     import pylab as plt
     import numpy as np
@@ -739,6 +1007,7 @@ def packet_matrix_png():
     return (bb, {'Content-type': 'image/png'})
 
 @app.route('/2')
+@login_required
 def index2():
     return render_template('index2.html', nodes=list(enumerate(app.nodes)),
                            node_status_url='/node-status')

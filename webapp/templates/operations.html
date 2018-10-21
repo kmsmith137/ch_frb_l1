@@ -1,0 +1,17 @@
+{% extends 'layout.html' %}
+{% block body %}
+<h1> <small>Welcome to CHIME/FRB Operations @{{session.username}} !!!</small></h1>
+
+<h3> CHIME FRB Operations</h3>
+<ul>
+<li><a href="/node-service">Power On/Off L1 nodes</a></li>
+<li><a href="/l1-service">Start/Stop L1 Pipeline</a></li>
+<li><a href="/acq">Acquisition status</a></li>
+<li><a href="/acq-history">Acquisition History</a></li>
+<li><a href="/l1-logs-recent">L1 logs (chlog)</a></li>
+<li><a href="/l1-logs-stdout">L1 stdout/stderr logs</a></li>
+<li><a href="/calendar">Monitoring Schedule</a></li>
+</ul>
+
+{% endblock %}
+

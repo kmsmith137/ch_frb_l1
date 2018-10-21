@@ -117,8 +117,9 @@ int main(int argc, char** argv) {
     stream->start_stream();
 
     prometheus_ip = prometheus_ip + to_string(prometheus_port);
+    shared_ptr<ch_frb_l1::mask_stats_map> ms = make_shared<ch_frb_l1::mask_stats_map>();
     shared_ptr<L1PrometheusServer> prometheus_server =
-        start_prometheus_server(prometheus_ip, stream);
+        start_prometheus_server(prometheus_ip, stream, ms);
     if (!prometheus_server) {
         return -1;
     }
@@ -134,7 +135,7 @@ int main(int argc, char** argv) {
 
     chlog("Starting RPC server on port " << port);
     std::vector<std::shared_ptr<rf_pipelines::injector> > inj;
-    L1RpcServer rpc(stream, inj, port);
+    L1RpcServer rpc(stream, inj, ms, port);
     std::thread rpc_thread = rpc.start();
 
     std::random_device rd;

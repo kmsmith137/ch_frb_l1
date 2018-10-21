@@ -11,11 +11,25 @@
 #include <ch_frb_io.hpp>
 #include <rf_pipelines.hpp>
 #include <rpc.hpp>
+#include <mask_stats.hpp>
 
 const int default_port_l1_rpc = 5555;
 
 // implementation detail: a struct used to communicate between I/O threads and the RpcServer.
 class l1_backend_queue;
+
+class chunk_status_map {
+public:
+    void set(const std::string& filename, const std::string& status, const std::string& error_message);
+    bool get(const std::string& filename, std::string& status, std::string& error_message);
+protected:
+    // result codes for write_chunk_request() calls:
+    //  filename -> pair(status, error_message)
+    std::map<std::string, std::pair<std::string, std::string> > _write_chunk_status;
+    // (and the mutex for it)
+    std::mutex _status_mutex;
+};
+
 
 // The main L1 RPC server object.
 class L1RpcServer {
@@ -24,6 +38,7 @@ public:
     // from the ring buffers of the given stream.
     L1RpcServer(std::shared_ptr<ch_frb_io::intensity_network_stream> stream,
                 std::vector<std::shared_ptr<rf_pipelines::injector> > injectors,
+                std::shared_ptr<const ch_frb_l1::mask_stats_map> maskstats,
                 const std::string &port = "",
                 const std::string &cmdline = "",
                 zmq::context_t* ctx = NULL);
@@ -41,11 +56,6 @@ public:
     
     // equivalent to receiving a shutdown() RPC.
     void do_shutdown();
-
-    // called by RPC worker threads to update status for a write_chunks request
-    void set_writechunk_status(std::string filename,
-                               std::string status,
-                               std::string error_message);
 
     // For testing: enqueue the given chunk for writing.
     void enqueue_write_request(std::shared_ptr<ch_frb_io::assembled_chunk>,
@@ -95,10 +105,7 @@ private:
     // Port the client-facing socket is listening on.
     std::string _port;
 
-    // a vector of result codes for write_chunk_request() calls.
-    std::map<std::string, std::pair<std::string, std::string> > _write_chunk_status;
-    // (and the mutex for it)
-    std::mutex _status_mutex;
+    std::shared_ptr<chunk_status_map> _chunk_status;
 
     // Only protects _shutdown!
     std::mutex _q_mutex;
@@ -111,6 +118,9 @@ private:
 
     // the injector_transforms for the beams we are running.
     std::vector<std::shared_ptr<rf_pipelines::injector> > _injectors;
+
+    // objects holding RFI mask statistics
+    std::shared_ptr<const ch_frb_l1::mask_stats_map> _mask_stats;
 
     // server start time
     struct timeval _time0;

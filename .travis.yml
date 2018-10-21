@@ -9,7 +9,16 @@
 #sudo: yes
 #dist: trusty
 
-os: osx
+os:
+  - osx
+  - linux
+
+# This has AVX but not AVX2
+# sudo: false
+# dist: trusty
+
+sudo: true
+dist: trusty
 
 # Formerly:
 # use containerized infrastructure (for faster startup; no sudo)
@@ -23,11 +32,22 @@ compiler:
   - clang
 
 before_install:
-    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update          ; fi
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then sysctl -a kern.ostype kern.osrelease kern.version kern.osversion hw.machine hw.model hw.ncpu hw.byteorder hw.physmem hw.cpufrequency hw.memsize hw.optional.x86_64 hw.cpu64bit_capable machdep.cpu.brand_string machdep.cpu.features machdep.cpu.leaf7_features machdep.cpu.extfeatures; fi
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then sysctl -a; fi
+    - echo "TRAVIS_OS_NAME is $TRAVIS_OS_NAME"
+    - echo "HOMEBREW_CACHE is $HOMEBREW_CACHE"
+    - echo "HOMEBREW_TEMP is $HOMEBREW_TEMP"
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update; fi
     - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install lz4 yaml-cpp jsoncpp; fi
-    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install fftw --without-fortran; fi
+    # fftw: depends on gcc if --with-fortran (the default).
+    #- if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install fftw --without-fortran; fi
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install fftw --ignore-dependencies; fi
+
     # boost: already installed
     # fftw: problematic
+
+    - which python
+    - which python2
 
 before_script:
     - if [[ "$TRAVIS_OS_NAME" != "osx" ]]; then cat /proc/cpuinfo; fi
@@ -39,7 +59,11 @@ before_script:
     - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then export PATH=${PATH}:~/Library/Python/2.7/bin; fi
     - which cython
 
-    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then pip2 install numpy; fi
+    # for simpulse
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then pip2 install --user numpy; fi
+
+    - export NUMPY_INCDIR=$(python -c "import numpy; print(numpy.get_include())")
+    - echo "NUMPY_INCDIR is $NUMPY_INCDIR"
 
     - find /usr/local/lib/python2.7/
 
@@ -87,9 +111,16 @@ before_script:
     - export HAVE_BONSAI=y
     - export PYDIR=~/chime/lib/python2.7/site-packages
     - export PYTHON_INCDIR=/usr/include/python2.7
-    - export NUMPY_INCDIR=/usr/lib/python2.7/dist-packages/numpy/core/include
+    # on osx it's pre-installed in site-packages?
+    #- export NUMPY_INCDIR=/usr/lib/python2.7/dist-packages/numpy/core/include
+    - export NUMPY_INCDIR=$(python -c "import numpy; print(numpy.get_include())")
+    - echo "NUMPY_INCDIR is $NUMPY_INCDIR"
     - export JSONCPP_INC_DIR=/usr/include/jsoncpp
     - export PYTHONPATH=${PYTHONPATH}:/usr/lib/python2.7/dist-packages
+
+    # for simpulse
+    #- export LIBS_PYMODULE="-lPython"
+    - export LIBS_PYMODULE=$(python-config --ldflags --libs)
 
     - cd
     - git clone https://github.com/CHIMEFRB/ch_frb_io.git
