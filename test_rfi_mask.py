@@ -76,7 +76,7 @@ for i in range(20):
     ichunk = i + chunk0
     
     ch = simulate_l0.assembled_chunk(beam_id, fpga_counts_per_sample, ichunk,
-                                     data, offset, scale, rfi)
+                                     data, scale, offset, rfi)
     #print('Chunk:', ch)
     print('Sending chunk...')
     l0.send_chunk(0, ch)
@@ -104,7 +104,8 @@ for i in range(20):
             print('Status of', c.filename, ':', client.get_writechunk_status(c.filename))
 
     # Give L1 some time to process...
-    sleep(2)
+    #sleep(2)
+    sleep(10)
 
 os.system(prom_cmd)
 

@@ -2,11 +2,9 @@
     "class_name": "pipeline", 
     "elements": [
         {
-            "class_name": "chime_file_writer",
-            "filename": "intensity.hd5",
-            "clobber": true,
-            "bitshuffle": 0,
-            "nt_chunk": 1024
+            "class_name": "chime_assembled_chunk_file_writer",
+            "filename": "chunk-(CHUNK).msgpack",
+            "clobber": true
         },
         {
             "sub_pipeline": {
