@@ -225,7 +225,7 @@ public:
 
 // FIXME -- should probably hand-craft this!
 struct inject_data_request : public rf_pipelines::inject_data {
-    MSGPACK_DEFINE(beam, mode, fpga0, fpga_offset, ndata, data);
+    MSGPACK_DEFINE(beam, mode, fpga0, sample_offset, ndata, data);
 };
 
 #endif

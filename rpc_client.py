@@ -121,16 +121,16 @@ class PacketRate(object):
 
 class InjectData(object):
     # matching rf_pipelines_inventory :: inject_data + ch_frb_l1 :: rpc.hpp
-    def __init__(self, beam, mode, fpga0, fpga_offsets, data):
+    def __init__(self, beam, mode, fpga0, sample_offsets, data):
         '''
         *mode*: 0 = ADD to stream.
         *data*: list of numpy arrays, one per frequency.
-        *fpga_offsets*: int, numpy array, one per frequency.
+        *sample_offsets*: int, numpy array, one per frequency.
         '''
         self.beam = beam
         self.mode = mode
         self.fpga0 = fpga0
-        self.fpga_offsets = fpga_offsets
+        self.sample_offsets = sample_offsets
         self.data = data
 
     def to_msgpack(self):
@@ -142,7 +142,7 @@ class InjectData(object):
             ndata.append(len(d))
         #list(self.fpga_offsets),
         msgpack = [self.beam, self.mode, self.fpga0,
-                   [int(o) for o in self.fpga_offsets],
+                   [int(o) for o in self.sample_offsets],
                    ndata, alldata]
         return msgpack
 
@@ -797,14 +797,13 @@ if __name__ == '__main__':
         #fpga0 = 52 * 1024 * 384
         fpga0 = 5 * 1024 * 384
         nfreq = 16384
-        fpga_offsets = np.zeros(nfreq, np.int32)
-        fpga_counts_per_sample = 384
+        sample_offsets = np.zeros(nfreq, np.int32)
         data = []
         for f in range(nfreq):
-            fpga_offsets[f] = int(0.2 * fpga_counts_per_sample * f)
+            sample_offsets[f] = int(0.2 * f)
             data.append(100. * np.ones(100, np.float32))
-        print('Injecting data spanning', np.max(fpga_offsets)/fpga_counts_per_sample, ' samples')
-        inj = InjectData(beam, 0, fpga0, fpga_offsets, data)
+        print('Injecting data spanning', np.min(sample_offsets), 'to', np.max(sample_offsets), ' samples')
+        inj = InjectData(beam, 0, fpga0, sample_offsets, data)
         R = client.inject_data(inj, wait=True)
         print('Results:', R)
         doexit = True

@@ -894,22 +894,26 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         // FIXME -- hand-craft this?
         msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
         shared_ptr<inject_data_request> injdata = make_shared<inject_data_request>();
+        injdata->min_offset = 0;
+        injdata->max_offset = 0;
         msgpack::object obj = oh.get();
         obj.convert(injdata);
-        string result = "";
+        string errstring = "";
 
-        cout << "Received inject_data RPC: beam " << injdata->beam << ", mode " << injdata->mode << ", nfreq " << injdata->fpga_offset.size() << ", FPGA0 " << injdata->fpga0 << endl;
         shared_ptr<rf_pipelines::injector> inject;
 
-        result = _check_inject_data(injdata);
+        errstring = _check_inject_data(injdata);
         // no error string ==> ok, carry on!
-        if (result == "") {
-            // set fpga_max element
-            uint32_t maxoffset = 0;
-            for (uint32_t o : injdata->fpga_offset)
-                if (o > maxoffset)
-                    maxoffset = o;
-            injdata->fpga_max = injdata->fpga0 + maxoffset;
+        if (errstring == "") {
+            // compute min_offset, max_offset elements
+            int min_offset = injdata->sample_offset[0];
+            int max_offset = injdata->sample_offset[0] + injdata->ndata[0];
+            for (int i=0; i<injdata->sample_offset.size(); i++) {
+                min_offset = std::min(min_offset, injdata->sample_offset[i]);
+                max_offset = std::max(max_offset, injdata->sample_offset[i] + injdata->ndata[i]);
+            }
+            injdata->min_offset = min_offset;
+            injdata->max_offset = max_offset;
 
             // find the injector for this beam; check that the first FPGAcount has not already passed!
             for (ssize_t i=0; i<_stream->ini_params.beam_ids.size(); i++)
@@ -921,14 +925,16 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
             uint64_t last_fpga = inject->get_last_fpgacount_seen();
             if (injdata->fpga0 < last_fpga) {
-                result = "inject_data: FPGA0 " + to_string(injdata->fpga0) + " is in the past!  Injector last saw " + to_string(last_fpga);
+                errstring = "inject_data: FPGA0 " + to_string(injdata->fpga0) + " is in the past!  Injector last saw " + to_string(last_fpga);
             } else {
                 inject->inject(injdata);
             }
         }
 
+        cout << "Received inject_data RPC: beam " << injdata->beam << ", mode " << injdata->mode << ", nfreq " << injdata->sample_offset.size() << ", FPGA0 " << injdata->fpga0 << ", offset range " << injdata->min_offset << ", " << injdata->max_offset << ", status: " << (errstring.size() ? errstring : "success") << endl;
+        
         msgpack::sbuffer buffer;
-        msgpack::pack(buffer, result);
+        msgpack::pack(buffer, errstring);
         //  Send reply back to client.
         zmq::message_t* reply = sbuffer_to_message(buffer);
         return _send_frontend_message(*client, *token_to_message(token), *reply);
@@ -960,8 +966,8 @@ string L1RpcServer::_check_inject_data(shared_ptr<inject_data_request> inj) {
     // Check array sizes
     int nfreq = _stream->ini_params.nupfreq * ch_frb_io::constants::nfreq_coarse_tot;
 
-    if (inj->fpga_offset.size() != nfreq)
-        return "inject_data: fpga_offset array has size " + to_string(inj->fpga_offset.size()) + ", expected nfreq=" + to_string(nfreq);
+    if (inj->sample_offset.size() != nfreq)
+        return "inject_data: fpga_offset array has size " + to_string(inj->sample_offset.size()) + ", expected nfreq=" + to_string(nfreq);
     if (inj->ndata.size() != nfreq)
         return "inject_data: ndata array has size " + to_string(inj->ndata.size()) + ", expected nfreq=" + to_string(nfreq);
     int nd = 0;
