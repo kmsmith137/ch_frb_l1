@@ -5,7 +5,7 @@ import pylab as plt
 
 import simulate_l0
 import numpy as np
-from rpc_client import read_msgpack_file, RpcClient
+from rpc_client import read_msgpack_file, RpcClient, InjectData
 from time import sleep
 import subprocess
 import os
@@ -45,12 +45,27 @@ offset = np.empty((nf_coarse, nt_coarse), np.float32)
 scale = np.empty((nf_coarse, nt_coarse), np.float32)
 rfi = None
 
-offset[:,:] = -128.
+offset[:,:] = -64.
 scale[:,:] = 1.
 
 prom_cmd = 'wget http://127.0.0.1:9999/metrics -O -'
 
 writereq = None
+
+if True:
+    # inject some data
+    beam = beam_id
+    fpga0 = 52 * 1024 * 384
+    nfreq = nf
+    sample_offsets = np.zeros(nfreq, np.int32)
+    data = []
+    for f in range(nfreq):
+        sample_offsets[f] = int(0.2 * f)
+        data.append(1000. * np.ones(200, np.float32))
+    print('Injecting data spanning', np.min(sample_offsets), 'to', np.max(sample_offsets), ' samples')
+    inj = InjectData(beam, 0, fpga0, sample_offsets, data)
+    R = client.inject_data(inj, wait=True)
+    print('Results:', R)
 
 for i in range(20):
     data = np.clip(128. + 20. * np.random.normal(size=(nf, nt)), 1, 254).astype(np.uint8)
@@ -71,7 +86,7 @@ for i in range(20):
 
         print('After sending 5 chunks:')
         print(client.get_statistics())
-        
+
         print('Sending write request...')
         res = client.write_chunks([0], 0, (50 + 4) * 384 * 1024,
                                   'chunk-test-rfi-mask-(FPGA0).msgpack', need_rfi=need_rfi,
@@ -111,6 +126,8 @@ for i,fn in enumerate(fns):
     plt.imshow(chunk.rfi_mask, interpolation='nearest', origin='lower',
                vmin=0, vmax=1, cmap='gray',
                extent=[sample0, sample0+nt * chunk.binning, 0, nf])
+    plt.xlabel('sample number (~ms)')
+    plt.ylabel('(downsampled) frequency')
     fn = 'chunk-%i.png' % i
     plt.savefig(fn)
     print('Wrote', fn)

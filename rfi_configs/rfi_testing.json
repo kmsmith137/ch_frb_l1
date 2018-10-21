@@ -2,6 +2,13 @@
     "class_name": "pipeline", 
     "elements": [
         {
+            "class_name": "chime_file_writer",
+            "filename": "intensity.hd5",
+            "clobber": true,
+            "bitshuffle": 0,
+            "nt_chunk": 1024
+        },
+        {
             "sub_pipeline": {
                 "class_name": "pipeline", 
                 "elements": [
