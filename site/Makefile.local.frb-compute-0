@@ -1,7 +1,11 @@
 # Makefile.local for frb.compute-X
 
 # Directory where executables will be installed
-BINDIR=$(HOME)/bin
+BINDIR ?= $(HOME)/bin
+INCDIR ?= $(HOME)/include
+LIBDIR ?= $(HOME)/lib
+
+MSGPACK_INC ?= -I/usr/local/include
 
 #
 # C++ command line
@@ -10,15 +14,22 @@ BINDIR=$(HOME)/bin
 #
 DEBUG ?= no
 ifeq ($(DEBUG),no)
-     CPP=g++ -std=c++11 -pthread -fPIC -march=native -Wall -O3 -ffast-math -funroll-loops -I. -I/usr/include/jsoncpp -I$(HOME)/include
+     CPP=g++ -std=c++11 -pthread -fPIC -march=native -Wall -O3 -ffast-math -funroll-loops -I. -I/usr/include/jsoncpp -I$(INCDIR)
 else
-     CPP=g++ -std=c++11 -pthread -fPIC -march=native -Wall -O0 -g -ffast-math -funroll-loops -I. -I/usr/include/jsoncpp -I$(HOME)/include
+     CPP=g++ -std=c++11 -pthread -fPIC -march=native -Wall -O0 -g -ffast-math -funroll-loops -I. -I/usr/include/jsoncpp -I$(INCDIR)
 endif
+
+CPP += $(shell pkg-config --cflags hdf5)
+CPP += $(shell pkg-config --cflags libzmq)
+CPP += $(MSGPACK_INC)
 
 # Any C++ flags which should only be specified when linking 
 # Don't forget to put -L. and -L$(LIBDIR) on the command line (in this order)
 # Don't forget to add . and $(LIBDIR) in your LD_LIBRARY_PATH environment variable (in this order)
-CPP_LFLAGS=-L. -L$(HOME)/lib
+CPP_LFLAGS=-L. -L$(LIBDIR)
+
+CPP_LFLAGS += $(shell pkg-config --libs libzmq)
+CPP_LFLAGS += $(shell pkg-config --libs hdf5)
 
 # We use the C (not C++) compiler only once: to compile civetweb/civetweb.o.
-CC=gcc -pthread -fPIC -Wall -O3 -march=native -ffast-math -funroll-loops -I. -I/usr/include/jsoncpp -I$(HOME)/include
+CC=gcc -pthread -fPIC -Wall -O3 -march=native -ffast-math -funroll-loops -I. -I/usr/include/jsoncpp -I$(INCDIR)

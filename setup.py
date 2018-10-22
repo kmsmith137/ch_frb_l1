@@ -18,7 +18,7 @@ cpp = strlist(os.environ.get('CPP', ''))
 objs = strlist(os.environ.get('OBJS', ''))
 
 inc = strlist(' '.join(cppflags), split='-I')
-if cpp[0] == 'clang++':
+if len(cpp) > 0 and cpp[0] == 'clang++':
     cpp = cpp[1:]    
 cppflags = cpp
 

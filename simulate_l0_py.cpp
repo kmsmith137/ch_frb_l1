@@ -333,6 +333,7 @@ static PyMethodDef moduleMethods[] = {
 };
 
 
+/////////////// Type: L0 ////////////////////
 
 
 typedef struct {
@@ -447,11 +448,18 @@ static PyObject* l0sim_send_chunk(l0sim* self, PyObject* args) {
     Py_RETURN_NONE;
 }
 
+static PyObject* l0sim_end_streams(l0sim* self, PyObject* args) {
+    self->l0.end_streams();
+    Py_RETURN_NONE;
+}
+
 static PyMethodDef l0sim_methods[] = {
     {"send_chunk_file", (PyCFunction)l0sim_send_chunk_file, METH_VARARGS,
      "Sends the given assembled-chunk msgpack file"},
     {"send_chunk", (PyCFunction)l0sim_send_chunk, METH_VARARGS,
      "Sends the given assembled-chunk object"},
+    {"end_streams", (PyCFunction)l0sim_end_streams, METH_VARARGS,
+     "Sends the end-of-stream packets"},
     {NULL}
 };
 
@@ -551,7 +559,7 @@ PyInit_simulate_l0(void) {
 #else
 
 PyMODINIT_FUNC
-init_simulate_l0(void) {
+initsimulate_l0(void) {
     PyObject* m;
     import_array();
 
