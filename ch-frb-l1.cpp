@@ -131,6 +131,9 @@ struct l1_config
     // Timeout (in ms) for retrieving frame0-ctime
     int frame0_timeout;
 
+    // Size of RFI mask measurement ringbuffer (15 seconds required for prometheus; more could be useful for other monitoring tools)
+    int rfi_mask_meas_history;
+
     // A vector of length nbeams, containing the beam_ids that will be processed on this L1 server.
     // It is currently assumed that these are known in advance and never change!
     // If unspecified, 'beam_ids' defaults to { 0, ..., nbeams-1 }.
@@ -380,8 +383,9 @@ l1_config::l1_config(int argc, char **argv)
     this->rpc_address = p.read_vector<string> ("rpc_address");
     this->prometheus_address = p.read_vector<string> ("prometheus_address");
     this->logger_address = p.read_scalar<string> ("logger_address", "");
-    this->frame0_url = p.read_scalar<string> ("frame0_url", "");
-    this->frame0_timeout = p.read_scalar<int> ("frame0_timeout", 3000);
+    this->frame0_url = p.read_scalar<string> ("frame0_url");
+    this->frame0_timeout = p.read_scalar<int> ("frame0_timeout_ms", 3000);
+    this->rfi_mask_meas_history = p.read_scalar<int>("rfi_mask_meas_history", 300);
     this->slow_kernels = p.read_scalar<bool> ("slow_kernels", false);
     this->unassembled_ringbuf_nsamples = p.read_scalar<int> ("unassembled_ringbuf_nsamples", 4096);
     this->assembled_ringbuf_nsamples = p.read_scalar<int> ("assembled_ringbuf_nsamples", 8192);
@@ -749,42 +753,66 @@ struct dedispersion_thread_context {
 
     void _thread_main() const;
     void _toy_thread_main() const;  // if -t command-line argument is specified
+
+    // Helper function called in _thread_main(), during initialization
+    void _init_mask_counters(const shared_ptr<rf_pipelines::pipeline_object> &pipeline, int beam_id) const;
 };
 
-static void print_pipeline(const shared_ptr<rf_pipelines::pipeline_object> &pipe, int level) {
-    for (int i=0; i<level; i++)
-        cout << "  ";
-    cout << "class " << pipe->class_name;
 
-    shared_ptr<rf_pipelines::wi_sub_pipeline> sub = dynamic_pointer_cast<rf_pipelines::wi_sub_pipeline>(pipe);
-    if (sub) {
-        cout << " at subsampling " << sub->ini_params.Df << " in freq and " << sub->ini_params.Dt << " in time";
+void dedispersion_thread_context::_init_mask_counters(const shared_ptr<rf_pipelines::pipeline_object> &pipeline, int beam_id) const
+{
+    vector<shared_ptr<rf_pipelines::mask_counter_transform>> mask_counters;
+    bool clippers_after_mask_counters = false;
+
+    // This lambda-function is passed to rf_pipelines::visit_pipeline(), 
+    // to find the mask_counters, and test whether clippers occur after mask_counters.
+
+    auto find_mask_counters = [&mask_counters, &clippers_after_mask_counters]
+	(const shared_ptr<rf_pipelines::pipeline_object> &p, int depth)
+    {
+	// A transform is considered to be a clipper if its class_name contains the substring "clipper".
+	// FIXME: "feels" like a hack, is there a better criterion?
+	bool is_clipper = (p->class_name.find("clipper") != string::npos);
+
+	if (is_clipper) {
+	    if (mask_counters.size() > 0)
+		clippers_after_mask_counters = true;
+	    return;
+	}
+	    
+	auto counter = dynamic_pointer_cast<rf_pipelines::mask_counter_transform> (p);
+
+	if (counter) {
+	    // cout << "Found mask counter: " << counter->where << endl;
+	    clippers_after_mask_counters = false;
+	    mask_counters.push_back(counter);
+	}
+    };
+    
+    // cout << "Finding mask_counter stages..." << endl;
+    rf_pipelines::visit_pipeline(find_mask_counters, pipeline);
+
+    if (config.nrfifreq > 0) {
+	if (mask_counters.size() == 0)
+	    throw runtime_error("ch-frb-l1: RFI masks requested, but no mask_counters in the RFI config JSON file");
+	if (clippers_after_mask_counters)
+	    throw runtime_error("ch-frb-l1: RFI masks requested, and clippers occur after the last mask_counter in the RFI config JSON file");
     }
-    cout << endl;
+
+    for (unsigned int i = 0; i < mask_counters.size(); i++) {
+	rf_pipelines::mask_counter_transform::runtime_attrs attrs;
+	attrs.ringbuf_nhistory = config.rfi_mask_meas_history;
+	attrs.chime_beam_id = beam_id;
+
+	// If RFI masks are requested, then the last mask_counter in the chain fills assembled_chunks.
+	if ((config.nrfifreq > 0) && ((i+1) == mask_counters.size()))
+	    attrs.chime_stream = this->sp;
+
+	mask_counters[i]->set_runtime_attrs(attrs);
+	this->ms_map->put(beam_id, mask_counters[i]->where, mask_counters[i]->ringbuf);
+    }
 }
 
-static void find_mask_counters(shared_ptr<mask_stats_map> msmap,
-                               int beam_id,
-                               const shared_ptr<rf_pipelines::pipeline_object> &pipe,
-                               int level) {
-    shared_ptr<rf_pipelines::mask_counter_transform> counter = dynamic_pointer_cast<rf_pipelines::mask_counter_transform> (pipe);
-    if (!counter)
-        return;
-    cout << "Found mask counter: " << counter->class_name << ", " << counter->where << endl;
-    msmap->put(beam_id, counter->where, counter->get_ringbuf());
-}
-
-static void find_chime_mask_counters(int beam_id, shared_ptr<ch_frb_io::intensity_network_stream> sp,
-                                     int & nchime,
-                                     const shared_ptr<rf_pipelines::pipeline_object> &pipe,
-                                     int level) {
-    shared_ptr<rf_pipelines::chime_mask_counter> counter = dynamic_pointer_cast<rf_pipelines::chime_mask_counter> (pipe);
-    if (!counter)
-        return;
-    cout << "Found CHIME mask counter: " << counter->class_name << ", " << counter->where << endl;
-    counter->set_stream(sp, beam_id);
-    nchime++;
-}
 
 // Note: only called if config.tflag == false.
 void dedispersion_thread_context::_thread_main() const
@@ -839,26 +867,9 @@ void dedispersion_thread_context::_thread_main() const
     auto bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
 
     // cout << "RFI chain:" << endl;
-    // rf_pipelines::visit_pipeline(print_pipeline, rfi_chain);
+    // rf_pipelines::print_pipeline(rfi_chain);
 
-    // cout << "Finding mask_counter stages..." << endl;
-    rf_pipelines::visit_pipeline(std::bind(find_mask_counters, ms_map, beam_id,
-					   std::placeholders::_1,
-					   std::placeholders::_2),
-				 rfi_chain);
-    
-    int nchime = 0;
-    rf_pipelines::visit_pipeline(std::bind(find_chime_mask_counters, beam_id, sp,
-					   std::ref(nchime),
-					   std::placeholders::_1,
-					   std::placeholders::_2),
-				 rfi_chain);
-    
-    // cout << "Found " << nchime << " chime_mask_counter stages in the RFI chain" << endl;
-
-    if ((config.nrfifreq > 0) && (nchime != 1)) {
-        throw runtime_error("ch-frb-l1: need exactly one chime_mask_counter in the RFI config JSON file, or else RFI masks cannot be captured.");
-    }
+    _init_mask_counters(rfi_chain, beam_id);
     
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);

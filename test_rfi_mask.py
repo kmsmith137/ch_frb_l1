@@ -17,14 +17,14 @@ for fn in fns:
     print('  ', fn)
     os.remove(fn)
 
-l0 = simulate_l0.l0sim('l0_configs/l0_rfi.yml', 1.0)
+l0 = simulate_l0.l0sim('l0_configs/l0_test_rfi.yml', 1.0)
 client = RpcClient({'a':'tcp://127.0.0.1:5555'})
 
 if True:
-    l1cmd = './ch-frb-l1 -fv l1_configs/l1_rfi.yml rfi_configs/rfi_testing.json bonsai_production_noups_nbeta1_v2.hdf5 xxx'
+    l1cmd = './ch-frb-l1 -fv l1_configs/l1_test_rfi.yml rfi_configs/rfi_testing.json bonsai_production_noups_nbeta1_v2.hdf5 xxx'
     need_rfi = True
 else:
-    l1cmd = './ch-frb-l1 -fv l1_configs/l1_norfi.yml rfi_configs/rfi_testing_no.json bonsai_production_noups_nbeta1_v2.hdf5 xxx'
+    l1cmd = './ch-frb-l1 -fv l1_configs/l1_test_norfi.yml rfi_configs/rfi_testing_no.json bonsai_production_noups_nbeta1_v2.hdf5 xxx'
     need_rfi = False
 
 l1 = subprocess.Popen(l1cmd, shell=True)
@@ -55,7 +55,9 @@ writereq = None
 for i in range(20):
     data = np.clip(128. + 20. * np.random.normal(size=(nf, nt)), 1, 254).astype(np.uint8)
     # Make an RFI spike
-    data[:, i*50:i*50+100] = 200
+    #data[:, i*50:i*50+100] = 200
+    # in the frequency direction (where we have better counting)
+    data[i*50:i*50+100, :] = 200
     ichunk = i + chunk0
     
     ch = simulate_l0.assembled_chunk(beam_id, fpga_counts_per_sample, ichunk,

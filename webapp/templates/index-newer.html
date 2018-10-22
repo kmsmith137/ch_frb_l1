@@ -1,4 +1,4 @@
-<!doctype html>
+<!--<!doctype html>
 <html>
 <head>
 <title>CHIME FRB L1 status</title>
@@ -23,18 +23,28 @@ writing-mode: vertical-lr;
 </style>
 <script type="text/javascript">
 </script>
+-->
+{% extends 'layout.html' %}
+{% block body %}
+<h1> <small>Welcome to CHIME/FRB Operations @{{session.username}} !!!</small></h1>
 
-<h3>CHIME FRB Diagnostics</h3>
+<h3> CHIME FRB Operations</h3>
+<ul>
+<li><a href="/l1-service">Start/Stop L1 Pipeline</a></li>
+<li><a href="/acq">Acquisition status</a></li>
+<li><a href="/acq-history">Acquisition History</a></li>
+<li><a href="/l1-logs-recent">L1 logs (chlog)</a></li>
+<li><a href="/l1-logs-stdout">L1 stdout/stderr logs</a></li>
+</ul>
+
+
+<h3> CHIME FRB Diagnostics</h3>
 
 <ul>
 <li><a href="{{ packet_matrix_url }}">Packet rate matrix (text)</a></li>
 <li><a href="{{ packet_matrix_image_url }}">Packet rate matrix (image)</a></li>
 <li><a href="{{ packet_matrix_d3_url }}">Packet rate matrix (d3)</a></li>
 <li><a href="{{ l0_node_map_url }}">L0 Nodes Sending</a></li>
-<li><a href="/acq">Acquisition status</a></li>
-<li><a href="/l1-logs-recent">L1 logs (chlog)</a></li>
-<li><a href="/l1-logs-stdout">L1 stdout/stderr logs</a></li>
-<li><a href="/l1-service">Start/Stop ch-frb-l1 service</a></li>
 </ul>
 
 <h3>L1 packet rates</h3>
@@ -277,7 +287,7 @@ $('#cnc_follow_kill').click(function(event) {
 </script>
 
 <br><hr><br>
+{% endblock %}
 
-
-</body>
-</html>
+<!--</body>
+</html>-->

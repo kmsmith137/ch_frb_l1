@@ -1,0 +1,11 @@
+flask
+json
+yaml
+msgpack
+numpy
+sqlalchemy
+passlib
+zmq
+scipy
+requests
+pylab
