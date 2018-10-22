@@ -67,6 +67,22 @@ if True:
     R = client.inject_data(inj, wait=True)
     print('Results:', R)
 
+    import simpulse
+
+    nt = 1024
+    nfreq = nf
+    freq_lo = 400.
+    freq_hi = 800.
+    dm = 500.
+    sm = 3. # ms
+    width = 0.05 # s
+    fluence = 100.
+    spectral_index = -1.
+    undispersed_t = 0.
+    sp = simpulse.single_pulse(nt, nfreq, freq_lo, freq_hi, dm, sm, width, fluence, spectral_index, undispersed_t)
+    R2 = client.inject_single_pulse(beam, sp, fpga0, wait=True)
+    print('Results:', R2)
+    
 for i in range(20):
     data = np.clip(128. + 20. * np.random.normal(size=(nf, nt)), 1, 254).astype(np.uint8)
     # Make an RFI spike
