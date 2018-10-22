@@ -330,6 +330,28 @@ class RpcClient(object):
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
     
+    def inject_single_pulse(self, beam, sp, fpga0,
+                            servers=None, wait=True, timeout=-1):
+        '''
+        sp: simpulse.single_pulse object.
+        '''
+        # NOTE, some approximations here
+        t0,t1 = sp.get_endpoints()
+        nt = int((t1 - t0) / (384 * 2.56e-6))
+        nsparse = sp.get_n_sparse(t0, t1, nt)
+        sparse_data = np.zeros(nsparse, np.float32)
+        sparse_i0 = np.zeros(nfreq, np.int32)
+        sparse_n = np.zeros(nfreq, np.int32)
+        sp.add_to_timestream_sparse(sparse_data, sparse_i0, sparse_n, t0, t1, nt, 1.)
+        # convert sparse_data into a list of numpy arrays (one per freq)
+        data = []
+        ntotal = 0
+        for n in sparse_n:
+            data.append(sparse_data[ntotal:ntotal+n])
+            ntotal += n
+        injdata = InjectData(beam, 0, fpga0, sparse_i0, data)
+        return self.inject_data(injdata)
+    
     ## the acq_beams should perhaps be a list of lists of beam ids,
     ## one list per L1 server.
     def stream(self, acq_name, acq_dev='', acq_meta='', acq_beams=[],
