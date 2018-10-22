@@ -61,7 +61,7 @@ if True:
     data = []
     for f in range(nfreq):
         sample_offsets[f] = int(0.2 * f)
-        data.append(1000. * np.ones(200, np.float32))
+        data.append(200. * np.ones(200, np.float32))
     print('Injecting data spanning', np.min(sample_offsets), 'to', np.max(sample_offsets), ' samples')
     inj = InjectData(beam, 0, fpga0, sample_offsets, data)
     R = client.inject_data(inj, wait=True)
@@ -72,7 +72,8 @@ for i in range(20):
     # Make an RFI spike
     #data[:, i*50:i*50+100] = 200
     # in the frequency direction (where we have better counting)
-    data[i*50:i*50+100, :] = 200
+    #data[i*50:i*50+100, :] = 200
+    data[i*500:(i+1)*500, :] = 200
     ichunk = i + chunk0
     
     ch = simulate_l0.assembled_chunk(beam_id, fpga_counts_per_sample, ichunk,
@@ -104,8 +105,8 @@ for i in range(20):
             print('Status of', c.filename, ':', client.get_writechunk_status(c.filename))
 
     # Give L1 some time to process...
-    #sleep(2)
-    sleep(10)
+    sleep(2)
+    #sleep(10)
 
 os.system(prom_cmd)
 
