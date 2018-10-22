@@ -80,7 +80,7 @@ if True:
     spectral_index = -1.
     undispersed_t = 0.
     sp = simpulse.single_pulse(nt, nfreq, freq_lo, freq_hi, dm, sm, width, fluence, spectral_index, undispersed_t)
-    R2 = client.inject_single_pulse(beam, sp, fpga0, wait=True)
+    R2 = client.inject_single_pulse(beam, nfreq, sp, fpga0, wait=True)
     print('Results:', R2)
     
 for i in range(20):
@@ -149,6 +149,31 @@ for i,fn in enumerate(fns):
                extent=[sample0, sample0+nt * chunk.binning, 0, nf])
     plt.xlabel('sample number (~ms)')
     plt.ylabel('(downsampled) frequency')
-    fn = 'chunk-%i.png' % i
+    plt.title('RFI mask')
+    fn = 'chunk-rfi-%02i.png' % i
     plt.savefig(fn)
     print('Wrote', fn)
+
+
+fns = glob('chunk-writer-000000*.msgpack')
+fns.sort()
+for i,fn in enumerate(fns):
+    print('Reading', fn)
+    chunk = read_msgpack_file(fn)
+    print('Chunk: ', chunk)
+
+    sample0 = chunk.fpga0 / chunk.fpga_counts_per_sample
+    I,W = chunk.decode()
+    nf,nt = I.shape
+
+    plt.clf()
+    plt.imshow(I, interpolation='nearest', origin='lower',
+               #vmin=0, vmax=1, cmap='gray',
+               extent=[sample0, sample0+nt * chunk.binning, 0, nf], aspect='auto')
+    plt.xlabel('sample number (~ms)')
+    plt.ylabel('frequency bin')
+    plt.title('Intensity')
+    fn = 'chunk-intensity-%02i.png' % i
+    plt.savefig(fn)
+    print('Wrote', fn)
+ 

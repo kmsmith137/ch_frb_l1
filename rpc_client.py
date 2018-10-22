@@ -330,7 +330,7 @@ class RpcClient(object):
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
     
-    def inject_single_pulse(self, beam, sp, fpga0,
+    def inject_single_pulse(self, beam, nfreq, sp, fpga0,
                             servers=None, wait=True, timeout=-1):
         '''
         sp: simpulse.single_pulse object.

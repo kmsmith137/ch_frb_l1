@@ -3,7 +3,7 @@
     "elements": [
         {
             "class_name": "chime_assembled_chunk_file_writer",
-            "filename": "chunk-(CHUNK).msgpack",
+            "filename": "chunk-writer-(CHUNK).msgpack",
             "clobber": true
         },
         {
