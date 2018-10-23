@@ -64,9 +64,14 @@ if True:
         data.append(200. * np.ones(200, np.float32))
     print('Injecting data spanning', np.min(sample_offsets), 'to', np.max(sample_offsets), ' samples')
     inj = InjectData(beam, 0, fpga0, sample_offsets, data)
+    print('Inject_data')
     R = client.inject_data(inj, wait=True)
     print('Results:', R)
 
+    print('Inject_data_2')
+    R = client.inject_data(inj, binary=True, wait=True)
+    print('Results:', R)
+    
     import simpulse
 
     nt = 1024
@@ -82,6 +87,9 @@ if True:
     sp = simpulse.single_pulse(nt, nfreq, freq_lo, freq_hi, dm, sm, width, fluence, spectral_index, undispersed_t)
     R2 = client.inject_single_pulse(beam, nfreq, sp, fpga0, wait=True)
     print('Results:', R2)
+    R2b = client.inject_single_pulse(beam, nfreq, sp, fpga0, binary=True, wait=True)
+    print('Results:', R2b)
+
     
 for i in range(20):
     data = np.clip(128. + 20. * np.random.normal(size=(nf, nt)), 1, 254).astype(np.uint8)

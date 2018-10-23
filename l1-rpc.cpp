@@ -929,7 +929,9 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         return _send_frontend_message(*client, *token_to_message(token),
                                       *reply);
 
-    } else if (funcname == "inject_data") {
+    } else if ((funcname == "inject_data") ||
+               (funcname == "inject_data_2"))
+        {
 
         string errstring = _handle_inject(req_data, request->size(), offset);
         msgpack::sbuffer buffer;
@@ -986,6 +988,9 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
         return "This RPC endoint does not support the inject_data call.  Try the heavy-weight RPC port.";
 
     shared_ptr<inject_data_request> injdata = make_shared<inject_data_request>();
+
+    shared_ptr<inject_data_request_2> injdata2 = make_shared<inject_data_request_2>();
+
     shared_ptr<rf_pipelines::injector> inject;
 
     // argument: inject_data_request object
@@ -995,23 +1000,31 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
     msgpack::object_handle oh = msgpack::unpack(req_data, req_size, req_offset);
 
     struct timeval tv2 = get_time();
+    double dt12 = time_diff(tv1, tv2);
+    cout << "msgpack::unpack (size " << req_size << "): " << dt12 << endl;
+    tv2 = get_time();
 
     injdata->min_offset = 0;
     injdata->max_offset = 0;
     msgpack::object obj = oh.get();
 
     struct timeval tv3 = get_time();
+    double dt23 = time_diff(tv2, tv3);
+    cout << "object_handle.get(): " << dt23 << endl;
+    tv3 = get_time();
 
+    if (obj.via.array.size == 7) {
+        obj.convert(injdata2);
+        cout << "Converted" << endl;
+        injdata = injdata2;
+    } else {
+    
     obj.convert(injdata);
 
+    }
+
     struct timeval tv4 = get_time();
-
-    double dt12 = time_diff(tv1, tv2);
-    double dt23 = time_diff(tv2, tv3);
     double dt34 = time_diff(tv3, tv4);
-
-    cout << "msgpack::unpack (size " << req_size << "): " << dt12 << endl;
-    cout << "object_handle.get(): " << dt23 << endl;
     cout << "convert: " << dt34 << endl;
     
     string errstring = _check_inject_data(injdata);
@@ -1077,8 +1090,6 @@ string L1RpcServer::_check_inject_data(shared_ptr<inject_data_request> inj) {
         return "inject_data: data array has size " + to_string(inj->data.size()) + ", expected sum(ndata)=" + to_string(nd);
     return "";
 }
-
-
 
 // Called periodically by the RpcServer thread.
 void L1RpcServer::_check_backend_queue()
