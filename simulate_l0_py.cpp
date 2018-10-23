@@ -551,7 +551,7 @@ PyInit_simulate_l0(void) {
 #else
 
 PyMODINIT_FUNC
-init_simulate_l0(void) {
+initsimulate_l0(void) {
     PyObject* m;
     import_array();
 
