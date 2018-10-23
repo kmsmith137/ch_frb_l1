@@ -14,3 +14,5 @@ rpc_client.o
 test-l1-rpc
 bonsai_configs/*.hdf5
 l1_configs/l1_production_8beam_rack*.yaml
+simulate_l0.so
+test-packet-rates
