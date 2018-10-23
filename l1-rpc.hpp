@@ -39,6 +39,7 @@ public:
     L1RpcServer(std::shared_ptr<ch_frb_io::intensity_network_stream> stream,
                 std::vector<std::shared_ptr<rf_pipelines::injector> > injectors,
                 std::shared_ptr<const ch_frb_l1::mask_stats_map> maskstats,
+                bool heavy = true,
                 const std::string &port = "",
                 const std::string &cmdline = "",
                 zmq::context_t* ctx = NULL);
@@ -85,6 +86,9 @@ private:
     // The command line that launched this L1 process
     std::string _command_line;
 
+    // Are we doing heavy-weight RPCs?
+    bool _heavy;
+    
     // ZeroMQ context
     zmq::context_t* _ctx;
 

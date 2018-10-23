@@ -267,10 +267,12 @@ bool chunk_status_map::get(const string& filename,
 L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
                          vector<shared_ptr<rf_pipelines::injector> > injectors,
                          shared_ptr<const ch_frb_l1::mask_stats_map> ms,
+                         bool heavy,
                          const string &port,
                          const string &cmdline,
                          zmq::context_t *ctx) :
     _command_line(cmdline),
+    _heavy(heavy),
     _ctx(ctx ? ctx : new zmq::context_t()),
     _created_ctx(ctx == NULL),
     _frontend(*_ctx, ZMQ_ROUTER),
@@ -282,6 +284,10 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
     _injectors(injectors),
     _mask_stats(ms)
 {
+    if ((_injectors.size() != 0) &&
+        (_injectors.size() != _stream->ini_params.beam_ids.size()))
+        throw runtime_error("L1RpcServer: expected injectors array size to be zero or the same size as the beams array");
+
     if (port.length())
         _port = port;
     else
@@ -925,19 +931,23 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
     } else if (funcname == "inject_data") {
 
-        // argument: inject_data_request object
-        // FIXME -- hand-craft this?
-        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
-        shared_ptr<inject_data_request> injdata = make_shared<inject_data_request>();
-        injdata->min_offset = 0;
-        injdata->max_offset = 0;
-        msgpack::object obj = oh.get();
-        obj.convert(injdata);
         string errstring = "";
 
+        if (!_heavy || _injectors.size() == 0) {
+            errstring = "This RPC endoint does not support the inject_data call.  Try the heavy-weight RPC port.";
+        }
+        shared_ptr<inject_data_request> injdata = make_shared<inject_data_request>();
         shared_ptr<rf_pipelines::injector> inject;
+        if (errstring == "") {
+            // argument: inject_data_request object
+            msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
+            injdata->min_offset = 0;
+            injdata->max_offset = 0;
+            msgpack::object obj = oh.get();
+            obj.convert(injdata);
 
-        errstring = _check_inject_data(injdata);
+            errstring = _check_inject_data(injdata);
+        }
         // no error string ==> ok, carry on!
         if (errstring == "") {
             // compute min_offset, max_offset elements
@@ -953,6 +963,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             // find the injector for this beam; check that the first FPGAcount has not already passed!
             for (ssize_t i=0; i<_stream->ini_params.beam_ids.size(); i++)
                 if (_stream->ini_params.beam_ids[i] == injdata->beam) {
+                    assert(i < _injectors.size());
                     inject = _injectors[i];
                     break;
                 }
@@ -964,9 +975,10 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             } else {
                 inject->inject(injdata);
             }
+            cout << "Inject_data RPC: beam " << injdata->beam << ", mode " << injdata->mode << ", nfreq " << injdata->sample_offset.size() << ", FPGA0 " << injdata->fpga0 << ", offset range " << injdata->min_offset << ", " << injdata->max_offset << endl;
+        } else {
+            cout << "Inject_data RPC: " << errstring << endl;
         }
-
-        cout << "Received inject_data RPC: beam " << injdata->beam << ", mode " << injdata->mode << ", nfreq " << injdata->sample_offset.size() << ", FPGA0 " << injdata->fpga0 << ", offset range " << injdata->min_offset << ", " << injdata->max_offset << ", status: " << (errstring.size() ? errstring : "success") << endl;
         
         msgpack::sbuffer buffer;
         msgpack::pack(buffer, errstring);
