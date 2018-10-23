@@ -68,6 +68,8 @@ protected:
     // reply or queuing work for worker threads.
     int _handle_request(zmq::message_t* client, zmq::message_t* request);
 
+    std::string _handle_inject(const char* req_data, size_t req_size, size_t req_offset);
+  
     void _check_backend_queue();
 
     // retrieves assembled_chunks overlapping the given range of

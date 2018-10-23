@@ -931,55 +931,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
     } else if (funcname == "inject_data") {
 
-        string errstring = "";
-
-        if (!_heavy || _injectors.size() == 0) {
-            errstring = "This RPC endoint does not support the inject_data call.  Try the heavy-weight RPC port.";
-        }
-        shared_ptr<inject_data_request> injdata = make_shared<inject_data_request>();
-        shared_ptr<rf_pipelines::injector> inject;
-        if (errstring == "") {
-            // argument: inject_data_request object
-            msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
-            injdata->min_offset = 0;
-            injdata->max_offset = 0;
-            msgpack::object obj = oh.get();
-            obj.convert(injdata);
-
-            errstring = _check_inject_data(injdata);
-        }
-        // no error string ==> ok, carry on!
-        if (errstring == "") {
-            // compute min_offset, max_offset elements
-            int min_offset = injdata->sample_offset[0];
-            int max_offset = injdata->sample_offset[0] + injdata->ndata[0];
-            for (int i=0; i<injdata->sample_offset.size(); i++) {
-                min_offset = std::min(min_offset, injdata->sample_offset[i]);
-                max_offset = std::max(max_offset, injdata->sample_offset[i] + injdata->ndata[i]);
-            }
-            injdata->min_offset = min_offset;
-            injdata->max_offset = max_offset;
-
-            // find the injector for this beam; check that the first FPGAcount has not already passed!
-            for (ssize_t i=0; i<_stream->ini_params.beam_ids.size(); i++)
-                if (_stream->ini_params.beam_ids[i] == injdata->beam) {
-                    assert(i < _injectors.size());
-                    inject = _injectors[i];
-                    break;
-                }
-            assert(inject);
-
-            uint64_t last_fpga = inject->get_last_fpgacount_seen();
-            if (injdata->fpga0 < last_fpga) {
-                errstring = "inject_data: FPGA0 " + to_string(injdata->fpga0) + " is in the past!  Injector last saw " + to_string(last_fpga);
-            } else {
-                inject->inject(injdata);
-            }
-            cout << "Inject_data RPC: beam " << injdata->beam << ", mode " << injdata->mode << ", nfreq " << injdata->sample_offset.size() << ", FPGA0 " << injdata->fpga0 << ", offset range " << injdata->min_offset << ", " << injdata->max_offset << endl;
-        } else {
-            cout << "Inject_data RPC: " << errstring << endl;
-        }
-        
+        string errstring = _handle_inject(req_data, request->size(), offset);
         msgpack::sbuffer buffer;
         msgpack::pack(buffer, errstring);
         //  Send reply back to client.
@@ -1029,6 +981,71 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
     }
 }
 
+string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t req_offset) {
+    if (!_heavy || (_injectors.size() == 0))
+        return "This RPC endoint does not support the inject_data call.  Try the heavy-weight RPC port.";
+
+    shared_ptr<inject_data_request> injdata = make_shared<inject_data_request>();
+    shared_ptr<rf_pipelines::injector> inject;
+
+    // argument: inject_data_request object
+
+    struct timeval tv1 = get_time();
+    
+    msgpack::object_handle oh = msgpack::unpack(req_data, req_size, req_offset);
+
+    struct timeval tv2 = get_time();
+
+    injdata->min_offset = 0;
+    injdata->max_offset = 0;
+    msgpack::object obj = oh.get();
+
+    struct timeval tv3 = get_time();
+
+    obj.convert(injdata);
+
+    struct timeval tv4 = get_time();
+
+    double dt12 = time_diff(tv1, tv2);
+    double dt23 = time_diff(tv2, tv3);
+    double dt34 = time_diff(tv3, tv4);
+
+    cout << "msgpack::unpack (size " << req_size << "): " << dt12 << endl;
+    cout << "object_handle.get(): " << dt23 << endl;
+    cout << "convert: " << dt34 << endl;
+    
+    string errstring = _check_inject_data(injdata);
+    if (errstring.size())
+        return errstring;
+
+    // compute min_offset, max_offset elements
+    int min_offset = injdata->sample_offset[0];
+    int max_offset = injdata->sample_offset[0] + injdata->ndata[0];
+    for (int i=0; i<injdata->sample_offset.size(); i++) {
+        min_offset = std::min(min_offset, injdata->sample_offset[i]);
+        max_offset = std::max(max_offset, injdata->sample_offset[i] + injdata->ndata[i]);
+    }
+    injdata->min_offset = min_offset;
+    injdata->max_offset = max_offset;
+
+    // find the injector for this beam; check that the first FPGAcount has not already passed!
+    for (size_t i=0; i<_stream->ini_params.beam_ids.size(); i++)
+        if (_stream->ini_params.beam_ids[i] == injdata->beam) {
+            assert(i < _injectors.size());
+            inject = _injectors[i];
+            break;
+        }
+    // _check_inject_data already checked that we should have a matching beam
+    assert(inject);
+
+    uint64_t last_fpga = inject->get_last_fpgacount_seen();
+    if (injdata->fpga0 < last_fpga)
+        return "inject_data: FPGA0 " + to_string(injdata->fpga0) + " is in the past!  Injector last saw " + to_string(last_fpga);
+
+    inject->inject(injdata);
+    cout << "Inject_data RPC: beam " << injdata->beam << ", mode " << injdata->mode << ", nfreq " << injdata->sample_offset.size() << ", FPGA0 " << injdata->fpga0 << ", offset range " << injdata->min_offset << ", " << injdata->max_offset << endl;
+    return "";
+}
 
 string L1RpcServer::_check_inject_data(shared_ptr<inject_data_request> inj) {
     assert(_stream.get());
@@ -1047,13 +1064,13 @@ string L1RpcServer::_check_inject_data(shared_ptr<inject_data_request> inj) {
         return "inject_data: mode=" + to_string(inj->mode) + " but only mode=0 is known";
 
     // Check array sizes
-    int nfreq = _stream->ini_params.nupfreq * ch_frb_io::constants::nfreq_coarse_tot;
+    size_t nfreq = _stream->ini_params.nupfreq * ch_frb_io::constants::nfreq_coarse_tot;
 
     if (inj->sample_offset.size() != nfreq)
         return "inject_data: fpga_offset array has size " + to_string(inj->sample_offset.size()) + ", expected nfreq=" + to_string(nfreq);
     if (inj->ndata.size() != nfreq)
         return "inject_data: ndata array has size " + to_string(inj->ndata.size()) + ", expected nfreq=" + to_string(nfreq);
-    int nd = 0;
+    size_t nd = 0;
     for (uint16_t n : inj->ndata)
         nd += n;
     if (inj->data.size() != nd)
