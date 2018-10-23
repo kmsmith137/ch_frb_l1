@@ -46,7 +46,7 @@ def main():
         'slow_kernels': False,
         'assembled_ringbuf_nsamples': 10000,
         'telescoping_ringbuf_nsamples': [ 60000, 120000, 240000 ], # Currently half of what it should be.
-        'write_staging_area_gb': 20.0,   # increase to 29 if using bonsai config with _noups_.
+        'write_staging_area_gb': 19.0,   # increase to 28 if using bonsai config with _noups_.
         'l1b_executable_filename': "../ch_frb_L1b/ch-frb-l1b.py",
         'l1b_buffer_nsamples': 4000,
         'l1b_pipe_timeout': 0,
