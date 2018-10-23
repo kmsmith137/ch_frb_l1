@@ -41,7 +41,6 @@ def main():
         	       "tcp://eno2:5555" ],
         'prometheus_address': [ "eno1:8888",
                               "eno2:8888" ],
-        'logger_address': "tcp://10.6.213.19:5555",
         'frame0_url': "http://carillon.chime:54321/get-frame0-time",
         'output_devices': [ "/frb-archiver-1", "/frb-archiver-2"],
         'slow_kernels': False,
