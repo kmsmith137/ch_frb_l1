@@ -19,7 +19,9 @@ objs = strlist(os.environ.get('OBJS', ''))
 
 inc = strlist(' '.join(cppflags), split='-I')
 if len(cpp) > 0 and cpp[0] == 'clang++':
-    cpp = cpp[1:]    
+    cpp = cpp[1:]
+if len(cpp) > 0 and cpp[0] == 'g++':
+    cpp = cpp[1:]
 cppflags = cpp
 
 print(('link:', link))
