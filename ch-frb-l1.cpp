@@ -218,6 +218,55 @@ static void usage()
 }
 #endif
 
+static unordered_map<string, string> get_interface_map() {
+    unordered_map<string, string> interfaces;
+    // Get list of network interfaces...
+    struct ifaddrs *ifaces, *iface;
+    if (getifaddrs(&ifaces))
+        throw runtime_error("Failed to get network interfaces -- getifaddrs(): " + string(strerror(errno)));
+    for (iface = ifaces; iface; iface = iface->ifa_next) {
+        struct sockaddr* address = iface->ifa_addr;
+        if (address->sa_family != AF_INET)
+            continue;
+        struct sockaddr_in* inaddress = reinterpret_cast<struct sockaddr_in*>(address);
+        struct in_addr addr = inaddress->sin_addr;
+        char* addrstring = inet_ntoa(addr);
+        chlog("Network interface: " << iface->ifa_name << " has IP " << addrstring);
+        interfaces[string(iface->ifa_name)] = string(addrstring);
+    }
+    freeifaddrs(ifaces);
+    return interfaces;
+}
+
+// "tcp://eno2:5555" -> "tcp://10.7.100.15:5555"
+static string convert_zmq_address(const string& addr, const unordered_map<string, string>& interfaces) {
+    size_t proto = addr.find("//");
+    if (proto == std::string::npos)
+        return addr;
+    size_t port = addr.rfind(":");
+    if (port == std::string::npos)
+        return addr;
+    string host = addr.substr(proto + 2, port - (proto+2));
+    auto val = interfaces.find(host);
+    if (val == interfaces.end())
+        return addr;
+    return addr.substr(0, proto+2) + val->second + addr.substr(port);
+}
+
+static string convert_ip_address(const string& addr, const unordered_map<string, string>& interfaces) {
+    // Try to parse as dotted-decimal IP address
+    struct in_addr inaddr;
+    if (inet_aton(addr.c_str(), &inaddr) == 1)
+        // Correctly parsed as dotted-decimal IP address.
+        return addr;
+    // If doesn't parse as dotted-decimal, lookup in interfaces mapping.
+    auto val = interfaces.find(addr);
+    if (val == interfaces.end())
+        throw runtime_error("Config file ipaddr entry \"" + addr + "\" was not dotted IP address and was not one of the known network interfaces");
+    //chlog("Mapped IP addr " << ipaddr[i] << " to " << val->second);
+    return val->second;
+}
+
 
 // FIXME: split this monster constructor into multiple functions for readability?
 l1_config::l1_config(int argc, char **argv)
@@ -401,88 +450,21 @@ l1_config::l1_config(int argc, char **argv)
     this->force_asynchronous_dedispersion = p.read_scalar<bool> ("force_asynchronous_dedispersion", false);
     this->track_global_trigger_max = p.read_scalar<bool> ("track_global_trigger_max", false);
 
-    // Create the map from network interface names ("eno2") to IP address.
-    unordered_map<string, string> interfaces;
-    // Get list of network interfaces...
-    {
-        struct ifaddrs *ifaces, *iface;
-        if (getifaddrs(&ifaces)) {
-            throw runtime_error("Failed to get network interfaces -- getifaddrs(): " + string(strerror(errno)));
-        }
-        for (iface = ifaces; iface; iface = iface->ifa_next) {
-            //chlog("Network interface: " << iface->ifa_name);
-            //if (string(iface->ifa_name) != ipaddr[i]) {
-            //continue;
-            //}
-            struct sockaddr* address = iface->ifa_addr;
-            if (address->sa_family != AF_INET) {
-                //chlog("not INET");
-                continue;
-            }
-            struct sockaddr_in* inaddress = reinterpret_cast<struct sockaddr_in*>(address);
-            struct in_addr addr = inaddress->sin_addr;
-            char* addrstring = inet_ntoa(addr);
-            chlog("Network interface: " << iface->ifa_name << " has IP " << addrstring);
-            //chlog("Found match with IP address: " << addrstring);
-            interfaces[string(iface->ifa_name)] = string(addrstring);
-            //ipaddr[i] = string(addrstring);
-            //break;
-        }
-        freeifaddrs(ifaces);
-    }
+    // Get the map from network interface names ("eno2") to IP address.
+    unordered_map<string, string> interfaces = get_interface_map();
 
     // Convert network interface names in "ipaddr", eg, "eno2", into the interface's IP address.
-    for (size_t i=0; i<ipaddr.size(); i++) {
-        // Try to parse as dotted-decimal IP address
-        struct in_addr inaddr;
-        if (inet_aton(ipaddr[i].c_str(), &inaddr) == 1) {
-            // Correctly parsed as dotted-decimal IP address.
-            continue;
-        }
-        // If doesn't parse as dotted-decimal, lookup in interfaces mapping.
-        auto val = interfaces.find(ipaddr[i]);
-        if (val == interfaces.end()) {
-            throw runtime_error("Config file ipaddr entry \"" + ipaddr[i] + "\" was not dotted IP address and was not one of the known network interfaces");
-        }
-        chlog("Mapped IP addr " << ipaddr[i] << " to " << val->second);
-        ipaddr[i] = val->second;
-    }
+    for (size_t i=0; i<ipaddr.size(); i++)
+        ipaddr[i] = convert_ip_address(ipaddr[i], interfaces);
 
     // Convert network interface names in "rpc_address" entries.
-    for (size_t i=0; i<rpc_address.size(); i++) {
+    for (size_t i=0; i<rpc_address.size(); i++)
         // "tcp://eno2:5555" -> "tcp://10.7.100.15:5555"
-        size_t proto = rpc_address[i].find("//");
-        if (proto == std::string::npos)
-            continue;
-        size_t port = rpc_address[i].rfind(":");
-        if (port == std::string::npos)
-            continue;
-        string host = rpc_address[i].substr(proto + 2, port - (proto+2));
-        //chlog("RPC address host: \"" << host << "\"");
-        auto val = interfaces.find(host);
-        if (val != interfaces.end()) {
-            string new_addr = rpc_address[i].substr(0, proto+2) + val->second + rpc_address[i].substr(port);
-            chlog("Mapping RPC address " << rpc_address[i] << " to " << new_addr);
-            rpc_address[i] = new_addr;
-        }
-    }
+        rpc_address[i] = convert_zmq_address(rpc_address[i], interfaces);
 
     // Convert network interface names in "prometheus_address" entries.
-    for (size_t i=0; i<prometheus_address.size(); i++) {
-        // "eno2:8888" -> "10.7.100.15:8888"
-        // "8888" -> "8888"
-        size_t port = prometheus_address[i].find(":");
-        if (port == std::string::npos)
-            continue;
-        string host = prometheus_address[i].substr(0, port);
-        chlog("Prometheus address host: \"" << host << "\"");
-        auto val = interfaces.find(host);
-        if (val != interfaces.end()) {
-            string new_addr = val->second + prometheus_address[i].substr(port);
-            chlog("Mapping Prometheus address " << prometheus_address[i] << " to " << new_addr);
-            prometheus_address[i] = new_addr;
-        }
-    }
+    for (size_t i=0; i<prometheus_address.size(); i++)
+        prometheus_address[i] = convert_zmq_address(prometheus_address[i], interfaces);
 
     // Lots of sanity checks.
     // First check that we have a consistent 'nstreams'.
