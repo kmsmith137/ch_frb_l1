@@ -431,7 +431,7 @@ l1_config::l1_config(int argc, char **argv)
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
     this->rpc_address = p.read_vector<string> ("rpc_address");
-    this->heavy_rpc_address = p.read_vector<string> ("heavy_rpc_address");
+    this->heavy_rpc_address = p.read_vector<string> ("heavy_rpc_address", vector<string>());
     this->prometheus_address = p.read_vector<string> ("prometheus_address");
     this->logger_address = p.read_scalar<string> ("logger_address", "");
     this->frame0_url = p.read_scalar<string> ("frame0_url");
@@ -1325,7 +1325,7 @@ void l1_server::make_rpc_servers()
 	throw("ch-frb-l1 internal error: make_rpc_servers() was called, without first calling make_input_streams()");
 
     // Split into light-weight and heavy-weight RPC servers?
-    bool heavy = this->heavy_rpc_servers.size();
+    bool heavy = config.heavy_rpc_address.size();
     
     this->rpc_servers.resize(config.nstreams);
     this->rpc_threads.resize(config.nstreams);
@@ -1350,7 +1350,7 @@ void l1_server::make_rpc_servers()
             vector<shared_ptr<rf_pipelines::injector> > empty_inj;
             // Light-weight RPC server gets no injectors
             rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], empty_inj, mask_stats_maps[istream], false, config.rpc_address[istream], command_line);
-            heavy_rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], true, config.rpc_address[istream], command_line);
+            heavy_rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], true, config.heavy_rpc_address[istream], command_line);
             heavy_rpc_threads[istream] = heavy_rpc_servers[istream]->start();
         } else {
             // ?? Allow the single RPC server to support heavy-weight RPCs?
