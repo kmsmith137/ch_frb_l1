@@ -1344,7 +1344,7 @@ void l1_server::make_rpc_servers()
         vector<shared_ptr<rf_pipelines::injector> > inj(nbeams_per_stream);
         for (int i=0; i<nbeams_per_stream; i++)
             inj[i] = injectors[istream * nbeams_per_stream + i];
-        rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], config.rpc_address[istream], command_line);
+        rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], false, config.rpc_address[istream], command_line);
 	rpc_threads[istream] = rpc_servers[istream]->start();
     }
 }

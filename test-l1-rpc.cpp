@@ -135,7 +135,7 @@ int main(int argc, char** argv) {
 
     chlog("Starting RPC server on port " << port);
     std::vector<std::shared_ptr<rf_pipelines::injector> > inj;
-    L1RpcServer rpc(stream, inj, ms, port);
+    L1RpcServer rpc(stream, inj, ms, true, port);
     std::thread rpc_thread = rpc.start();
 
     std::random_device rd;
