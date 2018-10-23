@@ -11,6 +11,10 @@ LIBDIR ?= $(HOME)/lib
 # Directory where C++ header files will be installed
 INCDIR ?= $(HOME)/include
 
+# Read-only location of python header files
+PYTHON_INCDIR=/usr/include/python2.7
+NUMPY_INCDIR=/usr/lib64/python2.7/site-packages/numpy/core/include
+
 #
 # C++ command line
 # Don't forget -std=c++11 -pthread -fPIC
@@ -24,7 +28,8 @@ ifeq ($(DEBUG),no)
 else
      CPP := $(CXX) -std=c++11 -pthread -fPIC -Wall -O0 -g -march=native -ffast-math
 endif
-CPP += -I. -I$(INCDIR) -I$(JSONCPP_INCDIR)
+
+CPP += -I. -I$(INCDIR) -I$(PYTHON_INCDIR) -I$(NUMPY_INCDIR) -I$(JSONCPP_INCDIR)
 
 # Any C++ flags which should only be specified when linking 
 # Don't forget to put -L. and -L$(LIBDIR) on the command line (in this order)
