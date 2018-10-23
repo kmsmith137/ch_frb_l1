@@ -119,8 +119,9 @@ struct l1_config
     vector<string> ipaddr;
     vector<int> port;
 
-    // One L1-RPC per stream
+    // One L1-RPC per stream for light calls, one for heavy-weight
     vector<string> rpc_address;
+    vector<string> heavy_rpc_address;
     // One L1-prometheus per stream
     vector<string> prometheus_address;
     // Optional chlog logging server address
@@ -430,6 +431,7 @@ l1_config::l1_config(int argc, char **argv)
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
     this->rpc_address = p.read_vector<string> ("rpc_address");
+    this->heavy_rpc_address = p.read_vector<string> ("heavy_rpc_address");
     this->prometheus_address = p.read_vector<string> ("prometheus_address");
     this->logger_address = p.read_scalar<string> ("logger_address", "");
     this->frame0_url = p.read_scalar<string> ("frame0_url");
@@ -462,6 +464,11 @@ l1_config::l1_config(int argc, char **argv)
         // "tcp://eno2:5555" -> "tcp://10.7.100.15:5555"
         rpc_address[i] = convert_zmq_address(rpc_address[i], interfaces);
 
+    // Convert network interface names in "rpc_address" entries.
+    for (size_t i=0; i<heavy_rpc_address.size(); i++)
+        // "tcp://eno2:5555" -> "tcp://10.7.100.15:5555"
+        heavy_rpc_address[i] = convert_zmq_address(heavy_rpc_address[i], interfaces);
+    
     // Convert network interface names in "prometheus_address" entries.
     for (size_t i=0; i<prometheus_address.size(); i++)
         prometheus_address[i] = convert_zmq_address(prometheus_address[i], interfaces);
@@ -501,6 +508,9 @@ l1_config::l1_config(int argc, char **argv)
 	throw runtime_error(l1_config_filename + ": 'fpga_counts_per_sample' must be >= 1");
     if (rpc_address.size() != (unsigned int)nstreams)
 	throw runtime_error(l1_config_filename + ": 'rpc_address' must be a list whose length is the number of (ip_addr,port) pairs");
+    if (heavy_rpc_address.size() &&
+        (heavy_rpc_address.size() != (unsigned int)nstreams))
+	throw runtime_error(l1_config_filename + ": 'heavy_rpc_address', if specified, must be a list whose length is the number of (ip_addr,port) pairs");
     if (prometheus_address.size() != (unsigned int)nstreams)
 	throw runtime_error(l1_config_filename + ": 'prometheus_address' must be a list whose length is the number of (ip_addr,port) pairs");
     if (!slow_kernels && (nt_per_packet != 16))
@@ -988,8 +998,10 @@ struct l1_server {
     std::mutex mask_stats_mutex;
     vector<shared_ptr<mask_stats_map> > mask_stats_maps;
     vector<shared_ptr<L1RpcServer>> rpc_servers;
+    vector<shared_ptr<L1RpcServer>> heavy_rpc_servers;
     vector<shared_ptr<L1PrometheusServer>> prometheus_servers;
     vector<std::thread> rpc_threads;
+    vector<std::thread> heavy_rpc_threads;
     vector<std::thread> dedispersion_threads;
     vector<shared_ptr<rf_pipelines::injector> > injectors;
 
@@ -1312,10 +1324,17 @@ void l1_server::make_rpc_servers()
     if (input_streams.size() != size_t(config.nstreams))
 	throw("ch-frb-l1 internal error: make_rpc_servers() was called, without first calling make_input_streams()");
 
+    // Split into light-weight and heavy-weight RPC servers?
+    bool heavy = this->heavy_rpc_servers.size();
+    
     this->rpc_servers.resize(config.nstreams);
     this->rpc_threads.resize(config.nstreams);
-
     this->injectors.resize(config.nbeams);
+
+    if (heavy) {
+        this->heavy_rpc_servers.resize(config.nstreams);
+        this->heavy_rpc_threads.resize(config.nstreams);
+    }
 
     for (int ibeam = 0; ibeam < config.nbeams; ibeam++)
         this->injectors[ibeam] = rf_pipelines::make_injector(ch_frb_io::constants::nt_per_assembled_chunk);
@@ -1326,7 +1345,17 @@ void l1_server::make_rpc_servers()
         vector<shared_ptr<rf_pipelines::injector> > inj(nbeams_per_stream);
         for (int i=0; i<nbeams_per_stream; i++)
             inj[i] = injectors[istream * nbeams_per_stream + i];
-        rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], false, config.rpc_address[istream], command_line);
+
+        if (heavy) {
+            vector<shared_ptr<rf_pipelines::injector> > empty_inj;
+            // Light-weight RPC server gets no injectors
+            rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], empty_inj, mask_stats_maps[istream], false, config.rpc_address[istream], command_line);
+            heavy_rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], true, config.rpc_address[istream], command_line);
+            heavy_rpc_threads[istream] = heavy_rpc_servers[istream]->start();
+        } else {
+            // ?? Allow the single RPC server to support heavy-weight RPCs?
+            rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], true, config.rpc_address[istream], command_line);
+        }
 	rpc_threads[istream] = rpc_servers[istream]->start();
     }
 }
@@ -1406,13 +1435,16 @@ void l1_server::join_all_threads()
 
     cout << "All write requests written, shutting down RPC servers..." << endl;
 
-    for (size_t istream = 0; istream < rpc_servers.size(); istream++)
-	rpc_servers[istream]->do_shutdown();
-    for (size_t istream = 0; istream < rpc_threads.size(); istream++)
-	rpc_threads[istream].join();
-
-    for (size_t istream = 0; istream < prometheus_servers.size(); istream++)
-        prometheus_servers[istream].reset();
+    for (auto rpc : rpc_servers)
+        rpc->do_shutdown();
+    for (auto rpc : heavy_rpc_servers)
+        rpc->do_shutdown();
+    for (auto& th : rpc_threads)
+        th.join();
+    for (auto& th : heavy_rpc_threads)
+        th.join();
+    for (auto& prom : prometheus_servers)
+        prom.reset();
 }
 
 
