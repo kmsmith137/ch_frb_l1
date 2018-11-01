@@ -10,6 +10,7 @@
 
 nbeams: 1
 nfreq: 1024
+nrfifreq: 1024
 nt_per_packet: 64
 
 
@@ -19,6 +20,8 @@ nt_per_packet: 64
 ipaddr: "127.0.0.1"
 port: 6677
 rpc_address: "tcp://127.0.0.1:5555"
+prometheus_address: "127.0.0.1:8889"
+frame0_url: ""
 
 # This configures the L1 server to use a single I/O thread for all writes.
 # See 'output_devices' in MANUAL.md for discussion!

@@ -9,6 +9,10 @@ INCDIR=$(HOME)/chime/include
 # Directory where executables will be installed
 BINDIR=$(HOME)/chime/bin
 
+# Read-only location of python header files
+PYTHON_INCDIR=/usr/include/python2.7
+NUMPY_INCDIR=/System/Library/Frameworks/Python.framework/Versions/2.7/Extras/lib/python/numpy/core/include
+
 HDF5_INC_DIR=/usr/local/include
 HDF5_LIB_DIR=/usr/local/lib
 
@@ -29,9 +33,12 @@ else
 endif
 
 #CPP += -I. -I$(INCDIR) -I$(HDF5_INC_DIR)
-CPP_CFLAGS := -I. -I$(INCDIR) -I$(HDF5_INC_DIR)
+CPP_CFLAGS := -I. -I$(INCDIR) -I$(HDF5_INC_DIR) -I$(PYTHON_INCDIR) -I$(NUMPY_INCDIR)
 
 # Any C++ flags which should only be specified when linking 
 # Don't forget to put -L. and -L$(LIBDIR) on the command line (in this order)
 # Don't forget to add . and $(LIBDIR) in your LD_LIBRARY_PATH environment variable (in this order)
 CPP_LFLAGS=-L. -L$(LIBDIR) -L$(HDF5_LIB_DIR)
+
+# osx/clang needs -lPython to link python extension modules
+LIBS_PYMODULE=-lPython
