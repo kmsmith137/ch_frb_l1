@@ -17,7 +17,7 @@ if [ $(hostname) == XXXXcf1n0 ]; then
     export HDF5_PLUGIN_PATH=/home/l1operator/lib/hdf5_plugins
 
     cd /home/l1operator/dev/ch_frb_l1
-    ./ch-frb-l1 l1_configs/l1_production_8beam_rack${rack}_node${node}.yaml ../ch_frb_rfi/json_files/rfi_16k/17-12-02-two-pass-v4-noplot.json /data/bonsai_configs/bonsai_production_noups_nbeta2_5tree_experiment.hdf5 L1b_config_site.yaml
+    ./ch-frb-l1 l1_configs/l1_production_8beam_rack${rack}_node${node}.yaml ../ch_frb_rfi/json_files/rfi_16k/17-12-02-two-pass-v5-noplot.json /data/bonsai_configs/bonsai_production_noups_nbeta2_5tree_experiment.hdf5 L1b_config_site.yaml
     #18-02-02-rfi-level1-v1-noplot.json 
 
     exit
@@ -29,7 +29,7 @@ export LD_LIBRARY_PATH=/home/l1operator/lib:/usr/local/lib:$LD_LIBRARY_PATH
 export PYTHONPATH=/home/l1operator/lib/python2.7/site-packages:$PYTHONPATH
 export HDF5_PLUGIN_PATH=/home/l1operator/lib/hdf5_plugins
 export PATH=${PATH}:/home/l1operator/bin
-./ch-frb-l1 l1_configs/l1_production_8beam_rack${rack}_node${node}.yaml ../ch_frb_rfi/json_files/rfi_16k/17-12-02-two-pass-v4-noplot.json /data/bonsai_configs/bonsai_production_noups_nbeta2_5tree_experiment.hdf5 L1b_config_site.yaml
+./ch-frb-l1 l1_configs/l1_production_8beam_rack${rack}_node${node}.yaml ../ch_frb_rfi/json_files/rfi_16k/17-12-02-two-pass-v5-noplot.json /data/bonsai_configs/bonsai_production_noups_nbeta2_5tree_experiment.hdf5 L1b_config_site.yaml
 
 #./ch-frb-l1 l1_configs/l1_production_8beam_rack${rack}_node${node}.yaml ../ch_frb_rfi/json_files/rfi_16k/17-12-02-two-pass-v3-noplot.json bonsai_configs/bonsai_production_noups_nbeta1_v2.hdf5 L1b_config_site.yaml
 
