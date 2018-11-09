@@ -1,4 +1,4 @@
-<!doctype html>
+<!--<!doctype html>
 <html>
 <head>
 <title>CHIME FRB L1 status</title>
@@ -19,6 +19,9 @@ th, td {
 </head>
 
 <body>
+-->
+{% extends 'layout.html' %}
+{% block body %}
 
 <h3>Current L1 node acquisition status</h3>
 
@@ -29,12 +32,13 @@ th, td {
 Last update: <span id="last-update">--</span>
 </p>
 
-<table border="1">
+<!--<table border="1">-->
+<table class="table table-hover table-striped table-bordered" >
 <tr><td>
 Acquisition name: <input type="text" size="20" id="acq_name">
     Device: <select id="acq_dev">
-    <option value="ssd">SSD</option>
     <option value="nfs">NFS</option>
+    <option value="ssd">SSD</option>
     </select><br />
 Notes about this acquisition:<br />
 <textarea cols="50" rows="5" id="acq_meta"></textarea>
@@ -60,7 +64,8 @@ onClick="stopAcq();" style="font-size:125%;">
     <br />
     <br />
     
-<table border="1">
+<!--<table border="1">-->
+<table class="table table-hover table-striped table-bordered" >
   <tr>
     <th>Node</th>
     <th>Beams <br/>
@@ -74,7 +79,7 @@ onClick="stopAcq();" style="font-size:125%;">
     <th>SSD free (GB)</th>
     <th>Status</th>
   </tr>
-  {% for i,node in enodes %}
+  {% for i,node in nodes %}
   <tr>
     <td>{{node}}</td>
     <td id="node_beams_parent_{{i}}"><span id="node_beams_{{i}}"></span>
@@ -358,6 +363,7 @@ $(document).ready(function() {
 });
 
 </script>
+{% endblock %}
 
-</body>
-</html>
+<!--</body>
+</html>-->

@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+<head>
+<title>Acquisition Table</title>
+
+<script type="text/javascript" src="{{ url_for('static', filename='jquery.js') }}"></script>
+<script type="text/javascript" src="{{ url_for('static', filename='d3.min.js') }}"></script>
+
+</head>
+
+<body id="thebody">
+
+<style>
+.good {
+background-color: lightsteelblue;
+}
+.bad {
+background-color: pink;
+}
+.rotate {
+writing-mode: vertical-lr;
+}
+</style>
+<script type="text/javascript">
+</script>
+
+<h3>Acquisitions</h3>
+<table border="1">
+    <tr>
+    {% for column in columns %}
+        <th>{{ column }}</th>
+    {% endfor %}
+    </tr>
+    {% for acq in acqs %}
+    <tr>
+        {% for column in columns %}
+            <td>{{ acq.column }}</td>
+        {% endfor %}
+    </tr>
+    {% endfor %}
+</table>
+
+</body>
+</html>

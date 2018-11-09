@@ -20,7 +20,12 @@ class AssembledChunk(object):
         c = msgpacked_chunk
         # print('header', c[0])
         version = c[1]
-        assert(version == 1)
+        assert(version in [1, 2])
+        if version == 1:
+            assert(len(c) == 17)
+        if version == 2:
+            assert(len(c) == 21)
+        self.version = version
         # print('version', version)
         compressed = c[2]
         # print('compressed?', compressed)
@@ -43,6 +48,24 @@ class AssembledChunk(object):
         offsets = c[15]
         data    = c[16]
 
+        # version 2: extra arguments
+        self.frame0_nano = 0
+        self.nrfifreq = 0
+        self.has_rfi_mask = False
+        self.rfi_mask = None
+        if self.version == 2:
+            self.frame0_nano = c[17]
+            self.nrfifreq = c[18]
+            self.has_rfi_mask = c[19]
+            mask = c[20]
+            # to numpy
+            mask = np.fromstring(mask, dtype=np.uint8)
+            mask = mask.reshape((self.nrfifreq, self.nt//8))
+            # Expand mask!
+            self.rfi_mask = np.zeros((self.nrfifreq, self.nt), bool)
+            for i in range(8):
+                self.rfi_mask[:,i::8] = (mask & (1<<i)) > 0
+
         if compressed:
            import pybitshuffle
            data = pybitshuffle.decompress(data, self.ndata)
@@ -54,6 +77,17 @@ class AssembledChunk(object):
         self.offsets = self.offsets.reshape((-1, self.nt_coarse))
         self.data = np.frombuffer(data, dtype=np.uint8)
         self.data = self.data.reshape((-1, self.nt))
+
+    def __str__(self):
+        if self.has_rfi_mask:
+            h,w = self.rfi_mask.shape
+            masked = np.sum(self.rfi_mask == 0)
+            rfistr = ('yes, %i freqs, %i%% masked' %
+                      (self.nrfifreq, int(100. * masked / (h*w))))
+        else:
+            rfistr = 'no'
+        return ('AssembledChunk: beam %i, nt %i, fpga0 %i, rfi %s' %
+                (self.beam, self.nt, self.fpga0, rfistr))
 
     def decode(self):
         # Returns (intensities,weights) as floating-point
@@ -74,16 +108,23 @@ class AssembledChunk(object):
         weights = ((self.data > 0) * (self.data < 255)) * np.float32(1.0)
 
         return intensities,weights
-        
+
+    def time_start(self):
+        # Nanoseconds per FPGA count
+        fpga_nano = 2560
+        return 1e-9 * (self.frame0_nano +
+                       self.fpga_counts_per_sample * fpga_nano * self.fpga0)
+
+    def time_end(self):
+        # Nanoseconds per FPGA count
+        fpga_nano = 2560
+        return 1e-9 * (self.frame0_nano +
+                       self.fpga_counts_per_sample * fpga_nano * (self.fpga0 + self.fpgaN))
 
 def read_msgpack_file(fn):
     f = open(fn, 'rb')
     m = msgpack.unpackb(f.read())
     return AssembledChunk(m)
-
-# c = read_msgpack_file('chunk-beam0077-chunk00000094+01.msgpack')
-# print('Got', c)
-
 
 class WriteChunkReply(object):
     '''
@@ -109,6 +150,16 @@ class WriteChunkReply(object):
 
     def __repr__(self):
         return str(self)
+
+class MaskedFrequencies(object):
+    def __init__(self, msgpack):
+        #print('Masked frequencies: got ', msgpack)
+        self.histories = {}
+        for m in msgpack:
+            (beam, where, nt, hist) = m
+            print('Where:', where, type(where))
+            where = where.decode()
+            self.histories[(beam, where)] = np.array(hist).astype(np.float32) / nt
 
 class PacketRate(object):
     def __init__(self, msgpack):
@@ -293,6 +344,7 @@ class RpcClient(object):
                      dm_error=0.,
                      sweep_width=0.,
                      frequency_binning=0,
+                     need_rfi=None,
                      servers=None, wait=True, timeout=-1, waitAll=True):
         '''
         Asks the RPC servers to write a set of chunks to disk.
@@ -319,7 +371,10 @@ class RpcClient(object):
         for k in servers:
             self.token += 1
             hdr = msgpack.packb(['write_chunks', self.token])
-            req = msgpack.packb([beams, min_fpga, max_fpga, dm, dm_error, sweep_width, frequency_binning, filename_pattern, priority])
+            request_args = [beams, min_fpga, max_fpga, dm, dm_error, sweep_width, frequency_binning, filename_pattern, priority]
+            if need_rfi in [True, False]:
+                request_args.append(need_rfi)
+            req = msgpack.packb(request_args)
             tokens.append(self.token)
             self.sockets[k].send(hdr + req)
         if not wait:
@@ -454,7 +509,25 @@ class RpcClient(object):
             req = msgpack.packb(address)
             tokens.append(self.token)
             self.sockets[k].send(hdr + req)
-            
+
+    def get_masked_frequencies(self, servers=None, wait=True, timeout=-1):
+        if servers is None:
+            servers = self.servers.keys()
+        tokens = []
+        for k in servers:
+            self.token += 1
+            req = msgpack.packb(['get_masked_frequencies', self.token])
+            #args = msgpack.packb([float(start), float(period)])
+            tokens.append(self.token)
+            self.sockets[k].send(req) # + args)
+        if not wait:
+            return tokens
+        parts = self.wait_for_tokens(tokens, timeout=timeout)
+        # We expect one message part for each token.
+        return [MaskedFrequencies(msgpack.unpackb(p[0])) if p is not None
+                else None
+                for p in parts]
+
     def _pop_token(self, t, d=None, get_socket=False):
         '''
         Pops a message for the given token number *t*, or returns *d*
@@ -623,11 +696,14 @@ if __name__ == '__main__':
     parser.add_argument('--write', '-w', nargs=4, metavar='x',#['<comma-separated beams>', '<minfpga>', '<maxfpga>', '<filename-pattern>'],
                         help='Send write_chunks command: <comma-separated beams> <minfpga> <maxfpga> <filename-pattern>', action='append',
                         default=[])
+    parser.add_argument('--need-rfi', help='For --write / --awrite, set need_rfi flag.', action='store_true', default=None)
     parser.add_argument('--awrite', nargs=4, metavar='x',
                         help='Send async write_chunks command: <comma-separated beams> <minfpga> <maxfpga> <filename-pattern>', action='append',
         default=[])
     parser.add_argument('--list', action='store_true', default=False,
                         help='Just send list_chunks command and exit.')
+    parser.add_argument('--stats', action='store_true', default=False,
+                        help='Just request stats and exit.')
     parser.add_argument('--identity', help='(ignored)')
     parser.add_argument('--stream', help='Stream to files')
     parser.add_argument('--stream-base', help='Stream base directory')
@@ -640,6 +716,8 @@ if __name__ == '__main__':
                         help='Send packet rate history request')
     parser.add_argument('--l0', action='append', default=[],
                         help='Request rate history for the list of L0 nodes')
+    parser.add_argument('--masked-freqs', action='store_true', default=False,
+                        help='Send request for masked frequencies history')
     parser.add_argument('ports', nargs='*',
                         help='Addresses or port numbers of RPC servers to contact')
     opt = parser.parse_args()
@@ -678,6 +756,22 @@ if __name__ == '__main__':
                 print('  beam %4i, FPGA range %i to %i' % (beam, f0, f1))
         doexit = True
 
+    if opt.stats:
+        stats = client.get_statistics(timeout=10)
+        for s,server in zip(stats, servers.values()):
+            print('', server)
+            if s is None:
+                print('  None')
+                continue
+            print()
+            for d in s:
+                keys = d.keys()
+                keys.sort()
+                for k in keys:
+                    print('  ', k, '=', d[k])
+                print()
+        doexit = True
+
     if opt.stream:
         beams = []
         for b in opt.stream_beams:
@@ -696,6 +790,30 @@ if __name__ == '__main__':
             print('Got rate:', r)
         doexit = True
 
+    if opt.masked_freqs:
+        import matplotlib
+        matplotlib.use('Agg')
+        import pylab as plt
+
+        freqs = client.get_masked_frequencies()
+        print('Received masked frequencies:')
+        for f in freqs:
+            print('  ', f)
+
+            for k,v in f.histories.items():
+                (beam,where) = k
+                hist = v
+                print('Beam', beam, 'at', where, ':', hist.shape, hist.dtype,
+                      hist.min(), hist.max())
+                plt.clf()
+                plt.imshow(hist, interpolation='nearest', origin='lower',
+                           vmin=0, vmax=1, cmap='gray', aspect='auto')
+                plt.xlabel('Frequency bin')
+                plt.ylabel('Time (s)')
+                plt.title('Beam %i, %s' % (beam, where))
+                plt.savefig('masked-f-%i-%s.png' % (beam, where))
+        doexit = True
+
     if opt.rate_history:
         kwa = {}
         if len(opt.l0):
@@ -711,7 +829,10 @@ if __name__ == '__main__':
             beams = [int(b,10) for b in beams]
             f0 = int(f0, 10)
             f1 = int(f1, 10)
-            R = client.write_chunks(beams, f0, f1, fnpat)
+            kwargs = {}
+            if opt.need_rfi:
+                kwargs.update(need_rfi = True)
+            R = client.write_chunks(beams, f0, f1, fnpat, **kwargs)
             print('Results:')
             if R is not None:
                 for r in R:
@@ -725,7 +846,11 @@ if __name__ == '__main__':
             beams = [int(b,10) for b in beams]
             f0 = int(f0, 10)
             f1 = int(f1, 10)
-            R = client.write_chunks(beams, f0, f1, fnpat, waitAll=False)
+            kwargs = {}
+            if opt.need_rfi:
+                kwargs.update(need_rfi = True)
+            R = client.write_chunks(beams, f0, f1, fnpat, waitAll=False,
+                                    **kwargs)
             print('Results:')
             if R is not None:
                 for r in R:

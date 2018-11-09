@@ -100,7 +100,8 @@ int main(int argc, char** argv) {
         streams.push_back(stream);
         
         string rpc_addr = "tcp://127.0.0.1:" + to_string(rpc_port + i);
-        shared_ptr<L1RpcServer> rpc = make_shared<L1RpcServer>(stream, rpc_addr);
+        shared_ptr<ch_frb_l1::mask_stats_map> ms = make_shared<ch_frb_l1::mask_stats_map>();
+        shared_ptr<L1RpcServer> rpc = make_shared<L1RpcServer>(stream, ms, rpc_addr);
         rpcs.push_back(rpc);
         rpc_threads[i] = rpc->start();
         
@@ -109,7 +110,7 @@ int main(int argc, char** argv) {
         chlog("Starting RPC server on port " << rpc_addr);
 
         string pro_addr = to_string(prometheus_port + i);
-        shared_ptr<L1PrometheusServer> pro = start_prometheus_server(pro_addr, stream);
+        shared_ptr<L1PrometheusServer> pro = start_prometheus_server(pro_addr, stream, ms);
         if (!pro) {
             return -1;
         }

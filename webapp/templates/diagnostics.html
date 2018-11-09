@@ -1,0 +1,255 @@
+{% extends 'layout.html' %}
+{% block body %}
+<h1> <small>Welcome to CHIME/FRB Operations @{{session.username}} !!!</small></h1>
+
+<h3> CHIME FRB Diagnostics</h3>
+
+<ul>
+<li><a href="{{ packet_matrix_url }}">Packet rate matrix (text)</a></li>
+<li><a href="{{ packet_matrix_image_url }}">Packet rate matrix (image)</a></li>
+<li><a href="{{ packet_matrix_d3_url }}">Packet rate matrix (d3)</a></li>
+<li><a href="{{ l0_node_map_url }}">L0 Nodes Sending</a></li>
+</ul>
+
+<h3>L1 packet rates</h3>
+
+<p>
+    {% for nice,node in nicenodes %}
+    <a href="node/{{node}}">{{nice}}</a>
+    {% endfor %}
+</p>
+
+{#
+<table>
+  <tr>
+    <th>L1 ports</th>
+    {% for nice,node in nicenodes %}
+    <td><a href="node/{{node}}">{{nice}}</a></td>
+    {% endfor %}
+  </tr>
+#}
+
+{#
+  <tr>
+    <th>Up</th>
+    {% for node in nodes %}
+    <td
+       {% if nodeup[node] == "0" %}
+       class="bad"
+       {% else %}
+       class="good"
+       {% endif %}
+       >
+      {{ nodeup[node] }}
+      </td>
+    {% endfor %}
+  </tr>
+#}
+</table>
+
+{#
+<iframe src="http://localhost:3000/dashboard-solo/db/node-exporter-single-server?orgId=2&panelId=11&var-server=" width="450" height="200" frameborder="0"></iframe>
+#}
+
+<h3>CHIME FRB L1 Command and Control</h3>
+
+<p>Run a command on all L1 nodes:</p>
+<input type="text" id="cnc_run" size="50" value="echo hello world, I am $HOSTNAME, $(date), __INDEX__" />
+<span id="cnc_status"></span><br />
+<p id="cnc_output"></p>
+
+{#
+<p>Launch a command on all L1 nodes:</p>
+<input type="text" id="cnc_launch" size="50" value="echo l1_config/l1_production_16beam___INDEX__.yaml" />
+<span id="cnc_launch_status"></span><br />
+<p id="cnc_launch_output"></p>
+#}
+
+{# OFF
+<p>Launch and follow a command on cf0g0:</p>
+<input type="text" id="cnc_follow" size="50" value="for ((i=1;;i++)); do echo $i; sleep 1; done" />
+<span id="cnc_follow_status"></span><br />
+<input type="button" id="cnc_follow_kill" value="Kill" disabled="true">
+<p id="cnc_follow_output"></p>
+<table border="1">
+<tr>
+{% for i,n in ecnodes %}
+<td>Node {{ i }}</td>
+{% endfor %}
+</tr><tr>
+{% for i,n in ecnodes %}
+<td id="cnc_follow_pid_{{ i }}" class="cnc_follow_pids">-</td>
+{% endfor %}
+</tr><tr>
+{% for i,n in ecnodes %}
+#}
+{#<td id="cnc_follow_{{ i }}" class="cnc_follow_outs"> </td>
+#}
+{# OFF
+<td valign="top"><pre id="cnc_follow_{{ i }}" class="cnc_follow_outs"> </pre></td>
+{% endfor %}
+</tr></table>
+#}
+{#<p id="cnc_follow_0"></p>
+#}
+
+<script type="text/javascript">
+
+function cnc_callback(stat, output, err, X) {
+    console.log('cnc_callback: err ' + err + ', result ' + X);
+    $(stat).html('Received results.');
+    ss = '<pre>';
+    for (var i=0; i<X.length; i++) {
+        xi = X[i];
+        server = xi[0];
+        res = xi[1];
+        if (res == null) {
+            rtn = 'null';
+            out = '';
+            err = '';
+        } else {
+            rtn = res[0];
+            out = res[1];
+            err = res[2];
+        }
+        ss += 'server ' + server + ': return value ' + rtn + '<br/>';
+	    if ((out != null) && (out.length))
+	        ss += out.replace('<','&lt;').replace('>','&gt;') + '<br/>';
+	    if ((err != null) && (err.length))
+	        ss += '</pre><font color="red"><pre>' + err.replace('<','&lt;').replace('>','&gt;') + '</pre></font><br/>';
+        //ss += '<br/>out: ' + out;
+        //ss += '<br/>err: ' + err;
+        ss += '<br/>';
+    }
+    ss += '</pre>';
+    $(output).html(ss);
+}
+
+var follow_pids = [];
+
+// This gets called when we get the reply to our request to start
+// following processes on the L1 nodes.
+function cnc_follow_callback(stat, output, err, X) {
+    console.log('cnc_follow_callback: err ' + err + ', result ' + X);
+    $(stat).html('Received results.');
+    //ss = '<pre>';
+    for (var i=0; i<X.length; i++) {
+        xi = X[i];
+        server = xi[0];
+        res = xi[1];
+        if (res == null) {
+            rtn = 'null';
+            pid = null;
+            err = '';
+        } else {
+            rtn = res[0];
+            pid = res[1];
+            err = res[2];
+
+	    follow_pids.push([server, pid]);
+        }
+        //ss += 'server ' + server + ': return value ' + rtn + '<br/>';
+        if (pid != null)
+            //ss += 'pid ' + pid + '<br/>';
+	    $('#cnc_follow_pid_' + i).html(pid);
+        //ss += '<br/>';
+        if (pid == null) {
+	    $('#cnc_follow_pid_' + i).html('(failed)');
+	    $('#cnc_follow_' + i).html(rtn + err);
+	}
+        // Start following!
+        server = server.replace('tcp://', '');
+        follow_request(server, pid, '#cnc_follow_' + i);
+    }
+    //ss += '</pre>';
+    //$(output).html(ss);
+}
+
+function follow_request(server, pid, nodeid) {
+    d3.request('{{ cnc_follow_url }}/' + server + '/' + pid)
+        .mimeType("application/json")
+        .response(function(xhr) { return JSON.parse(xhr.responseText); })
+        .get(function(X){ follow_callback(server, pid, nodeid, X); });
+}
+
+function follow_callback(server, pid, nodeid, X) {
+    //console.log('Follow callback for ' + server + ', pid ' + pid + ': ' + X);
+    if (X == null) {
+        setTimeout(function(){ follow_request(server, pid, nodeid); }, 2000);
+        return;
+    }
+    rtn = X[0];
+    out = X[1];
+    err = X[2];
+    ss = '';
+    //console.log('err: ' + err);
+    again = true;
+    if (out != null)
+	ss += out; //.replace('\n','<br/>') + '<br/>';
+    if ((err != null) && (err.length > 0))
+        ss += '<font color="red">' + err + '</font>';
+    if (rtn != null) {
+        ss += '<br/>Exited with return value: ' + rtn;
+        again = false;
+    }
+    $(nodeid).append(ss);
+
+    if (again)
+	setTimeout(function(){ follow_request(server, pid, nodeid); }, 2000);
+}
+
+$('#cnc_run').keyup(function(event) {
+    if (event.keyCode == 13){
+        $('#cnc_status').html('Sending command...');
+	d3.request('{{ cnc_run_url }}')
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .mimeType("application/json")
+            .response(function(xhr) { return JSON.parse(xhr.responseText); })
+            .post("cmd=" + $('#cnc_run').val(), function(err,X){ cnc_callback('#cnc_status', '#cnc_output', err, X)});
+    }
+});
+
+$('#cnc_launch').keyup(function(event) {
+    if (event.keyCode == 13){
+        $('#cnc_launch_status').html('Sending command...');
+        d3.request('{{ cnc_run_url }}')
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .mimeType("application/json")
+            .response(function(xhr) { return JSON.parse(xhr.responseText); })
+            .post("cmd=" + $('#cnc_launch').val()+"&launch=yes",
+		  function(err,X){ cnc_callback('#cnc_launch_status', '#cnc_launch_output', err, X)});
+    }
+});
+
+$('#cnc_follow').keyup(function(event) {
+    if (event.keyCode == 13){
+        $('#cnc_follow_status').html('Sending command...');
+	$('.cnc_follow_pids').html('-');
+	$('.cnc_follow_outs').html(' ');
+        d3.request('{{ cnc_run_url }}')
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .mimeType("application/json")
+            .response(function(xhr) { return JSON.parse(xhr.responseText); })
+            .post("cmd=" + encodeURIComponent($('#cnc_follow').val()) + "&launch=yes&captive=yes",
+		  function(err,X){ cnc_follow_callback('#cnc_follow_status', '#cnc_follow_output', err, X)});
+	$('#cnc_follow_kill').attr('disabled', false);
+    }
+});
+
+$('#cnc_follow_kill').click(function(event) {
+    //$('#cnc_follow_kill').attr('disabled', true);
+    console.log('Sending kill JSON: ' + JSON.stringify(follow_pids));
+    $('#cnc_follow_status').html('Killing processes...');
+    d3.request('{{ cnc_kill_url }}')
+        .mimeType("application/json")
+	.header('Content-Type', 'application/json')
+        .response(function(xhr) { return JSON.parse(xhr.responseText); })
+        .post(JSON.stringify(follow_pids));
+    follow_pids = [];
+});
+                              
+</script>
+
+<br><hr><br>
+{% endblock %}
+

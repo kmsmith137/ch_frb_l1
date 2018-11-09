@@ -28,6 +28,8 @@
 #include <sys/socket.h>
 #include <ifaddrs.h>
 
+#include <curl/curl.h>
+
 #include <ch_frb_io_internals.hpp>
 #include <rf_pipelines.hpp>
 #include <bonsai.hpp>
@@ -83,6 +85,7 @@ struct l1_config
     bool memory_pool_debug = false;
     bool write_chunk_debug = false;
     bool deliberately_crash = false;
+    bool ignore_end_of_stream = false;
     int l1_verbosity = 1;
 
     // nstreams is automatically determined by the number of (ipaddr, port) pairs.
@@ -92,7 +95,11 @@ struct l1_config
     int nstreams = 0;
     int nt_per_packet = 0;
     int fpga_counts_per_sample = 384;
-    
+
+    // The number of frequencies in the downsampled RFI chain.
+    // Must match the number of downsampled frequencies in the RFI chain JSON file.  (probably 1024)
+    int nrfifreq = 0;
+
     // If slow_kernels=false (the default), the L1 server will use fast assembly language kernels
     // for its packet processing.  If slow_kernels=true, then it will use reference kernels which
     // are much slower.
@@ -118,6 +125,14 @@ struct l1_config
     vector<string> prometheus_address;
     // Optional chlog logging server address
     string logger_address;
+
+    // Optional URL to get frame0-ctime
+    string frame0_url;
+    // Timeout (in ms) for retrieving frame0-ctime
+    int frame0_timeout;
+
+    // Size of RFI mask measurement ringbuffer (15 seconds required for prometheus; more could be useful for other monitoring tools)
+    int rfi_mask_meas_history;
 
     // A vector of length nbeams, containing the beam_ids that will be processed on this L1 server.
     // It is currently assumed that these are known in advance and never change!
@@ -188,9 +203,10 @@ struct l1_config
 #else
 static void usage()
 {
-    cerr << "Usage: ch-frb-l1 [-fvpmct] <l1_config.yaml> <rfi_config.json> <bonsai_config.hdf5> <l1b_config_file>\n"
+    cerr << "Usage: ch-frb-l1 [-fvipmwct] <l1_config.yaml> <rfi_config.json> <bonsai_config.hdf5> <l1b_config_file>\n"
 	 << "  -f forces the L1 server to run, even if the config files look fishy\n"
 	 << "  -v increases verbosity of the toplevel ch-frb-l1 logic\n"
+         << "  -i ignores end-of-stream packets\n"
 	 << "  -p enables a very verbose debug trace of the pipe I/O between L1a and L1b\n"
 	 << "  -m enables a very verbose debug trace of the memory_slab_pool allocation\n"
 	 << "  -w enables a very verbose debug trace of the logic for writing chunks\n"
@@ -222,6 +238,7 @@ l1_config::l1_config(int argc, char **argv)
         ("v,verbose", "Increases verbosity of the toplevel ch-frb-l1 logic")
         ("f,force", "Forces the L1 server to run, even if the config files look fishy")
         ("p,pipe", "Enables a very verbose debug trace of the pipe I/O between L1a and L1b")
+        ("i,ignore", "Ignores end-of-stream packets")
         ("m,memory", "Enables a very verbose debug trace of the memory_slab_pool allocation")
         ("w,write", "Eables a very verbose debug trace of the logic for writing chunks")
         ("c,crash", "Deliberately crash dedispersion thread (for debugging, obviously)")
@@ -238,6 +255,8 @@ l1_config::l1_config(int argc, char **argv)
         this->l1_verbosity = 2;
     if (opts.count("f"))
         this->fflag = true;
+    if (opts.count("i"))
+        this->ignore_end_of_stream = true;
     if (opts.count("p"))
         this->l1b_pipe_io_debug = true;
     if (opts.count("m"))
@@ -274,6 +293,8 @@ l1_config::l1_config(int argc, char **argv)
     		this->fflag = true;
     	    else if (argv[i][j] == 'p')
     		this->l1b_pipe_io_debug = true;
+            else if (argv[i][j] == 'i')
+                this->ignore_end_of_stream = true;
     	    else if (argv[i][j] == 'm')
     		this->memory_pool_debug = true;
     	    else if (argv[i][j] == 'w')
@@ -356,11 +377,15 @@ l1_config::l1_config(int argc, char **argv)
     this->nfreq = p.read_scalar<int> ("nfreq");
     this->nt_per_packet = p.read_scalar<int> ("nt_per_packet");
     this->fpga_counts_per_sample = p.read_scalar<int> ("fpga_counts_per_sample", 384);
+    this->nrfifreq = p.read_scalar<int> ("nrfifreq");
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
     this->rpc_address = p.read_vector<string> ("rpc_address");
     this->prometheus_address = p.read_vector<string> ("prometheus_address");
     this->logger_address = p.read_scalar<string> ("logger_address", "");
+    this->frame0_url = p.read_scalar<string> ("frame0_url");
+    this->frame0_timeout = p.read_scalar<int> ("frame0_timeout_ms", 3000);
+    this->rfi_mask_meas_history = p.read_scalar<int>("rfi_mask_meas_history", 300);
     this->slow_kernels = p.read_scalar<bool> ("slow_kernels", false);
     this->unassembled_ringbuf_nsamples = p.read_scalar<int> ("unassembled_ringbuf_nsamples", 4096);
     this->assembled_ringbuf_nsamples = p.read_scalar<int> ("assembled_ringbuf_nsamples", 8192);
@@ -476,6 +501,8 @@ l1_config::l1_config(int argc, char **argv)
 
     if (nbeams <= 0)
 	throw runtime_error(l1_config_filename + ": 'nbeams' must be >= 1");
+    if (nrfifreq < 0)
+	throw runtime_error(l1_config_filename + ": 'nrfifreq' must be positive (or zero), and must match the number of downsampled frequencies in the RFI chain JSON file -- probably 1024.");
     if (!tflag && (nfreq != bonsai_config.nfreq))
 	throw runtime_error("ch-frb-l1: 'nfreq' values in l1 config file and bonsai config file must match");
     if (nfreq <= 0)
@@ -608,7 +635,7 @@ l1_config::l1_config(int argc, char **argv)
     //   - total_staging_chunks (derived from config param 'write_staging_area_gb')
 
     int nupfreq = xdiv(nfreq, nfreq_c);
-    this->nbytes_per_memory_slab = ch_frb_io::assembled_chunk::get_memory_slab_size(nupfreq, nt_per_packet);
+    this->nbytes_per_memory_slab = ch_frb_io::assembled_chunk::get_memory_slab_size(nupfreq, nt_per_packet, this->nrfifreq);
 
     int live_chunks_per_beam = 2;   // "active" chunks
     live_chunks_per_beam += assembled_ringbuf_nchunks;  // assembled_ringbuf
@@ -669,6 +696,11 @@ l1_config::l1_config(int argc, char **argv)
     if (!p.check_for_unused_params(false))  // fatal=false
 	have_warnings = true;
 
+    if (nrfifreq == 0) {
+        cout << "Warning: nrfifreq was set to zero (or not set) -- RFI masks will not be saved in callback data!" << endl;
+	have_warnings = true;
+    }
+    
     if ((l1b_executable_filename.size() > 0) && (l1b_buffer_nsamples == 0) && (l1b_pipe_timeout <= 1.0e-6)) {
 	cout << l1_config_filename << ": should specify either l1b_buffer_nsamples > 0, or l1b_pipe_timeout > 0.0, see MANUAL.md for discussion." << endl;
 	have_warnings = true;
@@ -713,6 +745,7 @@ void l1_config::_have_warnings() const
 struct dedispersion_thread_context {
     l1_config config;
     shared_ptr<ch_frb_io::intensity_network_stream> sp;
+    std::shared_ptr<mask_stats_map> ms_map;
     shared_ptr<bonsai::trigger_pipe> l1b_subprocess;   // warning: can be empty pointer!
     vector<int> allowed_cores;
     bool asynchronous_dedispersion;   // run RFI and dedispersion in separate threads?
@@ -720,7 +753,65 @@ struct dedispersion_thread_context {
 
     void _thread_main() const;
     void _toy_thread_main() const;  // if -t command-line argument is specified
+
+    // Helper function called in _thread_main(), during initialization
+    void _init_mask_counters(const shared_ptr<rf_pipelines::pipeline_object> &pipeline, int beam_id) const;
 };
+
+
+void dedispersion_thread_context::_init_mask_counters(const shared_ptr<rf_pipelines::pipeline_object> &pipeline, int beam_id) const
+{
+    vector<shared_ptr<rf_pipelines::mask_counter_transform>> mask_counters;
+    bool clippers_after_mask_counters = false;
+
+    // This lambda-function is passed to rf_pipelines::visit_pipeline(), 
+    // to find the mask_counters, and test whether clippers occur after mask_counters.
+
+    auto find_mask_counters = [&mask_counters, &clippers_after_mask_counters]
+	(const shared_ptr<rf_pipelines::pipeline_object> &p, int depth)
+    {
+	// A transform is considered to be a clipper if its class_name contains the substring "clipper".
+	// FIXME: "feels" like a hack, is there a better criterion?
+	bool is_clipper = (p->class_name.find("clipper") != string::npos);
+
+	if (is_clipper) {
+	    if (mask_counters.size() > 0)
+		clippers_after_mask_counters = true;
+	    return;
+	}
+	    
+	auto counter = dynamic_pointer_cast<rf_pipelines::mask_counter_transform> (p);
+
+	if (counter) {
+	    // cout << "Found mask counter: " << counter->where << endl;
+	    clippers_after_mask_counters = false;
+	    mask_counters.push_back(counter);
+	}
+    };
+    
+    // cout << "Finding mask_counter stages..." << endl;
+    rf_pipelines::visit_pipeline(find_mask_counters, pipeline);
+
+    if (config.nrfifreq > 0) {
+	if (mask_counters.size() == 0)
+	    throw runtime_error("ch-frb-l1: RFI masks requested, but no mask_counters in the RFI config JSON file");
+	if (clippers_after_mask_counters)
+	    throw runtime_error("ch-frb-l1: RFI masks requested, and clippers occur after the last mask_counter in the RFI config JSON file");
+    }
+
+    for (unsigned int i = 0; i < mask_counters.size(); i++) {
+	rf_pipelines::mask_counter_transform::runtime_attrs attrs;
+	attrs.ringbuf_nhistory = config.rfi_mask_meas_history;
+	attrs.chime_beam_id = beam_id;
+
+	// If RFI masks are requested, then the last mask_counter in the chain fills assembled_chunks.
+	if ((config.nrfifreq > 0) && ((i+1) == mask_counters.size()))
+	    attrs.chime_stream = this->sp;
+
+	mask_counters[i]->set_runtime_attrs(attrs);
+	this->ms_map->put(beam_id, mask_counters[i]->where, mask_counters[i]->ringbuf);
+    }
+}
 
 
 // Note: only called if config.tflag == false.
@@ -774,7 +865,12 @@ void dedispersion_thread_context::_thread_main() const
 	dedisperser->add_processor(l1b_subprocess);
 
     auto bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
-	
+
+    // cout << "RFI chain:" << endl;
+    // rf_pipelines::print_pipeline(rfi_chain);
+
+    _init_mask_counters(rfi_chain, beam_id);
+    
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);
     pipeline->add(rfi_chain);
@@ -886,7 +982,7 @@ static void dedispersion_thread_main(const dedispersion_thread_context &context)
 
 struct l1_server {        
     using corelist_t = vector<int>;
-    
+
     const l1_config config;
     
     int ncpus = 0;
@@ -907,6 +1003,9 @@ struct l1_server {
     vector<shared_ptr<ch_frb_io::output_device>> output_devices;
     vector<shared_ptr<ch_frb_io::memory_slab_pool>> memory_slab_pools;
     vector<shared_ptr<ch_frb_io::intensity_network_stream>> input_streams;
+
+    std::mutex mask_stats_mutex;
+    vector<shared_ptr<mask_stats_map> > mask_stats_maps;
     vector<shared_ptr<L1RpcServer>> rpc_servers;
     vector<shared_ptr<L1PrometheusServer>> prometheus_servers;
     vector<std::thread> rpc_threads;
@@ -922,6 +1021,7 @@ struct l1_server {
     void make_output_devices();
     void make_memory_slab_pools();
     void make_input_streams();
+    void make_mask_stats();
     void make_rpc_servers();
     void make_prometheus_servers();
     void spawn_dedispersion_threads();
@@ -1129,7 +1229,7 @@ void l1_server::make_output_devices()
 void l1_server::make_memory_slab_pools()
 {
     if (memory_slab_pools.size() != 0)
-	throw("ch-frb-l1 internal error: double call to make_output_devices()");
+	throw("ch-frb-l1 internal error: double call to make_memory_slab_pools()");
     
     int verbosity = config.memory_pool_debug ? 2 : 1;
     int memory_slabs_per_cpu = config.total_memory_slabs / ncpus;
@@ -1166,9 +1266,12 @@ void l1_server::make_input_streams()
 	ini_params.udp_port = config.port[istream];
 	ini_params.beam_ids = vector<int> (beam_id0, beam_id1);
 	ini_params.nupfreq = xdiv(config.nfreq, ch_frb_io::constants::nfreq_coarse_tot);
+        ini_params.nrfifreq = config.nrfifreq;
 	ini_params.nt_per_packet = config.nt_per_packet;
 	ini_params.fpga_counts_per_sample = config.fpga_counts_per_sample;
 	ini_params.stream_id = istream + 1;   // +1 here since first NFS mount is /frb-archive-1, not /frb-archive-0
+        ini_params.frame0_url = config.frame0_url;
+        ini_params.frame0_timeout = config.frame0_timeout;
 	ini_params.force_fast_kernels = !config.slow_kernels;
 	ini_params.force_reference_kernels = config.slow_kernels;
 	ini_params.deliberately_crash = config.deliberately_crash;
@@ -1182,7 +1285,9 @@ void l1_server::make_input_streams()
 	ini_params.memory_pool = memory_slab_pool;
 	ini_params.output_devices = this->output_devices;
 	ini_params.sleep_hack = this->sleep_hack;
-	
+        if (config.ignore_end_of_stream)
+            ini_params.accept_end_of_stream_packets = false;
+
 	// Setting the 'throw_exception_on_buffer_drop' flag means that an exception 
 	// will be thrown if either:
 	//
@@ -1212,7 +1317,8 @@ void l1_server::make_input_streams()
 		sf_beam_ids.push_back(b);
 
 	// If config.stream_filename_pattern is an empty string, then stream_to_files() doesn't do anything.
-	input_streams[istream]->stream_to_files(config.stream_filename_pattern, sf_beam_ids, 0);   // (pattern, priority)
+        bool need_rfi = (config.nrfifreq > 0);
+	input_streams[istream]->stream_to_files(config.stream_filename_pattern, sf_beam_ids, 0, need_rfi);   // (pattern, priority)
     }
 }
 
@@ -1228,7 +1334,7 @@ void l1_server::make_rpc_servers()
     this->rpc_threads.resize(config.nstreams);
     
     for (int istream = 0; istream < config.nstreams; istream++) {
-	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], config.rpc_address[istream], command_line);
+	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], mask_stats_maps[istream], config.rpc_address[istream], command_line);
 	rpc_threads[istream] = rpc_servers[istream]->start();
     }
 }
@@ -1239,14 +1345,19 @@ void l1_server::make_prometheus_servers()
 	throw("ch-frb-l1 internal error: double call to make_prometheus_servers()");
     if (input_streams.size() != size_t(config.nstreams))
 	throw("ch-frb-l1 internal error: make_prometheus_servers() was called, without first calling make_input_streams()");
-
     this->prometheus_servers.resize(config.nstreams);
     for (int istream = 0; istream < config.nstreams; istream++) {
-	prometheus_servers[istream] = start_prometheus_server(config.prometheus_address[istream], input_streams[istream]);
+        prometheus_servers[istream] = start_prometheus_server(config.prometheus_address[istream], input_streams[istream], mask_stats_maps[istream]);
     }
 }
 
-       
+void l1_server::make_mask_stats()
+{
+    for (int istream = 0; istream < config.nstreams; istream++) {
+        mask_stats_maps.push_back(make_shared<mask_stats_map>());
+    }
+}
+
 void l1_server::spawn_dedispersion_threads()
 {
     if (dedispersion_threads.size())
@@ -1264,15 +1375,16 @@ void l1_server::spawn_dedispersion_threads()
     for (int ibeam = 0; ibeam < config.nbeams; ibeam++) {
 	int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
 	int istream = ibeam / nbeams_per_stream;
-    
+
 	dedispersion_thread_context context;
 	context.config = this->config;
 	context.sp = this->input_streams[istream];
+        context.ms_map = this->mask_stats_maps[istream];
 	context.l1b_subprocess = this->l1b_subprocesses[ibeam];
 	context.allowed_cores = this->dedispersion_cores[ibeam];
 	context.asynchronous_dedispersion = this->asynchronous_dedispersion;
 	context.ibeam = ibeam;
-	
+
 	if (config.l1_verbosity >= 2) {
 	    cout << "ch-frb-l1: spawning dedispersion thread " << ibeam << ", beam_id=" << config.beam_ids[ibeam] 
 		 << ", stream=" << context.sp->ini_params.ipaddr << ":" << context.sp->ini_params.udp_port
@@ -1354,9 +1466,11 @@ void l1_server::print_statistics()
 
 // -------------------------------------------------------------------------------------------------
 
-
 int main(int argc, char **argv)
 {
+    // for fetching frame0_ctime
+    curl_global_init(CURL_GLOBAL_ALL);
+
     l1_server server(argc, argv);
 
     server.start_logging();
@@ -1364,6 +1478,7 @@ int main(int argc, char **argv)
     server.make_output_devices();
     server.make_memory_slab_pools();
     server.make_input_streams();
+    server.make_mask_stats();
     server.make_rpc_servers();
     server.make_prometheus_servers();
     server.spawn_dedispersion_threads();
@@ -1371,5 +1486,6 @@ int main(int argc, char **argv)
     server.join_all_threads();
     server.print_statistics();
 
+    curl_global_cleanup();
     return 0;
 }
