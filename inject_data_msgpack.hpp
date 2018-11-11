@@ -20,6 +20,35 @@ struct inject_data_request : public rf_pipelines::inject_data {
 struct inject_data_request_2 : public inject_data_request {
 };
 
+
+template<typename T>
+class msgpack_binary_vector : public std::vector<T>
+{};
+
+
+struct inject_data_binmsg {
+    int beam;
+    // mode == 0: ADD
+    int mode;
+    // offset for FPGAcounts values in fpga_offset array.
+    uint64_t fpga0;
+    // should be "nfreq" in length
+    msgpack_binary_vector<int32_t> sample_offset;
+    // should be "nfreq" in length
+    msgpack_binary_vector<uint16_t> ndata;
+    // should have length = sum(ndata)
+    msgpack_binary_vector<float> data;
+
+    int filler_1;
+    int filler_2;
+    
+    MSGPACK_DEFINE(beam, mode, fpga0, sample_offset, ndata, data,
+                   filler_1, filler_2);
+};
+
+
+
+
 template <typename Stream>
 void pack_inject_data(msgpack::packer<Stream>& o,
                       std::shared_ptr<rf_pipelines::inject_data> const& inj) {
@@ -92,5 +121,74 @@ struct pack<std::shared_ptr<rf_pipelines::inject_data> > {
 } // namespace adaptor
 } // MSGPACK_API_VERSION_NAMESPACE(MSGPACK_DEFAULT_API_NS)
 } // namespace msgpack
+
+
+
+////////////////////////////////////////////////////////////////////////
+
+
+/*
+template <typename Stream, typename T>
+void pack_vector_as_binary(msgpack::packer<Stream>& o,
+                           msgpack_binary_vector<T> const& v) {
+    uint8_t version = 1;
+    o.pack_array(3);
+    o.pack(version);
+    o.pack(v.size());
+    o.pack_bin(v.size() * sizeof(T));
+    o.pack_bin_body(reinterpret_cast<const char*>(v.data()));
+}
+ */
+
+namespace msgpack {
+MSGPACK_API_VERSION_NAMESPACE(MSGPACK_DEFAULT_API_NS) {
+namespace adaptor {
+
+template<typename T>
+struct convert<msgpack_binary_vector<T> > {
+    msgpack::object const& operator()(msgpack::object const& o,
+                                      msgpack_binary_vector<T>& v) const {
+        if (o.type != msgpack::type::ARRAY) throw msgpack::type_error();
+        // Make sure array is big enough to check version
+        if (o.via.array.size < 1)
+            throw msgpack::type_error();
+        msgpack::object* arr = o.via.array.ptr;
+        uint8_t version = arr[0].as<uint8_t>();
+        if (version != 1)
+            throw std::runtime_error("msgpack_binary_vector: expected version=1");
+        if (o.via.array.size != 3)
+            throw std::runtime_error("msgpack_binary_vector: expected array size 3");
+        size_t n = arr[1].as<size_t>();
+        v.reserve(n);
+        if (arr[2].type != msgpack::type::BIN)
+            throw msgpack::type_error();
+        if (arr[2].via.bin.size != n * sizeof(T))
+            throw msgpack::type_error();
+        memcpy(reinterpret_cast<void*>(v.data()), arr[2].via.bin.ptr, n * sizeof(T));
+        return o;
+    }
+};
+
+template<typename T>
+struct pack<msgpack_binary_vector<T> > {
+    template <typename Stream>
+    packer<Stream>& operator()(msgpack::packer<Stream>& o, msgpack_binary_vector<T> const& v) const {
+        uint8_t version = 1;
+        o.pack_array(3);
+        o.pack(version);
+        o.pack(v.size());
+        o.pack_bin(v.size() * sizeof(T));
+        o.pack_bin_body(reinterpret_cast<const char*>(v.data()));
+        return o;
+    }
+};
+
+} // namespace adaptor
+} // MSGPACK_API_VERSION_NAMESPACE(MSGPACK_DEFAULT_API_NS)
+} // namespace msgpack
+
+
+
+
 
 #endif // _INJECT_DATA_MSGPACK_HPP

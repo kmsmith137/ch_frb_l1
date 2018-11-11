@@ -306,7 +306,7 @@ class RpcClient(object):
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
 
-    def inject_data(self, inj, binary=False,
+    def inject_data(self, inj, binary=False, binary2=False,
                     servers=None, wait=True, timeout=-1):
         '''
         inj: InjectData object
@@ -328,6 +328,21 @@ class RpcClient(object):
                 packer = msgpack.Packer(use_bin_type=True)
                 args = packer.pack(msg)
 
+            elif binary2:
+                req = msgpack.packb(['inject_data_2', self.token])
+                version = [1]
+                msg = version + inj.to_msgpack()
+                offsets = msg[-3]
+                ndata   = msg[-2]
+                alldata = msg[-1]
+                msg[-3] = bytes(np.array(offsets).astype(np.int32).data)
+                msg[-2] = bytes(np.array(ndata  ).astype(np.uint16).data)
+                msg[-1] = bytes(np.array(alldata).astype(np.float32).data)
+                msg.append(42)
+                msg.append(42)
+                packer = msgpack.Packer(use_bin_type=True)
+                args = packer.pack(msg)
+                
             else:
                 req = msgpack.packb(['inject_data', self.token])
                 args = inj.pack()
@@ -958,11 +973,20 @@ if __name__ == '__main__':
         data = []
         for f in range(nfreq):
             sample_offsets[f] = int(0.2 * f)
-            data.append(100. * np.ones(100, np.float32))
+            data.append(100. * np.ones(1000, np.float32))
         print('Injecting data spanning', np.min(sample_offsets), 'to', np.max(sample_offsets), ' samples')
         inj = InjectData(beam, 0, fpga0, sample_offsets, data)
         R = client.inject_data(inj, wait=True)
         print('Results:', R)
+
+        print('Binary=True')
+        R = client.inject_data(inj, binary=True, wait=True)
+        print('Results:', R)
+
+        print('Binary2=True')
+        R = client.inject_data(inj, binary2=True, wait=True)
+        print('Results:', R)
+        
         doexit = True
         
     if doexit:

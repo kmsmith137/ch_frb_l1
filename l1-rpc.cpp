@@ -991,6 +991,8 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
 
     shared_ptr<inject_data_request_2> injdata2 = make_shared<inject_data_request_2>();
 
+    shared_ptr<inject_data_binmsg> injdata3 = make_shared<inject_data_binmsg>();
+    
     shared_ptr<rf_pipelines::injector> inject;
 
     // argument: inject_data_request object
@@ -1009,11 +1011,22 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
     msgpack::object obj = oh.get();
 
     struct timeval tv3 = get_time();
-    double dt23 = time_diff(tv2, tv3);
-    cout << "object_handle.get(): " << dt23 << endl;
-    tv3 = get_time();
+    //double dt23 = time_diff(tv2, tv3);
+    //cout << "object_handle.get(): " << dt23 << endl;
+    //tv3 = get_time();
 
-    if (obj.via.array.size == 7) {
+    if (obj.via.array.size == 8) {
+        obj.convert(injdata3);
+        cout << "Converted" << endl;
+        //injdata = injdata3;
+        injdata->beam = injdata3->beam;
+        injdata->mode = injdata3->mode;
+        injdata->fpga0 = injdata3->fpga0;
+        injdata->sample_offset = injdata3->sample_offset;
+        injdata->ndata = injdata3->ndata;
+        injdata->data = injdata3->data;
+        
+    } else if (obj.via.array.size == 7) {
         obj.convert(injdata2);
         cout << "Converted" << endl;
         injdata = injdata2;
