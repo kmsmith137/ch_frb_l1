@@ -331,13 +331,16 @@ class RpcClient(object):
             elif binary2:
                 req = msgpack.packb(['inject_data_2', self.token])
                 version = [1]
-                msg = version + inj.to_msgpack()
+                msg = inj.to_msgpack()
                 offsets = msg[-3]
                 ndata   = msg[-2]
                 alldata = msg[-1]
-                msg[-3] = bytes(np.array(offsets).astype(np.int32).data)
-                msg[-2] = bytes(np.array(ndata  ).astype(np.uint16).data)
-                msg[-1] = bytes(np.array(alldata).astype(np.float32).data)
+                msg[-3] = [1, len(offsets),
+                           bytes(np.array(offsets).astype(np.int32).data)]
+                msg[-2] = [1, len(ndata),
+                           bytes(np.array(ndata  ).astype(np.uint16).data)]
+                msg[-1] = [1, len(alldata),
+                           bytes(np.array(alldata).astype(np.float32).data)]
                 msg.append(42)
                 msg.append(42)
                 packer = msgpack.Packer(use_bin_type=True)

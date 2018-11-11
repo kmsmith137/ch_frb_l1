@@ -148,20 +148,25 @@ template<typename T>
 struct convert<msgpack_binary_vector<T> > {
     msgpack::object const& operator()(msgpack::object const& o,
                                       msgpack_binary_vector<T>& v) const {
-        if (o.type != msgpack::type::ARRAY) throw msgpack::type_error();
+        //std::cout << "msgpack_binary_vector: type " << o.type << std::endl;
+        if (o.type != msgpack::type::ARRAY)
+            throw std::runtime_error("msgpack_binary_vector: expected type ARRAY");
         // Make sure array is big enough to check version
-        if (o.via.array.size < 1)
-            throw msgpack::type_error();
-        msgpack::object* arr = o.via.array.ptr;
-        uint8_t version = arr[0].as<uint8_t>();
-        if (version != 1)
-            throw std::runtime_error("msgpack_binary_vector: expected version=1");
+        //std::cout << "array size " << o.via.array.size << std::endl;
         if (o.via.array.size != 3)
             throw std::runtime_error("msgpack_binary_vector: expected array size 3");
+        msgpack::object* arr = o.via.array.ptr;
+        uint8_t version = arr[0].as<uint8_t>();
+        //std::cout << "version " << version << std::endl;
+        if (version != 1)
+            throw std::runtime_error("msgpack_binary_vector: expected version=1");
         size_t n = arr[1].as<size_t>();
+        //std::cout << "size " << n << ", type " << arr[2].type << std::endl;
         v.reserve(n);
         if (arr[2].type != msgpack::type::BIN)
             throw msgpack::type_error();
+        //std::cout << "binary size " << arr[2].via.bin.size << " vs " << n << " x " <<
+        //sizeof(T) << " = " << (n * sizeof(T)) << std::endl;
         if (arr[2].via.bin.size != n * sizeof(T))
             throw msgpack::type_error();
         memcpy(reinterpret_cast<void*>(v.data()), arr[2].via.bin.ptr, n * sizeof(T));
