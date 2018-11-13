@@ -262,7 +262,7 @@ bool chunk_status_map::get(const string& filename,
     }
 }
 
-void inject_data_binmsg::swap(rf_pipelines::inject_data& dest) {
+void inject_data_request::swap(rf_pipelines::inject_data& dest) {
     std::swap(this->beam, dest.beam);
     std::swap(this->mode, dest.mode);
     std::swap(this->fpga0, dest.fpga0);
@@ -995,7 +995,7 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
         return "This RPC endoint does not support the inject_data call.  Try the heavy-weight RPC port.";
 
     // This struct defines the msgpack "wire protocol"
-    shared_ptr<inject_data_binmsg> injreq = make_shared<inject_data_binmsg>();
+    shared_ptr<inject_data_request> injreq = make_shared<inject_data_request>();
 
     // This is the description of the data to be injected that we want to produce
     shared_ptr<rf_pipelines::inject_data> injdata = make_shared<rf_pipelines::inject_data>();

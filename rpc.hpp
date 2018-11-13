@@ -235,7 +235,7 @@ public:
 
 /* This defines the 'wire protocol' for the L1 data-injection RPC call.
  */
-struct inject_data_binmsg {
+struct inject_data_request {
     int beam;
     // mode == 0: ADD
     int mode;
