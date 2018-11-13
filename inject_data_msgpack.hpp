@@ -44,6 +44,16 @@ struct inject_data_binmsg {
     
     MSGPACK_DEFINE(beam, mode, fpga0, sample_offset, ndata, data,
                    filler_1, filler_2);
+
+    void swap(rf_pipelines::inject_data& dest) {
+        std::swap(this->beam, dest.beam);
+        std::swap(this->mode, dest.mode);
+        std::swap(this->fpga0, dest.fpga0);
+        std::swap(this->sample_offset, dest.sample_offset);
+        std::swap(this->ndata, dest.ndata);
+        std::swap(this->data, dest.data);
+    }
+    
 };
 
 
@@ -81,7 +91,7 @@ struct convert<std::shared_ptr<inject_data_request_2> > {
         if (o.via.array.size < 1)
             throw msgpack::type_error();
         msgpack::object* arr = o.via.array.ptr;
-        std::cout << "inject_data_2: unpacking version" << std::endl;
+        //std::cout << "inject_data_2: unpacking version" << std::endl;
         uint8_t version            = arr[0].as<uint8_t>();
         if (version != 1)
             throw std::runtime_error("ch_frb_io: inject_data: expected version=1");
@@ -91,19 +101,19 @@ struct convert<std::shared_ptr<inject_data_request_2> > {
         inj->beam = arr[1].as<int>();
         inj->mode = arr[2].as<int>();
         inj->fpga0 = arr[3].as<uint64_t>();
-        std::cout << "inject_data_2: ver " << (int)version << ", beam " << inj->beam << ", mode " << inj->mode << ", fpga0 " << inj->fpga0 << std::endl;
+        //std::cout << "inject_data_2: ver " << (int)version << ", beam " << inj->beam << ", mode " << inj->mode << ", fpga0 " << inj->fpga0 << std::endl;
         inj->sample_offset = arr[4].as<std::vector<int32_t> >();
         inj->ndata = arr[5].as<std::vector<uint16_t> >();
-        std::cout << "inject_data_2: n sample_offset, ndata " << inj->sample_offset.size() <<
-            ", " << inj->ndata.size() << std::endl;
+        //std::cout << "inject_data_2: n sample_offset, ndata " << inj->sample_offset.size() << ", " << inj->ndata.size() << std::endl;
+        
 
-        std::cout << "data type: " << int(arr[6].type) << std::endl;
+        //std::cout << "data type: " << int(arr[6].type) << std::endl;
         if (arr[6].type != msgpack::type::BIN) throw msgpack::type_error();
         int sz = arr[6].via.bin.size;
-        std::cout << "inject_data_2: n bytes " << sz << std::endl;
+        //std::cout << "inject_data_2: n bytes " << sz << std::endl;
         inj->data.resize(sz / sizeof(float));
         memcpy(reinterpret_cast<void*>(inj->data.data()), arr[6].via.bin.ptr, sz);
-        std::cout << "did memcpy" << std::endl;
+        //std::cout << "did memcpy" << std::endl;
         return o;
     }
 };
@@ -152,7 +162,7 @@ struct convert<msgpack_binary_vector<T> > {
         if (o.type != msgpack::type::ARRAY)
             throw std::runtime_error("msgpack_binary_vector: expected type ARRAY");
         // Make sure array is big enough to check version
-        //std::cout << "array size " << o.via.array.size << std::endl;
+        //std::cout << "msgpack_binary_vector: array size " << o.via.array.size << std::endl;
         if (o.via.array.size != 3)
             throw std::runtime_error("msgpack_binary_vector: expected array size 3");
         msgpack::object* arr = o.via.array.ptr;
@@ -161,8 +171,8 @@ struct convert<msgpack_binary_vector<T> > {
         if (version != 1)
             throw std::runtime_error("msgpack_binary_vector: expected version=1");
         size_t n = arr[1].as<size_t>();
-        //std::cout << "size " << n << ", type " << arr[2].type << std::endl;
-        v.reserve(n);
+        //std::cout << "msgpack_binary_vector: vector size " << n << std::endl; //", type " << arr[2].type << std::endl;
+        v.resize(n);
         if (arr[2].type != msgpack::type::BIN)
             throw msgpack::type_error();
         //std::cout << "binary size " << arr[2].via.bin.size << " vs " << n << " x " <<
@@ -170,6 +180,7 @@ struct convert<msgpack_binary_vector<T> > {
         if (arr[2].via.bin.size != n * sizeof(T))
             throw msgpack::type_error();
         memcpy(reinterpret_cast<void*>(v.data()), arr[2].via.bin.ptr, n * sizeof(T));
+        //std::cout << "msgpack_binary_vector: returned vector size " << v.size() << std::endl;
         return o;
     }
 };

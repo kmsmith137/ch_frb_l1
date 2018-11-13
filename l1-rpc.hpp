@@ -82,7 +82,7 @@ protected:
                                zmq::message_t& tokenmsg,
                                zmq::message_t& contentmsg);
 
-    std::string _check_inject_data(std::shared_ptr<inject_data_request> inj);
+    std::string _check_inject_data(std::shared_ptr<rf_pipelines::inject_data> inj);
     
 private:
     // The command line that launched this L1 process

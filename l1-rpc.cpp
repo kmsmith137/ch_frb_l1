@@ -390,16 +390,16 @@ void L1RpcServer::run() {
 
 	try {
 	    _handle_request(&client, &msg);
-	} catch (const std::exception& e) {
-	    chlog("Warning: Failed to handle RPC request... ignoring!  Error: " << e.what());
-	    try {
-		msgpack::object_handle oh = msgpack::unpack(reinterpret_cast<const char *>(msg.data()), msg.size());
-		msgpack::object obj = oh.get();
-		chlog("  message: " << obj);
-	    } catch (...) {
-		chlog("  failed to un-msgpack message");
-	    }
-	}
+        } catch (const std::exception& e) {
+            chlog("Warning: Failed to handle RPC request... ignoring!  Error: " << e.what());
+            try {
+        	msgpack::object_handle oh = msgpack::unpack(reinterpret_cast<const char *>(msg.data()), msg.size());
+        	msgpack::object obj = oh.get();
+        	chlog("  message: " << obj);
+            } catch (...) {
+        	chlog("  failed to un-msgpack message");
+            }
+    	}
     }
 
     chlog("L1 RPC server: exiting.");
@@ -987,8 +987,10 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
     if (!_heavy || (_injectors.size() == 0))
         return "This RPC endoint does not support the inject_data call.  Try the heavy-weight RPC port.";
 
-    shared_ptr<inject_data_request> injdata = make_shared<inject_data_request>();
+    shared_ptr<rf_pipelines::inject_data> injdata = make_shared<rf_pipelines::inject_data>();
 
+    shared_ptr<inject_data_request> injdata1 = make_shared<inject_data_request>();
+    
     shared_ptr<inject_data_request_2> injdata2 = make_shared<inject_data_request_2>();
 
     shared_ptr<inject_data_binmsg> injdata3 = make_shared<inject_data_binmsg>();
@@ -1017,23 +1019,15 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
 
     if (obj.via.array.size == 8) {
         obj.convert(injdata3);
-        cout << "Converted" << endl;
-        //injdata = injdata3;
-        injdata->beam = injdata3->beam;
-        injdata->mode = injdata3->mode;
-        injdata->fpga0 = injdata3->fpga0;
-        injdata->sample_offset = injdata3->sample_offset;
-        injdata->ndata = injdata3->ndata;
-        injdata->data = injdata3->data;
-        
+        //cout << "injdata3: fpga_offset length " << injdata3->sample_offset.size() << endl;
+        injdata3->swap(*injdata);
+        //cout << "after swap: injdata3: fpga_offset length " << injdata3->sample_offset.size() << ", injdata: " << injdata->sample_offset.size() << endl;
     } else if (obj.via.array.size == 7) {
         obj.convert(injdata2);
-        cout << "Converted" << endl;
         injdata = injdata2;
     } else {
-    
-    obj.convert(injdata);
-
+        obj.convert(injdata1);
+        injdata = injdata1;
     }
 
     struct timeval tv4 = get_time();
@@ -1073,7 +1067,7 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
     return "";
 }
 
-string L1RpcServer::_check_inject_data(shared_ptr<inject_data_request> inj) {
+string L1RpcServer::_check_inject_data(shared_ptr<rf_pipelines::inject_data> inj) {
     assert(_stream.get());
     // Check beam number -- do I have the requested beam?
     bool found = false;
@@ -1093,7 +1087,7 @@ string L1RpcServer::_check_inject_data(shared_ptr<inject_data_request> inj) {
     size_t nfreq = _stream->ini_params.nupfreq * ch_frb_io::constants::nfreq_coarse_tot;
 
     if (inj->sample_offset.size() != nfreq)
-        return "inject_data: fpga_offset array has size " + to_string(inj->sample_offset.size()) + ", expected nfreq=" + to_string(nfreq);
+        return "inject_data: sample_offset array has size " + to_string(inj->sample_offset.size()) + ", expected nfreq=" + to_string(nfreq);
     if (inj->ndata.size() != nfreq)
         return "inject_data: ndata array has size " + to_string(inj->ndata.size()) + ", expected nfreq=" + to_string(nfreq);
     size_t nd = 0;
