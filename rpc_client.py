@@ -172,7 +172,7 @@ class PacketRate(object):
         return 'PacketRate: start %g, period %g, packets: ' % (self.start, self.period) + str(self.packets)
         
 class RpcClient(object):
-    def __init__(self, servers, context=None, identity=None):
+    def __init__(self, servers, context=None, identity=None,):
         '''
         *servers*: a dict of [key, address] entries, where each
           *address* is a string address of an RPC server: eg,
@@ -199,6 +199,38 @@ class RpcClient(object):
         self.token = 0
         # Buffer of received messages: token->[(message,socket), ...]
         self.received = {}
+
+    def get_alex_test(self, servers=None, timeout=-1):
+        if servers is None:
+            servers = self.servers.keys()
+        tokens = []
+
+        for k in servers:
+            self.token += 1
+            req = msgpack.packb(['get_alex_test_msg', self.token])
+            tokens.append(self.token)
+            self.sockets[k].send(req)
+
+        parts = self.wait_for_tokens(tokens, timeout=timeout)
+        return [msgpack.unpackb(p[0]) if p is not None else None
+                for p in parts]
+
+    def set_spulsar_writer_params(self, nfreq_out, nds_out, nbits_out, servers=None, timeout=-1):
+        if servers is None:
+            servers = self.servers.keys()
+        tokens = []
+
+        for k in servers:
+            self.token += 1
+            req = msgpack.packb(['set_spulsar_writer_params', self.token])
+            args = msgpack.packb([int(nfreq_out), int(nds_out), int(nbits_out)]);
+            tokens.append(self.token)
+            self.sockets[k].send(req + args)
+        ret = self.wait_for_tokens(tokens, timeout=timeout)
+        # We expect one message part for each token.
+        return [msgpack.unpackb(p[0]) if p is not None else None
+                for p in parts]
+
 
     def get_statistics(self, servers=None, wait=True, timeout=-1):
         '''
@@ -719,6 +751,11 @@ if __name__ == '__main__':
                         help='Send request for masked frequencies history')
     parser.add_argument('--masked-times', action='store_true', default=False,
                         help='Send request for masked times history')
+    # alex test message
+    parser.add_argument('--alex-test', action='store_true', default=False,
+                        help='Send request for alex test reply message')
+    parser.add_argument('--spulsar-writer-params', action='append', nargs=3, metavar='y', default=[],
+                        help='Send new slow pulsar writer parameters: <nfreq_out> <nds_out> <nbits_out>')
     parser.add_argument('ports', nargs='*',
                         help='Addresses or port numbers of RPC servers to contact')
     opt = parser.parse_args()
@@ -861,6 +898,19 @@ if __name__ == '__main__':
                 plt.legend()
                 plt.savefig('masked-t-%i.png' % (beam))
 
+        doexit = True
+
+    if opt.alex_test:
+        replies = client.get_alex_test()
+        for r in replies:
+            print(r)
+        doexit = True
+
+    if len(opt.spulsar_writer_params):
+        for nfreq_out, nds_out, nbits_out in opt.spulsar_writer_params: 
+            replies = client.set_spulsar_writer_params(nfreq_out, nds_out, nbits_out)
+            for r in replies:
+                print(replies)
         doexit = True
 
     if opt.rate_history:

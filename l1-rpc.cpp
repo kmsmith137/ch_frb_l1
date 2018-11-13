@@ -10,6 +10,8 @@
 #include <zmq.hpp>
 #include <msgpack.hpp>
 
+#include <rf_pipelines.hpp>
+
 #include "ch_frb_io.hpp"
 #include "ch_frb_l1.hpp"
 #include "l1-rpc.hpp"
@@ -18,6 +20,7 @@
 
 using namespace std;
 using namespace ch_frb_io;
+using namespace rf_pipelines;
 
 /*
  The L1 RPC server is structured as a typical ZeroMQ multi-threaded
@@ -959,6 +962,42 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         zmq::message_t* reply = sbuffer_to_message(buffer);
         return _send_frontend_message(*client, *token_to_message(token), *reply);
 
+    } else if (funcname == "get_alex_test_msg"){ 
+        msgpack::sbuffer buffer;
+        std::string result("alex_l1_reply");
+        msgpack::pack(buffer, result);
+        //  Send reply back to client.
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(*client, *token_to_message(token),
+                                      *reply);
+    } else if (funcname == "set_spulsar_writer_params"){
+        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
+        
+        auto nfreq_out = oh.get().via.array.ptr[0].as<int>();
+        auto nds_out = oh.get().via.array.ptr[1].as<int>();
+        auto nbits_out = oh.get().via.array.ptr[2].as<int>();
+        chime_slow_pulsar_writer::output_file_params ofp;
+
+        ofp.nfreq_out = nfreq_out;
+        ofp.nds_out = nds_out;
+        ofp.nbits_out = nbits_out;
+
+        // ofp.nfreq_out = nfreq_out;
+        // ofp.nds_out = nds_out;
+        // ofp.nbits_out = nbits_out;
+
+        chlog("Pulsar writer paramter update" << std::endl << "\tnfreq_out: " << nfreq_out
+                    << std::endl <<  "\tnds_out: " << nds_out << std::endl << "\tnbits_out " << nbits_out << std::endl);
+
+        //update the writer thread...
+        //FIXME extend to arbitrary beam count; set by beam?
+        this->_slow_pulsar_writer_hash->get(0)->set_output_file_params(ofp);
+
+        msgpack::sbuffer buffer;
+        std::string result("successfully set slow pulsar writer params");
+        msgpack::pack(buffer, result);
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(*client, *token_to_message(token), *reply);
     } else {
         // Silent failure?
         chlog("Error: unknown RPC function name: " << funcname);
