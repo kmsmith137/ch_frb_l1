@@ -198,8 +198,19 @@ class InjectData(object):
         return msgpack
 
     def pack(self):
-        packer = msgpack.Packer(use_single_float=True)
-        b = packer.pack(self.to_msgpack())
+        ndata = np.array([len(d) for d in self.data]).astype(np.uint16)
+        alldata = np.hstack(self.data).astype(np.float32)
+        # msgpack_binary_vector: version 1 packing.
+        v = 1
+        msg = [self.beam, self.mode, self.fpga0,
+               [v, len(self.sample_offsets),
+                bytes(self.sample_offsets.astype(np.int32).data)],
+                [v, len(ndata),
+                 bytes(ndata.data)],
+                [v, len(alldata),
+                 bytes(alldata.data)]]
+        packer = msgpack.Packer(use_single_float=True, use_bin_type=True)
+        b = packer.pack(msg)
         return b
 
 class RpcClient(object):
@@ -306,7 +317,7 @@ class RpcClient(object):
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
 
-    def inject_data(self, inj, binary=False, binary2=False,
+    def inject_data(self, inj,
                     servers=None, wait=True, timeout=-1):
         '''
         inj: InjectData object
@@ -316,40 +327,8 @@ class RpcClient(object):
         tokens = []
         for k in servers:
             self.token += 1
-
-            #req = msgpack.packb(['inject_data', self.token])
-
-            if binary:
-                req = msgpack.packb(['inject_data_2', self.token])
-                version = [1]
-                msg = version + inj.to_msgpack()
-                alldata = msg[-1]
-                msg[-1] = bytes(np.array(alldata).astype(np.float32).data)
-                packer = msgpack.Packer(use_bin_type=True)
-                args = packer.pack(msg)
-
-            elif binary2:
-                req = msgpack.packb(['inject_data_2', self.token])
-                version = [1]
-                msg = inj.to_msgpack()
-                offsets = msg[-3]
-                ndata   = msg[-2]
-                alldata = msg[-1]
-                msg[-3] = [1, len(offsets),
-                           bytes(np.array(offsets).astype(np.int32).data)]
-                msg[-2] = [1, len(ndata),
-                           bytes(np.array(ndata  ).astype(np.uint16).data)]
-                msg[-1] = [1, len(alldata),
-                           bytes(np.array(alldata).astype(np.float32).data)]
-                msg.append(42)
-                msg.append(42)
-                packer = msgpack.Packer(use_bin_type=True)
-                args = packer.pack(msg)
-                
-            else:
-                req = msgpack.packb(['inject_data', self.token])
-                args = inj.pack()
-
+            req = msgpack.packb(['inject_data', self.token])
+            args = inj.pack()
             print('inject_data argument:', len(args), 'bytes')
             tokens.append(self.token)
             self.sockets[k].send(req + args)
@@ -980,14 +959,6 @@ if __name__ == '__main__':
         print('Injecting data spanning', np.min(sample_offsets), 'to', np.max(sample_offsets), ' samples')
         inj = InjectData(beam, 0, fpga0, sample_offsets, data)
         R = client.inject_data(inj, wait=True)
-        print('Results:', R)
-
-        print('Binary=True')
-        R = client.inject_data(inj, binary=True, wait=True)
-        print('Results:', R)
-
-        print('Binary2=True')
-        R = client.inject_data(inj, binary2=True, wait=True)
         print('Results:', R)
         
         doexit = True

@@ -929,9 +929,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         return _send_frontend_message(*client, *token_to_message(token),
                                       *reply);
 
-    } else if ((funcname == "inject_data") ||
-               (funcname == "inject_data_2"))
-        {
+    } else if (funcname == "inject_data") {
 
         string errstring = _handle_inject(req_data, request->size(), offset);
         msgpack::sbuffer buffer;
@@ -987,52 +985,28 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
     if (!_heavy || (_injectors.size() == 0))
         return "This RPC endoint does not support the inject_data call.  Try the heavy-weight RPC port.";
 
+    // This struct defines the msgpack "wire protocol"
+    shared_ptr<inject_data_binmsg> injreq = make_shared<inject_data_binmsg>();
+
+    // This is the description of the data to be injected that we want to produce
     shared_ptr<rf_pipelines::inject_data> injdata = make_shared<rf_pipelines::inject_data>();
-
-    shared_ptr<inject_data_request> injdata1 = make_shared<inject_data_request>();
-    
-    shared_ptr<inject_data_request_2> injdata2 = make_shared<inject_data_request_2>();
-
-    shared_ptr<inject_data_binmsg> injdata3 = make_shared<inject_data_binmsg>();
-    
     shared_ptr<rf_pipelines::injector> inject;
-
-    // argument: inject_data_request object
 
     struct timeval tv1 = get_time();
     
     msgpack::object_handle oh = msgpack::unpack(req_data, req_size, req_offset);
 
     struct timeval tv2 = get_time();
-    double dt12 = time_diff(tv1, tv2);
-    cout << "msgpack::unpack (size " << req_size << "): " << dt12 << endl;
-    tv2 = get_time();
 
-    injdata->min_offset = 0;
-    injdata->max_offset = 0;
     msgpack::object obj = oh.get();
+    obj.convert(injreq);
+    injreq->swap(*injdata);
+    injreq.reset();
 
     struct timeval tv3 = get_time();
-    //double dt23 = time_diff(tv2, tv3);
-    //cout << "object_handle.get(): " << dt23 << endl;
-    //tv3 = get_time();
 
-    if (obj.via.array.size == 8) {
-        obj.convert(injdata3);
-        //cout << "injdata3: fpga_offset length " << injdata3->sample_offset.size() << endl;
-        injdata3->swap(*injdata);
-        //cout << "after swap: injdata3: fpga_offset length " << injdata3->sample_offset.size() << ", injdata: " << injdata->sample_offset.size() << endl;
-    } else if (obj.via.array.size == 7) {
-        obj.convert(injdata2);
-        injdata = injdata2;
-    } else {
-        obj.convert(injdata1);
-        injdata = injdata1;
-    }
-
-    struct timeval tv4 = get_time();
-    double dt34 = time_diff(tv3, tv4);
-    cout << "convert: " << dt34 << endl;
+    cout << "msgpack::unpack (size " << req_size << "): " << time_diff(tv1, tv2) << endl;
+    cout << "convert: " << time_diff(tv2, tv3) << endl;
     
     string errstring = _check_inject_data(injdata);
     if (errstring.size())
