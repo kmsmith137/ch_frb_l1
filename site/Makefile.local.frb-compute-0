@@ -2,10 +2,16 @@
 
 # Directory where executables will be installed
 BINDIR ?= $(HOME)/bin
-INCDIR ?= $(HOME)/include
+# (nothing is installed here, but it is used to link to other installed code)
 LIBDIR ?= $(HOME)/lib
+INCDIR ?= $(HOME)/include
 
+# Read-only location of python header files
+PYTHON_INCDIR=/usr/include/python2.7
+
+NUMPY_INCDIR=/usr/lib64/python2.7/site-packages/numpy/core/include
 MSGPACK_INC ?= -I/usr/local/include
+JSONCPP_INCDIR=/usr/include/jsoncpp
 
 #
 # C++ command line
@@ -14,14 +20,14 @@ MSGPACK_INC ?= -I/usr/local/include
 #
 DEBUG ?= no
 ifeq ($(DEBUG),no)
-     CPP=g++ -std=c++11 -pthread -fPIC -march=native -Wall -O3 -ffast-math -funroll-loops -I. -I/usr/include/jsoncpp -I$(INCDIR)
+     CPP=g++ -std=c++11 -pthread -fPIC -march=native -Wall -O3 -ffast-math -funroll-loops
 else
-     CPP=g++ -std=c++11 -pthread -fPIC -march=native -Wall -O0 -g -ffast-math -funroll-loops -I. -I/usr/include/jsoncpp -I$(INCDIR)
+     CPP=g++ -std=c++11 -pthread -fPIC -march=native -Wall -O0 -g -ffast-math -funroll-loops
 endif
 
+CPP += -I. -I$(INCDIR) -I$(PYTHON_INCDIR) -I$(NUMPY_INCDIR) -I$(JSONCPP_INCDIR) $(MSGPACK_INC)
 CPP += $(shell pkg-config --cflags hdf5)
 CPP += $(shell pkg-config --cflags libzmq)
-CPP += $(MSGPACK_INC)
 
 # Any C++ flags which should only be specified when linking 
 # Don't forget to put -L. and -L$(LIBDIR) on the command line (in this order)

@@ -9,6 +9,10 @@ INCDIR=$(HOME)/chime/include
 # Directory where executables will be installed
 BINDIR=$(HOME)/chime/bin
 
+# Read-only location of python header files
+PYTHON_INCDIR ?= /usr/include/python2.7
+NUMPY_INCDIR ?= /usr/lib64/python2.7/site-packages/numpy/core/include
+
 MSGPACK_INC_DIR ?= ~/msgpack-2.1.0/include
 # /home/travis/
 
@@ -32,7 +36,7 @@ ifeq ($(COVERAGE), yes)
     OPT_FLAGS += -fprofile-arcs -ftest-coverage
 endif
 
-CPP := $(CXX) -std=c++11 -pthread -fPIC -Wall $(OPT_FLAGS) -march=native -ffast-math -I. -I$(INCDIR) -I$(MSGPACK_INC_DIR) -I$(ZMQ_INC_DIR) -I$(JSONCPP_INC_DIR)
+CPP := $(CXX) -std=c++11 -pthread -fPIC -Wall $(OPT_FLAGS) -march=native -ffast-math -I. -I$(INCDIR) -I$(MSGPACK_INC_DIR) -I$(ZMQ_INC_DIR) -I$(JSONCPP_INC_DIR) -I$(PYTHON_INCDIR) -I$(NUMPY_INCDIR)
 
 CPP_LFLAGS := -L. -L$(LIBDIR) -L$(ZMQ_LIB_DIR)
 
