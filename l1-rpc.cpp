@@ -262,6 +262,15 @@ bool chunk_status_map::get(const string& filename,
     }
 }
 
+void inject_data_binmsg::swap(rf_pipelines::inject_data& dest) {
+    std::swap(this->beam, dest.beam);
+    std::swap(this->mode, dest.mode);
+    std::swap(this->fpga0, dest.fpga0);
+    std::swap(this->sample_offset, dest.sample_offset);
+    std::swap(this->ndata, dest.ndata);
+    std::swap(this->data, dest.data);
+}
+
 // -------------------------------------------------------------------------------------------------
 
 L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
