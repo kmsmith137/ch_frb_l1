@@ -184,19 +184,6 @@ class InjectData(object):
         self.sample_offsets = sample_offsets
         self.data = data
 
-    def to_msgpack(self):
-        ndata = []
-        alldata = []
-        for d in self.data:
-            #alldata.extend(list(d))
-            alldata.extend([float(di) for di in d])
-            ndata.append(len(d))
-        #list(self.fpga_offsets),
-        msgpack = [self.beam, self.mode, self.fpga0,
-                   [int(o) for o in self.sample_offsets],
-                   ndata, alldata]
-        return msgpack
-
     def pack(self):
         ndata = np.array([len(d) for d in self.data]).astype(np.uint16)
         alldata = np.hstack(self.data).astype(np.float32)
