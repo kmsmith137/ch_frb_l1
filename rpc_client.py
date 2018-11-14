@@ -20,7 +20,12 @@ class AssembledChunk(object):
         c = msgpacked_chunk
         # print('header', c[0])
         version = c[1]
-        assert(version == 1)
+        assert(version in [1, 2])
+        if version == 1:
+            assert(len(c) == 17)
+        if version == 2:
+            assert(len(c) == 21)
+        self.version = version
         # print('version', version)
         compressed = c[2]
         # print('compressed?', compressed)
@@ -43,29 +48,23 @@ class AssembledChunk(object):
         offsets = c[15]
         data    = c[16]
 
-        # "v1.1" extra arguments
+        # version 2: extra arguments
         self.frame0_nano = 0
         self.nrfifreq = 0
         self.has_rfi_mask = False
         self.rfi_mask = None
-        if len(c) == 21:
+        if self.version == 2:
             self.frame0_nano = c[17]
             self.nrfifreq = c[18]
             self.has_rfi_mask = c[19]
             mask = c[20]
             # to numpy
-            #print('mask:', type(mask))
             mask = np.fromstring(mask, dtype=np.uint8)
             mask = mask.reshape((self.nrfifreq, self.nt//8))
-            #print('mask:', len(mask), mask.dtype)
-            #print('Nrfifreq:', self.nrfifreq)
-            #print('NT:', self.nt)
-            #print('Mask:', len(mask))
             # Expand mask!
             self.rfi_mask = np.zeros((self.nrfifreq, self.nt), bool)
             for i in range(8):
                 self.rfi_mask[:,i::8] = (mask & (1<<i)) > 0
-            #print('Expanded mask:', self.rfi_mask.shape)
 
         if compressed:
            import pybitshuffle
@@ -735,6 +734,8 @@ if __name__ == '__main__':
         default=[])
     parser.add_argument('--list', action='store_true', default=False,
                         help='Just send list_chunks command and exit.')
+    parser.add_argument('--stats', action='store_true', default=False,
+                        help='Just request stats and exit.')
     parser.add_argument('--identity', help='(ignored)')
     parser.add_argument('--stream', help='Stream to files')
     parser.add_argument('--stream-base', help='Stream base directory')
@@ -749,6 +750,7 @@ if __name__ == '__main__':
                         help='Request rate history for the list of L0 nodes')
     parser.add_argument('--masked-freqs', action='store_true', default=False,
                         help='Send request for masked frequencies history')
+<<<<<<< HEAD
     parser.add_argument('--masked-times', action='store_true', default=False,
                         help='Send request for masked times history')
     # alex test message
@@ -756,6 +758,8 @@ if __name__ == '__main__':
                         help='Send request for alex test reply message')
     parser.add_argument('--spulsar-writer-params', action='append', nargs=3, metavar='y', default=[],
                         help='Send new slow pulsar writer parameters: <nfreq_out> <nds_out> <nbits_out>')
+=======
+>>>>>>> upstream/master
     parser.add_argument('ports', nargs='*',
                         help='Addresses or port numbers of RPC servers to contact')
     opt = parser.parse_args()
@@ -794,6 +798,22 @@ if __name__ == '__main__':
                 print('  beam %4i, FPGA range %i to %i' % (beam, f0, f1))
         doexit = True
 
+    if opt.stats:
+        stats = client.get_statistics(timeout=10)
+        for s,server in zip(stats, servers.values()):
+            print('', server)
+            if s is None:
+                print('  None')
+                continue
+            print()
+            for d in s:
+                keys = d.keys()
+                keys.sort()
+                for k in keys:
+                    print('  ', k, '=', d[k])
+                print()
+        doexit = True
+
     if opt.stream:
         beams = []
         for b in opt.stream_beams:
@@ -812,12 +832,11 @@ if __name__ == '__main__':
             print('Got rate:', r)
         doexit = True
 
-    if opt.masked_freqs or opt.masked_times:
+    if opt.masked_freqs:
         import matplotlib
         matplotlib.use('Agg')
         import pylab as plt
 
-    if opt.masked_freqs:
         freqs = client.get_masked_frequencies()
         print('Received masked frequencies:')
         for f in freqs:
@@ -837,6 +856,7 @@ if __name__ == '__main__':
                 plt.savefig('masked-f-%i-%s.png' % (beam, where))
         doexit = True
 
+<<<<<<< HEAD
     if opt.masked_times:
         times = client.get_masked_times()
         for t in times:
@@ -913,6 +933,8 @@ if __name__ == '__main__':
                 print(replies)
         doexit = True
 
+=======
+>>>>>>> upstream/master
     if opt.rate_history:
         kwa = {}
         if len(opt.l0):

@@ -41,7 +41,7 @@ SCRIPTS := ch-frb-make-acq-inventory
 INSTALLED_BINARIES := ch-frb-l1 ch-frb-simulate-l0
 NON_INSTALLED_BINARIES := rpc-client test-l1-rpc sim-l0-set test-packet-rates
 
-all: $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES)
+all: $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES) simulate_l0.so
 
 .PHONY: all install uninstall
 
@@ -79,12 +79,8 @@ ch-frb-simulate-l0: ch-frb-simulate-l0.o l0-sim.o simulate-l0.o file_utils.o yam
 
 PYTHON ?= python
 
-simulate_l0.so: simulate_l0_py.cpp setup.py simulate-l0.o file_utils.o yaml_paramfile.o
-	LINKFLAGS="$(CPP_LFLAGS) -lch_frb_io -lyaml-cpp" \
-	CPPFLAGS="$(CPP_CFLAGS)" \
-	OBJS="simulate-l0.o file_utils.o yaml_paramfile.o" \
-	CPP="$(CPP)" \
-	$(PYTHON) setup.py build_ext --inplace --force --build-temp .
+simulate_l0.so: simulate_l0_py.o simulate-l0.o file_utils.o yaml_paramfile.o
+	$(CPP) $(CPP_LFLAGS) -shared -o $@ $^ -lch_frb_io -lyaml-cpp $(LIBS_PYMODULE)
 
 ch-frb-test: ch-frb-test.cpp $(L1_OBJS)
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io -lzmq -lhdf5
@@ -99,7 +95,7 @@ test-packet-rates: test-packet-rates.cpp $(L1_OBJS) file_utils.o $(CIVET_OBJS)
 	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lzmq -lhdf5 -llz4 -lrf_pipelines -lch_frb_io -ldl
 
 clean:
-	rm -f *.o *~ civetweb/*.o civetweb/*~ $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES) terminus-l1 hdf5-stream
+	rm -f *.o *~ civetweb/*.o civetweb/*~ $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES) simulate_l0.so terminus-l1 hdf5-stream
 
 # Note that we clean up 'terminus-l1' (which has been phased out) in the targets below.
 
