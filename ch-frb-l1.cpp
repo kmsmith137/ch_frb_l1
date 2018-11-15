@@ -789,7 +789,6 @@ void dedispersion_thread_context::_init_mask_counters(const shared_ptr<rf_pipeli
 	}
     };
     
-    // cout << "Finding mask_counter stages..." << endl;
     rf_pipelines::visit_pipeline(find_mask_counters, pipeline);
 
     if (config.nrfifreq > 0) {

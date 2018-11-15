@@ -421,6 +421,13 @@ static string replaceAll(const string &input, const string &from, const string &
     return s;
 }
 
+struct fpga_counts_seen {
+    string where;
+    int beam;
+    uint64_t max_fpga_seen;
+    MSGPACK_DEFINE(where, beam, max_fpga_seen);
+};
+
 int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) {
     const char* req_data = reinterpret_cast<const char *>(request->data());
     std::size_t offset = 0;
@@ -957,6 +964,55 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         zmq::message_t* reply = sbuffer_to_message(buffer);
         return _send_frontend_message(*client, *token_to_message(token), *reply);
 
+    } else if (funcname == "get_fpga_counts") {
+
+        // Returns a list of tuples:
+        // [(where, beam, max_fpgacount_seen), ...]
+        msgpack::sbuffer buffer;
+        msgpack::packer<msgpack::sbuffer> pk(&buffer);
+
+        vector<fpga_counts_seen> fpgaseen;
+        fpga_counts_seen seen;
+
+        seen.where = "packet_stream";
+        seen.beam = 0;
+        seen.max_fpga_seen = _stream->packet_max_fpga_seen;
+        fpgaseen.push_back(seen);
+
+        vector<uint64_t> flushed;
+        vector<uint64_t> retrieved;
+        _stream->get_max_fpga_count_seen(flushed, retrieved);
+        
+        intensity_network_stream::initializer ini = _stream->ini_params;
+        int nbeams = _stream->ini_params.beam_ids.size();
+        for (int i=0; i<nbeams; i++) {
+            // _stream->get_first_fpga_count(beamid)
+            seen.beam = _stream->ini_params.beam_ids[i];
+            seen.where = "chunk_flushed";
+            seen.max_fpga_seen = flushed[i];
+            fpgaseen.push_back(seen);
+
+            seen.where = "chunk_retrieved";
+            seen.max_fpga_seen = retrieved[i];
+            fpgaseen.push_back(seen);
+        }
+
+        for (const auto &it : _mask_stats->map) {
+            int beam_id = it.first.first;
+            string where = it.first.second;
+            shared_ptr<rf_pipelines::mask_measurements_ringbuf> ms = it.second;
+            seen.beam = beam_id;
+            seen.where = "mask_counter_" + where;
+            seen.max_fpga_seen = ms->max_fpga_seen;
+            fpgaseen.push_back(seen);
+        }
+        
+        pk.pack(fpgaseen);
+
+        //  Send reply back to client.
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(*client, *token_to_message(token), *reply);
+        
     } else {
         // Silent failure?
         chlog("Error: unknown RPC function name: " << funcname);
