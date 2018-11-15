@@ -745,7 +745,8 @@ void l1_config::_have_warnings() const
 struct dedispersion_thread_context {
     l1_config config;
     shared_ptr<ch_frb_io::intensity_network_stream> sp;
-    std::shared_ptr<mask_stats_map> ms_map;
+    shared_ptr<mask_stats_map> ms_map;
+    std::function<void(int, shared_ptr<bonsai::dedisperser>)> set_bonsai;
     shared_ptr<bonsai::trigger_pipe> l1b_subprocess;   // warning: can be empty pointer!
     vector<int> allowed_cores;
     bool asynchronous_dedispersion;   // run RFI and dedispersion in separate threads?
@@ -850,6 +851,7 @@ void dedispersion_thread_context::_thread_main() const
     }
 
     auto dedisperser = make_shared<bonsai::dedisperser> (bonsai_config, ini_params);  // not config.bonsai_config
+    set_bonsai(ibeam, dedisperser);
 
     // Trigger processors.
 
@@ -1009,6 +1011,7 @@ struct l1_server {
     vector<shared_ptr<L1PrometheusServer>> prometheus_servers;
     vector<std::thread> rpc_threads;
     vector<std::thread> dedispersion_threads;
+    vector<shared_ptr<bonsai::dedisperser> > bonsai_dedispersers;
 
     // The constructor reads the configuration files, does a lot of sanity checks,
     // but does not initialize any "heavyweight" data structures.
@@ -1033,6 +1036,9 @@ struct l1_server {
     void _init_subscale();
     void _init_20cores_16beams();
     void _init_20cores_8beams();
+
+    // Called-back by dedispersion thread
+    void set_bonsai(int ibeam, shared_ptr<bonsai::dedisperser>);
 };
 
 
@@ -1371,6 +1377,11 @@ void l1_server::spawn_dedispersion_threads()
     if (config.l1_verbosity >= 1)
 	cout << "ch-frb-l1: spawning " << config.nbeams << " dedispersion thread(s)" << endl;
 
+    bonsai_dedispersers.resize(config.nbeams);
+
+    std::function<void(int, shared_ptr<bonsai::dedisperser>)> set_bonsai =
+        std::bind(&l1_server::set_bonsai, this, std::placeholders::_1, std::placeholders::_2);
+
     for (int ibeam = 0; ibeam < config.nbeams; ibeam++) {
 	int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
 	int istream = ibeam / nbeams_per_stream;
@@ -1379,6 +1390,7 @@ void l1_server::spawn_dedispersion_threads()
 	context.config = this->config;
 	context.sp = this->input_streams[istream];
         context.ms_map = this->mask_stats_maps[istream];
+        context.set_bonsai = set_bonsai;
 	context.l1b_subprocess = this->l1b_subprocesses[ibeam];
 	context.allowed_cores = this->dedispersion_cores[ibeam];
 	context.asynchronous_dedispersion = this->asynchronous_dedispersion;
@@ -1395,6 +1407,12 @@ void l1_server::spawn_dedispersion_threads()
     }
 }
 
+void l1_server::set_bonsai(int ibeam,
+                           shared_ptr<bonsai::dedisperser> bonsai) {
+    chlog("set_bonsai(" << ibeam << ")");
+    // FIXME lock
+    bonsai_dedispersers[ibeam] = bonsai;
+}
 
 void l1_server::join_all_threads()
 {
