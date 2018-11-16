@@ -809,10 +809,13 @@ if __name__ == '__main__':
         matplotlib.use('Agg')
         import pylab as plt
         import time
+        import fitsio
         t0 = time.time()
 
-        #times = []
         plots = {}
+
+        columns = {}
+        times = []
 
         while True:
             t1 = time.time()
@@ -830,9 +833,30 @@ if __name__ == '__main__':
                     if not key in plots:
                         plots[key] = []
                     plots[key].append((t1 - t0, fpga))
+
+                    if beam >= 0:
+                        key = 'beam_%i_%s' % (beam, where)
+                    else:
+                        key = where
+                    key = key.replace(' ', '_')
+                    if not key in columns:
+                        columns[key] = []
+                    # pad missing times
+                    npad = len(times) - len(columns[key])
+                    if npad:
+                        columns[key].extend([0]*npad)
+                    columns[key].append(fpga)
+            times.append(t1)
+                    
+            # Sleep to 0.1-second RPC cadence
             t2 = time.time()
             if t2 - t1 < 0.1:
                 time.sleep(t1 + 0.1 - t2)
+
+        fits = fitsio.FITS('max-fpga.fits', 'rw', clobber=True)
+        fits.write([np.array(c) for c in columns.values()] + [np.array(times)],
+                        names=list(columns.keys()) + ['time'])
+        fits.close()
 
         plt.clf()
         for (server,beam,where),plotvals in plots.items():
