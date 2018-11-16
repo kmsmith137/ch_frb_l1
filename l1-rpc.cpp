@@ -15,6 +15,7 @@
 #include "l1-rpc.hpp"
 #include "rpc.hpp"
 #include "chlog.hpp"
+#include "bonsai.hpp"
 
 using namespace std;
 using namespace ch_frb_io;
@@ -266,6 +267,7 @@ bool chunk_status_map::get(const string& filename,
 
 L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
                          shared_ptr<const ch_frb_l1::mask_stats_map> ms,
+                         vector<shared_ptr<const bonsai::dedisperser> > bonsais,
                          const string &port,
                          const string &cmdline,
                          zmq::context_t *ctx) :
@@ -278,7 +280,8 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
     _chunk_status(make_shared<chunk_status_map>()),
     _shutdown(false),
     _stream(stream),
-    _mask_stats(ms)
+    _mask_stats(ms),
+    _bonsais(bonsais)
 {
     if (port.length())
         _port = port;
@@ -475,7 +478,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         // grab beam_ids
         vector<int> beam_ids;
         int nbeams = oh.get().via.array.ptr[3].via.array.size;
-        for (size_t i=0; i<nbeams; i++) {
+        for (int i=0; i<nbeams; i++) {
             int beam = oh.get().via.array.ptr[3].via.array.ptr[i].as<int>();
             // Be forgiving about requests to stream beams that we
             // aren't handling -- otherwise the client has to keep
@@ -602,14 +605,14 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
         // all my beams, as a comma-separated string
         string allbeams = "";
-        for (int i=0; i<_stream->ini_params.beam_ids.size(); i++) {
+        for (size_t i=0; i<_stream->ini_params.beam_ids.size(); i++) {
             if (i) allbeams += ",";
             allbeams += std::to_string(_stream->ini_params.beam_ids[i]);
         }
         dict["all_beams"] = allbeams;
         // beams being streamed
         string strbeams = "";
-        for (int i=0; i<stream_beams.size(); i++) {
+        for (size_t i=0; i<stream_beams.size(); i++) {
             if (i) strbeams += ",";
             strbeams += std::to_string(stream_beams[i]);
         }
@@ -964,7 +967,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         zmq::message_t* reply = sbuffer_to_message(buffer);
         return _send_frontend_message(*client, *token_to_message(token), *reply);
 
-    } else if (funcname == "get_fpga_counts") {
+    } else if (funcname == "get_max_fpga_counts") {
 
         // Returns a list of tuples:
         // [(where, beam, max_fpgacount_seen), ...]
@@ -975,7 +978,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         fpga_counts_seen seen;
 
         seen.where = "packet_stream";
-        seen.beam = 0;
+        seen.beam = -1;
         seen.max_fpga_seen = _stream->packet_max_fpga_seen;
         fpgaseen.push_back(seen);
 
@@ -997,6 +1000,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             fpgaseen.push_back(seen);
         }
 
+        chlog("max_fpga: mask_stats size: " << _mask_stats->map.size());
         for (const auto &it : _mask_stats->map) {
             int beam_id = it.first.first;
             string where = it.first.second;
@@ -1004,6 +1008,19 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             seen.beam = beam_id;
             seen.where = "mask_counter_" + where;
             seen.max_fpga_seen = ms->max_fpga_seen;
+            fpgaseen.push_back(seen);
+        }
+
+        chlog("max_fpga: bonsais size: " << _bonsais.size());
+        for (size_t i=0; i<_bonsais.size(); i++) {
+            const auto &bonsai = _bonsais[i];
+            int beam_id = _stream->ini_params.beam_ids[i];
+            int nc = bonsai->get_nchunks_processed();
+            uint64_t fpga = (nc * bonsai->nt_chunk * _stream->ini_params.fpga_counts_per_sample
+                             + _stream->get_first_fpga_count(beam_id));
+            seen.beam = beam_id;
+            seen.where = "bonsai";
+            seen.max_fpga_seen = fpga;
             fpgaseen.push_back(seen);
         }
         

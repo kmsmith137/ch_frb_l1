@@ -1357,11 +1357,21 @@ void l1_server::make_rpc_servers()
 
     this->rpc_servers.resize(config.nstreams);
     this->rpc_threads.resize(config.nstreams);
-    
+    int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
+
     for (int istream = 0; istream < config.nstreams; istream++) {
-	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], mask_stats_maps[istream], config.rpc_address[istream], command_line);
+        // Grab the subset of bonsai dedispersers for this stream.
+        // NOTE, at this point all dedispersers have been set, so we don't need
+        // to lock the mutex any more.
+        vector<shared_ptr<const bonsai::dedisperser> > rpc_bonsais;
+        for (int ib = 0; ib < nbeams_per_stream; ib++)
+            rpc_bonsais.push_back(bonsai_dedispersers[istream * nbeams_per_stream + ib]);
+
+	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], mask_stats_maps[istream], rpc_bonsais,
+                                                         config.rpc_address[istream], command_line);
 	rpc_threads[istream] = rpc_servers[istream]->start();
     }
+    chlog("Created RPC servers.");
 }
 
 void l1_server::make_prometheus_servers()

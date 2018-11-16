@@ -36,6 +36,8 @@ public:
     // from the ring buffers of the given stream.
     L1RpcServer(std::shared_ptr<ch_frb_io::intensity_network_stream> stream,
                 std::shared_ptr<const ch_frb_l1::mask_stats_map> maskstats,
+                std::vector<std::shared_ptr<const bonsai::dedisperser> > bonsais =
+                std::vector<std::shared_ptr<const bonsai::dedisperser> >(),
                 const std::string &port = "",
                 const std::string &cmdline = "",
                 zmq::context_t* ctx = NULL);
@@ -113,6 +115,9 @@ private:
 
     // objects holding RFI mask statistics
     std::shared_ptr<const ch_frb_l1::mask_stats_map> _mask_stats;
+
+    // Bonsai dedisperser objects (used for latency reporting)
+    std::vector<std::shared_ptr<const bonsai::dedisperser> > _bonsais;
 
     // server start time
     struct timeval _time0;
