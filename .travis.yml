@@ -241,7 +241,7 @@ addons:
       - libfftw3-dev    # for simpulse
 
       - libhdf5-serial-dev
-      - libzmq-dev
+      - libzmq3-dev
 
 # Versions in trusty are too old:
 #      - libzmq-dev (2.1 vs current = 4.2.0)
