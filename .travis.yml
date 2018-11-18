@@ -30,12 +30,14 @@ dist: xenial
 # sudo:false dist:trusty  linux Xeon E5-2680v2, fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx rdtscp lm constant_tsc rep_good nopl xtopology cpuid pni pclmulqdq ssse3 cx16 pcid sse4_1 sse4_2 x2apic popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm cpuid_fault pti fsgsbase smep erms xsaveopt
 # build host: worker-org-ec2.travisci.net
 #
+# sudo:true  dist:xenial  linux (Intel cpu family = 6, model = 63) fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc cpuid pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt aes xsave avx f16c rdrand hypervisor lahf_lm abm invpcid_single pti ssbd ibrs ibpb stibp fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid xsaveopt arat arch_capabilities
+# build host: worker-org-gce-qr28
 
 language: cpp
 
 compiler:
   - gcc
-#  - clang
+  - clang
 
 before_install:
     - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then sysctl -a kern.ostype kern.osrelease kern.version kern.osversion hw.machine hw.model hw.ncpu hw.byteorder hw.physmem hw.cpufrequency hw.memsize hw.optional.x86_64 hw.cpu64bit_capable machdep.cpu.brand_string machdep.cpu.features machdep.cpu.leaf7_features machdep.cpu.extfeatures; fi
@@ -50,36 +52,38 @@ before_install:
     - which python2
 
 before_script:
-    # - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update; fi
-    # - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install lz4 yaml-cpp jsoncpp; fi
-    # # fftw: depends on gcc if --with-fortran (the default).
-    # #- if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install fftw --without-fortran; fi
-    # - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install fftw --ignore-dependencies; fi
-    # 
-    # # boost: already installed
-    # # fftw: problematic
-    # 
-    # - pip2 install --user cpp-coveralls
-    # - pip2 install --user Cython
-    # 
-    # # for cython
-    # - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then export PATH=${PATH}:~/Library/Python/2.7/bin; fi
-    # - which cython
-    # 
-    # # for simpulse
-    # - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then pip2 install --user numpy; fi
-    # 
-    # - export NUMPY_INCDIR=$(python -c "import numpy; print(numpy.get_include())")
-    # - echo "NUMPY_INCDIR is $NUMPY_INCDIR"
-    # 
-    # - find /usr/local/lib/python2.7/
-    # 
-    # - BUILD_DIR=$(pwd)
-    # 
-    # - cd
-    # - wget https://github.com/msgpack/msgpack-c/releases/download/cpp-2.1.0/msgpack-2.1.0.tar.gz
-    # - tar xzf msgpack-2.1.0.tar.gz
-    # - export MSGPACK_INC_DIR=$(pwd)/msgpack-2.1.0/include
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update; fi
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install lz4 yaml-cpp jsoncpp; fi
+    # fftw: depends on gcc if --with-fortran (the default).
+    #- if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install fftw --without-fortran; fi
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install fftw --ignore-dependencies; fi
+    
+    # boost: already installed
+    # fftw: problematic
+    
+    - pip2 install --user cpp-coveralls
+    - pip2 install --user Cython
+    
+    # for cython
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then export PATH=${PATH}:~/Library/Python/2.7/bin; fi
+    - which cython
+    
+    # for simpulse
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then pip2 install --user numpy; fi
+    
+    - export NUMPY_INCDIR=$(python -c "import numpy; print(numpy.get_include())")
+    - echo "NUMPY_INCDIR is $NUMPY_INCDIR"
+    
+    - find /usr/local/lib/python2.7/
+    
+    - BUILD_DIR=$(pwd)
+    
+    - cd
+    - wget https://github.com/msgpack/msgpack-c/releases/download/cpp-2.1.0/msgpack-2.1.0.tar.gz
+    - tar xzf msgpack-2.1.0.tar.gz
+    - export MSGPACK_INC_DIR=$(pwd)/msgpack-2.1.0/include
+
+    #- if [[ "$TRAVIS_OS_NAME" != "osx" ]]; then apt install libzmq-dev; fi
     # 
     # - cd
     # - ls
@@ -95,13 +99,19 @@ before_script:
     # - export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${ZMQ_LIB_DIR}
     # - export PKG_CONFIG_DIR=${PKG_CONFIG_DIR}:${ZMQ_LIB_DIR}/pkgconfig
     # 
-    # - pip2 install --user pyzmq
-    # - pip2 install --user msgpack-python
+    - pip2 install --user pyzmq
+    - pip2 install --user msgpack-python
     # 
     # - cd
     # - wget https://raw.githubusercontent.com/zeromq/cppzmq/master/zmq.hpp
     # - cp zmq.hpp $ZMQ_INC_DIR
+    #
+    - mkdir -p ~/chime/include
+    - cd
+    - wget https://raw.githubusercontent.com/zeromq/cppzmq/master/zmq.hpp
+    - cp zmq.hpp ~/chime/include
     # 
+    #- if [[ "$TRAVIS_OS_NAME" != "osx" ]]; then apt install libhdf5-serial-dev; fi
     # # Cached hdf5 source code install
     # - cd
     # - if [ -d "hdf5" ]; then (cd hdf5 && make all install > hdf5.log 2>&1) || rm -R hdf5; fi
@@ -109,106 +119,106 @@ before_script:
     # 
     # - export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:~/chime/lib
     # 
-    # # Environment variables respected by (some) CHIME Makefile.local files
-    # - export LIBDIR=~/chime/lib
-    # - export INCDIR=~/chime/include
-    # - export BINDIR=~/chime/bin
-    # - export HAVE_PSRFITS=n
-    # - export HAVE_CH_FRB_IO=y
-    # - export HAVE_BONSAI=y
-    # - export PYDIR=~/chime/lib/python2.7/site-packages
-    # - export PYTHON_INCDIR=/usr/include/python2.7
-    # # on osx it's pre-installed in site-packages?
-    # #- export NUMPY_INCDIR=/usr/lib/python2.7/dist-packages/numpy/core/include
-    # - export NUMPY_INCDIR=$(python -c "import numpy; print(numpy.get_include())")
-    # - echo "NUMPY_INCDIR is $NUMPY_INCDIR"
-    # - export JSONCPP_INC_DIR=/usr/include/jsoncpp
-    # - export PYTHONPATH=${PYTHONPATH}:/usr/lib/python2.7/dist-packages
-    # 
-    # # for simpulse
-    # #- export LIBS_PYMODULE="-lPython"
-    # - export LIBS_PYMODULE=$(python-config --ldflags --libs)
-    # 
-    # - cd
-    # - git clone https://github.com/CHIMEFRB/ch_frb_io.git
-    # - cd ch_frb_io
+    # Environment variables respected by (some) CHIME Makefile.local files
+    - export LIBDIR=~/chime/lib
+    - export INCDIR=~/chime/include
+    - export BINDIR=~/chime/bin
+    - export HAVE_PSRFITS=n
+    - export HAVE_CH_FRB_IO=y
+    - export HAVE_BONSAI=y
+    - export PYDIR=~/chime/lib/python2.7/site-packages
+    - export PYTHON_INCDIR=/usr/include/python2.7
+    # on osx it's pre-installed in site-packages?
+    #- export NUMPY_INCDIR=/usr/lib/python2.7/dist-packages/numpy/core/include
+    - export NUMPY_INCDIR=$(python -c "import numpy; print(numpy.get_include())")
+    - echo "NUMPY_INCDIR is $NUMPY_INCDIR"
+    - export JSONCPP_INC_DIR=/usr/include/jsoncpp
+    - export PYTHONPATH=${PYTHONPATH}:/usr/lib/python2.7/dist-packages
+    
+    # for simpulse
+    #- export LIBS_PYMODULE="-lPython"
+    - export LIBS_PYMODULE=$(python-config --ldflags --libs)
+    
+    - cd
+    - git clone https://github.com/CHIMEFRB/ch_frb_io.git
+    - cd ch_frb_io
     # - git checkout rpc_cleanup
-    # - ln -s site/Makefile.local.travis Makefile.local
-    # - pwd
-    # - make
-    # - make install
-    # 
-    # - cd
-    # - git clone https://github.com/kmsmith137/simd_helpers.git
-    # - cd simd_helpers
-    # - ln -s site/Makefile.local.norootprivs Makefile.local
-    # - make install
-    # 
-    # - cd
-    # - git clone https://github.com/kmsmith137/simpulse.git
-    # - cd simpulse
-    # - ln -s site/Makefile.local.travis Makefile.local
-    # - make
-    # - make install
-    # 
-    # - cd
-    # - git clone https://github.com/kmsmith137/sp_hdf5.git
-    # - cd sp_hdf5
-    # - ln -s site/Makefile.local.linux Makefile.local
-    # - make install
-    # - cd
-    # - mv include/* chime/include/
-    # 
-    # - cd
-    # #- git clone https://github.com/kmsmith137/rf_kernels.git
+    - ln -s site/Makefile.local.travis Makefile.local
+    - pwd
+    - make
+    - make install
+
+    - cd
+    - git clone https://github.com/kmsmith137/simd_helpers.git
+    - cd simd_helpers
+    - ln -s site/Makefile.local.norootprivs Makefile.local
+    - make install
+    
+    - cd
+    - git clone https://github.com/kmsmith137/simpulse.git
+    - cd simpulse
+    - ln -s site/Makefile.local.travis Makefile.local
+    - make
+    - make install
+    
+    - cd
+    - git clone https://github.com/kmsmith137/sp_hdf5.git
+    - cd sp_hdf5
+    - ln -s site/Makefile.local.linux Makefile.local
+    - make install
+    - cd
+    - mv include/* chime/include/
+    
+    - cd
+    - git clone https://github.com/kmsmith137/rf_kernels.git
     # - git clone https://github.com/dstndstn/rf_kernels.git
-    # - cd rf_kernels
+    - cd rf_kernels
     # ###
     # - git checkout travis
-    # - ln -s site/Makefile.local.travis Makefile.local
-    # - make install
-    # 
-    # - cd
+    - ln -s site/Makefile.local.travis Makefile.local
+    - make install
+
+    - cd
     # ###- git clone https://github.com/CHIMEFRB/bonsai.git
     # ###- cd bonsai
     # - mkdir bonsai
     # #- wget -O bonsai.tgz http://broiler.astrometry.net/~dstn/temp/bonsai-master-2017-04-10.tgz
     # #- wget -O bonsai.tgz http://broiler.astrometry.net/~dstn/temp/bonsai-l1-prerelease.tgz
-    # - wget -O bonsai.tgz http://broiler.astrometry.net/~dstn/temp/bonsai-15_devel.tgz
-    # - tar xzf bonsai.tgz
-    # - ln -s site/Makefile.local.travis Makefile.local
-    # - make
-    # - make install
-    # 
-    # - cd
-    # - git clone https://github.com/kmsmith137/rf_pipelines.git
-    # - cd rf_pipelines
-    # #- git checkout l1_prerelease2
-    # - ln -s site/Makefile.local.travis Makefile.local
-    # - make
-    # - make install
-    - echo "hello"
+    # #- wget -O bonsai.tgz http://broiler.astrometry.net/~dstn/temp/bonsai-15_devel.tgz
+    - wget -O bonsai.tgz http://broiler.astrometry.net/~dstn/temp/bonsai-2018-11-18.tgz
+    - tar xzf bonsai.tgz
+    - ln -s site/Makefile.local.travis Makefile.local
+    - make
+    - make install
+    
+    - cd
+    - git clone https://github.com/kmsmith137/rf_pipelines.git
+    - cd rf_pipelines
+    - ln -s site/Makefile.local.travis Makefile.local
+    - make
+    - make install
 
 script:
-    # - pwd
-    # - cd $BUILD_DIR
-    # - pwd
-    # - ln -s site/Makefile.local.travis Makefile.local
-    # # - ls ~/chime/lib
-    # # - ls ~/chime/include
-    # # - ls ~/lib
-    # # - ls ~/include
-    # # - nm -CD ~/chime/lib/librf_pipelines.so
-    # - make COVERAGE=yes OPTIMIZE=no
-    # # run some, ahem, unit tests...
+    - pwd
+    - cd $BUILD_DIR
+    - pwd
+    - ln -s site/Makefile.local.travis Makefile.local
+    # - ls ~/chime/lib
+    # - ls ~/chime/include
+    # - ls ~/lib
+    # - ls ~/include
+    # - nm -CD ~/chime/lib/librf_pipelines.so
+    - make COVERAGE=yes OPTIMIZE=no
+    - python test_rfi_mask.py
+    # run some, ahem, unit tests...
     # - ./test-l1-rpc &
     # - sleep 3
     # - python rpc_client.py --shutdown 5555
     # - wait
-    - echo "nothing to see here"
+    # - echo "nothing to see here"
 
-# after_success:
-#     - coveralls --exclude lib --exclude tests --gcov-options '\-lp'
+after_success:
+    - coveralls --exclude lib --exclude tests --gcov-options '\-lp'
 
 addons:
   apt:
@@ -219,6 +229,9 @@ addons:
       - libjsoncpp-dev  # for rf_pipelines
       - python-numpy    # for rpc_client.py and simpulse
       - libfftw3-dev    # for simpulse
+
+      - libhdf5-serial-dev
+      - libzmq-dev
 
 # Versions in trusty are too old:
 #      - libzmq-dev (2.1 vs current = 4.2.0)
