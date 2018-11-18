@@ -3,35 +3,32 @@
 # "trusty" is Ubuntu 14.04.5 LTS
 # gcc 4.8.4
 
-# According to https://github.com/uclouvain/openjpeg/blob/master/.travis.yml
-# "sudo: yes" and "dist: trusty" give us a worker with the AVX2 instruction set
-# (2018-04-08 this does not seem to be the case)
-#sudo: yes
-#dist: trusty
-
 os:
   - osx
   - linux
 
+# Formerly: use containerized infrastructure (for faster startup; no sudo)
+# This has AVX but not AVX2
+#sudo: false
+#dist: trusty
 
 #sudo: true
 #dist: trusty
 
-# Formerly: use containerized infrastructure (for faster startup; no sudo)
-# This has AVX but not AVX2
-sudo: false
-dist: trusty
+sudo: true
+dist: xenial
 
-# Travis Build Machines as of 2018-11-18
+# Travis Build Infrastructure as of 2018-11-18
+# See https://docs.travis-ci.com/user/reference/overview/
 #
 # sudo:true  dist:trusty  osx   Xeon E5-2697v2, FPU VME DE PSE TSC MSR PAE MCE CX8 APIC SEP MTRR PGE MCA CMOV PAT PSE36 CLFSH DS MMX FXSR SSE SSE2 SS SSE3 PCLMULQDQ MON SSSE3 CX16 SSE4.1 SSE4.2 x2APIC POPCNT AES VMM PCID XSAVE OSXSAVE TSCTMR AVX1.0 RDRAND F16C SMEP ERMS RDWRFSGS TSC_THREAD_OFFSET SYSCALL XD EM64T LAHF RDTSCP TSCI
 # sudo:true  dist:trusty  linux Xeon @ 2.5 GHz, fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc eagerfpu pni pclmulqdq ssse3 cx16 pcid sse4_1 sse4_2 x2apic popcnt aes xsave avx f16c rdrand hypervisor lahf_lm fsgsbase tsc_adjust smep erms xsaveopt arat
+# build host: worker-org-gce-fvr1
 #
+# sudo:false dist:trusty  osx   Xeon E5-2697v2, FPU VME DE PSE TSC MSR PAE MCE CX8 APIC SEP MTRR PGE MCA CMOV PAT PSE36 CLFSH DS MMX FXSR SSE SSE2 SS SSE3 PCLMULQDQ MON SSSE3 CX16 SSE4.1 SSE4.2 x2APIC POPCNT AES VMM PCID XSAVE OSXSAVE TSCTMR AVX1.0 RDRAND F16C SMEP ERMS RDWRFSGS TSC_THREAD_OFFSET SYSCALL XD EM64T LAHF RDTSCP TSCI
 #
-#
-#
-#
-#
+# sudo:false dist:trusty  linux Xeon E5-2680v2, fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx rdtscp lm constant_tsc rep_good nopl xtopology cpuid pni pclmulqdq ssse3 cx16 pcid sse4_1 sse4_2 x2apic popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm cpuid_fault pti fsgsbase smep erms xsaveopt
+# build host: worker-org-ec2.travisci.net
 #
 
 language: cpp
