@@ -2,9 +2,10 @@
 
 # "trusty" is Ubuntu 14.04.5 LTS
 # gcc 4.8.4
+# "xenial" is Ubuntu 16.04
 
 os:
-  - osx
+#  - osx   # build infrastructure too old (no AVX2)
   - linux
 
 # Formerly: use containerized infrastructure (for faster startup; no sudo)
@@ -32,6 +33,10 @@ dist: xenial
 #
 # sudo:true  dist:xenial  linux (Intel cpu family = 6, model = 63) fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc cpuid pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt aes xsave avx f16c rdrand hypervisor lahf_lm abm invpcid_single pti ssbd ibrs ibpb stibp fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid xsaveopt arat arch_capabilities
 # build host: worker-org-gce-qr28
+
+# But then, next build,
+sudo:true  dist:xenial  linux (Intel cpu family = 6, model = 62, stepping = 4) fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc cpuid pni pclmulqdq ssse3 cx16 pcid sse4_1 sse4_2 x2apic popcnt aes xsave avx f16c rdrand hypervisor lahf_lm pti ssbd ibrs ibpb stibp fsgsbase tsc_adjust smep erms xsaveopt arat arch_capabilities 
+# build host: worker-org-gce-mn62
 
 language: cpp
 
@@ -83,8 +88,6 @@ before_script:
     - tar xzf msgpack-2.1.0.tar.gz
     - export MSGPACK_INC_DIR=$(pwd)/msgpack-2.1.0/include
 
-    #- if [[ "$TRAVIS_OS_NAME" != "osx" ]]; then apt install libzmq-dev; fi
-    # 
     # - cd
     # - ls
     # # We cache the "libzmq" directory -- does it exist & is it a valid git repo?
@@ -111,7 +114,6 @@ before_script:
     - wget https://raw.githubusercontent.com/zeromq/cppzmq/master/zmq.hpp
     - cp zmq.hpp ~/chime/include
     # 
-    #- if [[ "$TRAVIS_OS_NAME" != "osx" ]]; then apt install libhdf5-serial-dev; fi
     # # Cached hdf5 source code install
     # - cd
     # - if [ -d "hdf5" ]; then (cd hdf5 && make all install > hdf5.log 2>&1) || rm -R hdf5; fi
@@ -134,7 +136,10 @@ before_script:
     - echo "NUMPY_INCDIR is $NUMPY_INCDIR"
     - export JSONCPP_INC_DIR=/usr/include/jsoncpp
     - export PYTHONPATH=${PYTHONPATH}:/usr/lib/python2.7/dist-packages
-    
+
+    - export HDF5_INC_DIR=/usr/include/hdf5/serial
+    - export HDF5_LIB_DIR=/usr/lib/x86_64-linux-gnu/hdf5/serial
+
     # for simpulse
     #- export LIBS_PYMODULE="-lPython"
     - export LIBS_PYMODULE=$(python-config --ldflags --libs)
