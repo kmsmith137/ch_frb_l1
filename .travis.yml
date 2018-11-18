@@ -13,23 +13,32 @@ os:
   - osx
   - linux
 
-# This has AVX but not AVX2
-# sudo: false
-# dist: trusty
 
-sudo: true
+#sudo: true
+#dist: trusty
+
+# Formerly: use containerized infrastructure (for faster startup; no sudo)
+# This has AVX but not AVX2
+sudo: false
 dist: trusty
 
-# Formerly:
-# use containerized infrastructure (for faster startup; no sudo)
-#sudo: false
-#dist: trusty
+# Travis Build Machines as of 2018-11-18
+#
+# sudo:true  dist:trusty  osx   Xeon E5-2697v2, FPU VME DE PSE TSC MSR PAE MCE CX8 APIC SEP MTRR PGE MCA CMOV PAT PSE36 CLFSH DS MMX FXSR SSE SSE2 SS SSE3 PCLMULQDQ MON SSSE3 CX16 SSE4.1 SSE4.2 x2APIC POPCNT AES VMM PCID XSAVE OSXSAVE TSCTMR AVX1.0 RDRAND F16C SMEP ERMS RDWRFSGS TSC_THREAD_OFFSET SYSCALL XD EM64T LAHF RDTSCP TSCI
+# sudo:true  dist:trusty  linux Xeon @ 2.5 GHz, fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc eagerfpu pni pclmulqdq ssse3 cx16 pcid sse4_1 sse4_2 x2apic popcnt aes xsave avx f16c rdrand hypervisor lahf_lm fsgsbase tsc_adjust smep erms xsaveopt arat
+#
+#
+#
+#
+#
+#
+#
 
 language: cpp
 
 compiler:
   - gcc
-  - clang
+#  - clang
 
 before_install:
     - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then sysctl -a kern.ostype kern.osrelease kern.version kern.osversion hw.machine hw.model hw.ncpu hw.byteorder hw.physmem hw.cpufrequency hw.memsize hw.optional.x86_64 hw.cpu64bit_capable machdep.cpu.brand_string machdep.cpu.features machdep.cpu.leaf7_features machdep.cpu.extfeatures; fi
