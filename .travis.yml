@@ -104,6 +104,11 @@ before_script:
     # 
     - pip2 install --user pyzmq
     - pip2 install --user msgpack-python
+
+    - apt search libzmq-dev
+    - pkg-config --cflags libzmq
+    - pkg-config --libs libzmq
+    - pkg-config --modversion libzmq
     # 
     # - cd
     # - wget https://raw.githubusercontent.com/zeromq/cppzmq/master/zmq.hpp
