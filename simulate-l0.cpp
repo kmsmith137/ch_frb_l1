@@ -26,6 +26,8 @@ l0_params::l0_params(const string &filename, double gbps)
 	this->fpga_counts_per_sample = p.read_scalar<int> ("fpga_counts_per_sample");
     if (p.has_param("max_packet_size"))
 	this->max_packet_size = p.read_scalar<int> ("max_packet_size");
+    if (p.has_param("initial_time_index"))
+	this->initial_time_index = p.read_scalar<int> ("initial_time_index");	
 
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
@@ -167,6 +169,7 @@ void l0_params::write(ostream &os) const
     os << "]\n"
        << "fpga_counts_per_sample = " << fpga_counts_per_sample << "\n"
        << "max_packet_size = " << max_packet_size << "\n"
+       << "initial_time_index = " << initial_time_index << "\n"
        << "nfreq_coarse_per_packet = " << nfreq_coarse_per_packet << "\n"
        << "nt_per_packet = " << nt_per_packet << "\n"
        << "nbeams_per_stream = " << nbeams_per_stream << "\n"
@@ -223,9 +226,8 @@ void l0_params::send_noise(int istream, double num_seconds) {
         for (unsigned int i = 0; i < intensity.size(); i++)
             intensity[i] = r0 + scale * (float)rando();
 
-        int chunk_offset = 100;
-
-	int64_t fpga_count = int64_t(ichunk + chunk_offset) * int64_t(ostream->fpga_counts_per_chunk);
+	uint64_t sample_index = ichunk * ostream->nt_per_chunk + initial_time_index;
+	uint64_t fpga_count = sample_index * ostream->fpga_counts_per_sample;
 	ostream->send_chunk(&intensity[0], stride, &weights[0], stride, fpga_count);
     }
 
