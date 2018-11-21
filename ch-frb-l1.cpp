@@ -59,6 +59,7 @@ using namespace ch_frb_l1;
 // l1_config: reads and parses config files, does a lot of sanity checking,
 // but does not allocate any "heavyweight" data structures.
 
+typedef std::unique_lock<std::mutex> ulock;
 
 struct l1_config
 {
@@ -749,7 +750,8 @@ void l1_config::_have_warnings() const
 struct dedispersion_thread_context {
     l1_config config;
     shared_ptr<ch_frb_io::intensity_network_stream> sp;
-    std::shared_ptr<mask_stats_map> ms_map;
+    shared_ptr<mask_stats_map> ms_map;
+    std::function<void(int, shared_ptr<bonsai::dedisperser>)> set_bonsai;
     shared_ptr<bonsai::trigger_pipe> l1b_subprocess;   // warning: can be empty pointer!
     vector<int> allowed_cores;
     bool asynchronous_dedispersion;   // run RFI and dedispersion in separate threads?
@@ -793,7 +795,6 @@ void dedispersion_thread_context::_init_mask_counters(const shared_ptr<rf_pipeli
 	}
     };
     
-    // cout << "Finding mask_counter stages..." << endl;
     rf_pipelines::visit_pipeline(find_mask_counters, pipeline);
 
     if (config.nrfifreq > 0) {
@@ -802,6 +803,8 @@ void dedispersion_thread_context::_init_mask_counters(const shared_ptr<rf_pipeli
 	if (clippers_after_mask_counters)
 	    throw runtime_error("ch-frb-l1: RFI masks requested, and clippers occur after the last mask_counter in the RFI config JSON file");
     }
+
+    chlog("Setting up " << mask_counters.size() << " mask counters");
 
     for (unsigned int i = 0; i < mask_counters.size(); i++) {
 	rf_pipelines::mask_counter_transform::runtime_attrs attrs;
@@ -855,6 +858,7 @@ void dedispersion_thread_context::_thread_main() const
     }
 
     auto dedisperser = make_shared<bonsai::dedisperser> (bonsai_config, ini_params);  // not config.bonsai_config
+    set_bonsai(ibeam, dedisperser);
 
     // Trigger processors.
 
@@ -1008,12 +1012,13 @@ struct l1_server {
     vector<shared_ptr<ch_frb_io::memory_slab_pool>> memory_slab_pools;
     vector<shared_ptr<ch_frb_io::intensity_network_stream>> input_streams;
 
-    std::mutex mask_stats_mutex;
     vector<shared_ptr<mask_stats_map> > mask_stats_maps;
     vector<shared_ptr<L1RpcServer>> rpc_servers;
     vector<shared_ptr<L1PrometheusServer>> prometheus_servers;
     vector<std::thread> rpc_threads;
     vector<std::thread> dedispersion_threads;
+    std::mutex bonsai_dedisp_mutex;
+    vector<shared_ptr<const bonsai::dedisperser> > bonsai_dedispersers;
 
     // The constructor reads the configuration files, does a lot of sanity checks,
     // but does not initialize any "heavyweight" data structures.
@@ -1038,6 +1043,9 @@ struct l1_server {
     void _init_subscale();
     void _init_20cores_16beams();
     void _init_20cores_8beams();
+
+    // Called-back by dedispersion thread
+    void set_bonsai(int ibeam, shared_ptr<const bonsai::dedisperser>);
 };
 
 
@@ -1334,14 +1342,41 @@ void l1_server::make_rpc_servers()
 	throw("ch-frb-l1 internal error: double call to make_rpc_servers()");
     if (input_streams.size() != size_t(config.nstreams))
 	throw("ch-frb-l1 internal error: make_rpc_servers() was called, without first calling make_input_streams()");
+    if (bonsai_dedispersers.size() != config.nbeams)
+        throw("ch-frb-l1 internal error: make_rpc_servers() was called, without first calling spawn_dedispersion_threads");
+
+    // Wait for all bonsai dedispersers to be created.
+    chlog("RPC servers: waiting for bonsai dedispersers to be created...");
+    while (true) {
+        {
+            ulock u(bonsai_dedisp_mutex);
+            int gotn = 0;
+            for (int i=0; i<config.nbeams; i++)
+                if (bonsai_dedispersers[i])
+                    gotn++;
+            if (gotn == config.nbeams)
+                break;
+        }
+        usleep(100000);
+    }
 
     this->rpc_servers.resize(config.nstreams);
     this->rpc_threads.resize(config.nstreams);
-    
+    int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
+
     for (int istream = 0; istream < config.nstreams; istream++) {
-	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], mask_stats_maps[istream], config.rpc_address[istream], command_line);
+        // Grab the subset of bonsai dedispersers for this stream.
+        // NOTE, at this point all dedispersers have been set, so we don't need
+        // to lock the mutex any more.
+        vector<shared_ptr<const bonsai::dedisperser> > rpc_bonsais;
+        for (int ib = 0; ib < nbeams_per_stream; ib++)
+            rpc_bonsais.push_back(bonsai_dedispersers[istream * nbeams_per_stream + ib]);
+
+	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], mask_stats_maps[istream], rpc_bonsais,
+                                                         config.rpc_address[istream], command_line);
 	rpc_threads[istream] = rpc_servers[istream]->start();
     }
+    chlog("Created RPC servers.");
 }
 
 void l1_server::make_prometheus_servers()
@@ -1377,6 +1412,11 @@ void l1_server::spawn_dedispersion_threads()
     if (config.l1_verbosity >= 1)
 	cout << "ch-frb-l1: spawning " << config.nbeams << " dedispersion thread(s)" << endl;
 
+    bonsai_dedispersers.resize(config.nbeams);
+
+    std::function<void(int, shared_ptr<bonsai::dedisperser>)> set_bonsai =
+        std::bind(&l1_server::set_bonsai, this, std::placeholders::_1, std::placeholders::_2);
+
     for (int ibeam = 0; ibeam < config.nbeams; ibeam++) {
 	int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
 	int istream = ibeam / nbeams_per_stream;
@@ -1385,6 +1425,7 @@ void l1_server::spawn_dedispersion_threads()
 	context.config = this->config;
 	context.sp = this->input_streams[istream];
         context.ms_map = this->mask_stats_maps[istream];
+        context.set_bonsai = set_bonsai;
 	context.l1b_subprocess = this->l1b_subprocesses[ibeam];
 	context.allowed_cores = this->dedispersion_cores[ibeam];
 	context.asynchronous_dedispersion = this->asynchronous_dedispersion;
@@ -1401,6 +1442,12 @@ void l1_server::spawn_dedispersion_threads()
     }
 }
 
+void l1_server::set_bonsai(int ibeam,
+                           shared_ptr<const bonsai::dedisperser> bonsai) {
+    chlog("set_bonsai(" << ibeam << ")");
+    ulock u(bonsai_dedisp_mutex);
+    bonsai_dedispersers[ibeam] = bonsai;
+}
 
 void l1_server::join_all_threads()
 {
@@ -1484,9 +1531,9 @@ int main(int argc, char **argv)
     server.make_memory_slab_pools();
     server.make_input_streams();
     server.make_mask_stats();
-    server.make_rpc_servers();
     server.make_prometheus_servers();
     server.spawn_dedispersion_threads();
+    server.make_rpc_servers();
 
     server.join_all_threads();
     server.print_statistics();
