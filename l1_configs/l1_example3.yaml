@@ -12,9 +12,9 @@
 
 nbeams: 16
 nfreq: 16384
-nt_per_packet: 16
 nrfifreq: 0
-
+nt_per_packet: 16
+nt_align: 4096
 
 # This example assumes the nodes are in a non-link-bonded configuration, where
 # each of the four 1 Gbps NIC's is on an independent /24 network.  We use UDP
