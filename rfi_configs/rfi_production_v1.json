@@ -1105,6 +1105,11 @@
                         "nt_chunk": 0, 
                         "nbins": 6, 
                         "axis": "AXIS_FREQ"
+                    },
+                    {
+                        "class_name": "mask_counter", 
+                        "where": "after_rfi", 
+                        "nt_chunk": 1024
                     }
                 ]
             }, 
