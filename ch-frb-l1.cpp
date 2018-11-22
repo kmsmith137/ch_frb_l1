@@ -96,6 +96,7 @@ struct l1_config
     int nstreams = 0;
     int nt_per_packet = 0;
     int fpga_counts_per_sample = 384;
+    int nt_align = 0;   // used to align stream of assembled_chunks to RFI/dedispersion block size.
 
     // The number of frequencies in the downsampled RFI chain.
     // Must match the number of downsampled frequencies in the RFI chain JSON file.  (probably 1024)
@@ -378,6 +379,7 @@ l1_config::l1_config(int argc, char **argv)
     this->nfreq = p.read_scalar<int> ("nfreq");
     this->nt_per_packet = p.read_scalar<int> ("nt_per_packet");
     this->fpga_counts_per_sample = p.read_scalar<int> ("fpga_counts_per_sample", 384);
+    this->nt_align = p.read_scalar<int> ("nt_align");
     this->nrfifreq = p.read_scalar<int> ("nrfifreq");
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
@@ -518,6 +520,8 @@ l1_config::l1_config(int argc, char **argv)
 	throw runtime_error(l1_config_filename + ": 'nt_per_packet' must be >= 1");
     if (fpga_counts_per_sample <= 0)
 	throw runtime_error(l1_config_filename + ": 'fpga_counts_per_sample' must be >= 1");
+    if ((nt_align < 0) || (nt_align % ch_frb_io::constants::nt_per_assembled_chunk))
+	throw runtime_error(l1_config_filename + ": 'nt_align' must be a multiple of " + to_string(ch_frb_io::constants::nt_per_assembled_chunk));
     if (rpc_address.size() != (unsigned int)nstreams)
 	throw runtime_error(l1_config_filename + ": 'rpc_address' must be a list whose length is the number of (ip_addr,port) pairs");
     if (prometheus_address.size() != (unsigned int)nstreams)
@@ -1291,6 +1295,7 @@ void l1_server::make_input_streams()
         ini_params.nrfifreq = config.nrfifreq;
 	ini_params.nt_per_packet = config.nt_per_packet;
 	ini_params.fpga_counts_per_sample = config.fpga_counts_per_sample;
+	ini_params.nt_align = config.nt_align;
 	ini_params.stream_id = istream + 1;   // +1 here since first NFS mount is /frb-archive-1, not /frb-archive-0
         ini_params.frame0_url = config.frame0_url;
         ini_params.frame0_timeout = config.frame0_timeout;

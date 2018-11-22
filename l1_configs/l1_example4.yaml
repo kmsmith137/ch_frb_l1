@@ -15,8 +15,9 @@
 
 nbeams: 8
 nfreq: 16384
+nrfifreq: 1024
 nt_per_packet: 16
-nrfifreq: 0
+nt_align: 4096
 fpga_counts_per_sample: 384
 
 # This example assumes the nodes are in a non-link-bonded configuration, where
@@ -31,6 +32,9 @@ port: 6677
 
 rpc_address: [ "tcp://10.2.1.101:5555", 
 	       "tcp://10.2.2.101:5555" ]
+
+prometheus_address: [ "tcp://10.2.1.101:8888", 
+	              "tcp://10.2.2.101:8888" ]
 
 frame0_url: ""
 
