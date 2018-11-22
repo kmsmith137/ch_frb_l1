@@ -810,6 +810,7 @@ if __name__ == '__main__':
         import pylab as plt
         import time
         import fitsio
+        from collections import OrderedDict
         t0 = time.time()
 
         plots = {}
@@ -821,7 +822,7 @@ if __name__ == '__main__':
             t1 = time.time()
             if t1 - t0 > opt.max_fpga_plot:
                 break
-            fpgas = client.get_max_fpga_counts(timeout=1.)
+            fpgas = client.get_max_fpga_counts(wait=True, timeout=3.)
             for f,server in zip(fpgas, servers.values()):
                 print('', server)
                 if f is None:
@@ -859,22 +860,39 @@ if __name__ == '__main__':
         fits.close()
 
         plt.clf()
+        cc = OrderedDict()
+        cc['packet_stream'] = ('k', 'packets')
+        cc['chunk_flushed'] = ('c', 'flushed')
+        cc['chunk_retrieved'] = ('m', 'retrieved')
+        cc['mask_counter_before_rfi'] = ('b', 'before RFI')
+        cc['mask_counter_after_rfi'] = ('g', 'after RFI')
+        cc['bonsai'] = ('r', 'bonsai')
+        leg = {}
+
         for (server,beam,where),plotvals in plots.items():
             label = ''
-            if len(servers) > 1:
-                label += server + ' '
-            if beam >= 0:
-                label += 'beam %i ' % beam
-            label += where
+            # if len(servers) > 1:
+            #     label += server + ' '
+            # if beam >= 0:
+            #     label += 'beam %i ' % beam
+            # label += where
+            color,label = cc.get(where, (None,where))
             dt = np.array([p[0] for p in plotvals])
             fpga = np.array([p[1] for p in plotvals]).astype(float)
             print('FPGA range', fpga.min(), fpga.max())
             fpga *= 2.56e-6
             I = np.flatnonzero(fpga > 0)
-            plt.plot(dt[I], fpga[I], '.-', label=label)
+            p = plt.plot(dt[I], fpga[I], '.-', color=color)
+            # label=label, 
+            if not label in leg:
+                leg[label] = p[0]
+
+
+        ll = [k for (c,k) in cc.values() if k in leg]
+        lp = [leg[k] for (c,k) in cc.values() if k in leg]
         plt.xlabel('time (s)')
         plt.ylabel('FPGA count / (FPGA/sec) (s)')
-        plt.legend(loc='upper left')
+        plt.legend(lp, ll, loc='upper left')
         plt.savefig('max-fpga.png')
 
         doexit = True
