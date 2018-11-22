@@ -1007,7 +1007,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         for (size_t i=0; i<_latencies.size(); i++) {
             int beam_id = _latencies[i].first;
             const auto &late = _latencies[i].second;
-            uint64_t fpga = ((late->pos_lo + late->nt_chunk) * _stream->ini_params.fpga_counts_per_sample
+            uint64_t fpga = (late->pos_lo * _stream->ini_params.fpga_counts_per_sample
                              + _stream->get_first_fpga_count(beam_id));
             seen.beam = beam_id;
             seen.where = late->where;
