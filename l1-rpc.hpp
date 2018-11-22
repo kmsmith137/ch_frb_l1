@@ -40,7 +40,10 @@ public:
                 std::vector<std::shared_ptr<const bonsai::dedisperser> >(),
                 const std::string &port = "",
                 const std::string &cmdline = "",
-                zmq::context_t* ctx = NULL);
+                std::vector<std::pair<int, std::shared_ptr<const rf_pipelines::latency_monitor> > > monitors =
+                std::vector<std::pair<int, std::shared_ptr<const rf_pipelines::latency_monitor> > > (),
+                zmq::context_t* ctx = NULL
+);
                 
     ~L1RpcServer();
 
@@ -119,6 +122,9 @@ private:
     // Bonsai dedisperser objects (used for latency reporting)
     std::vector<std::shared_ptr<const bonsai::dedisperser> > _bonsais;
 
+    // Latency monitors
+    std::vector<std::pair<int, std::shared_ptr<const rf_pipelines::latency_monitor> > > _latencies;
+    
     // server start time
     struct timeval _time0;
 };

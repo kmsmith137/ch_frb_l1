@@ -270,7 +270,9 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
                          vector<shared_ptr<const bonsai::dedisperser> > bonsais,
                          const string &port,
                          const string &cmdline,
-                         zmq::context_t *ctx) :
+                         std::vector<std::pair<int, std::shared_ptr<const rf_pipelines::latency_monitor> > > monitors,
+                         zmq::context_t *ctx
+                         ) :
     _command_line(cmdline),
     _ctx(ctx ? ctx : new zmq::context_t()),
     _created_ctx(ctx == NULL),
@@ -281,7 +283,8 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
     _shutdown(false),
     _stream(stream),
     _mask_stats(ms),
-    _bonsais(bonsais)
+    _bonsais(bonsais),
+    _latencies(monitors)
 {
     if (port.length())
         _port = port;
@@ -1000,6 +1003,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             fpgaseen.push_back(seen);
         }
 
+        /*
         chlog("max_fpga: mask_stats size: " << _mask_stats->map.size());
         for (const auto &it : _mask_stats->map) {
             int beam_id = it.first.first;
@@ -1010,7 +1014,21 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             seen.max_fpga_seen = ms->max_fpga_seen;
             fpgaseen.push_back(seen);
         }
+         */
 
+        chlog("max_fpga: latency monitors size: " << _latencies.size());
+        for (size_t i=0; i<_latencies.size(); i++) {
+            int beam_id = _latencies[i].first;
+            const auto &late = _latencies[i].second;
+            //int beam_id = _stream->ini_params.beam_ids[i];
+            uint64_t fpga = ((late->pos_lo+1) * late->nt_chunk * _stream->ini_params.fpga_counts_per_sample
+                             + _stream->get_first_fpga_count(beam_id));
+            seen.beam = beam_id;
+            seen.where = late->where;
+            seen.max_fpga_seen = fpga;
+            fpgaseen.push_back(seen);
+        }
+        
         chlog("max_fpga: bonsais size: " << _bonsais.size());
         for (size_t i=0; i<_bonsais.size(); i++) {
             const auto &bonsai = _bonsais[i];
