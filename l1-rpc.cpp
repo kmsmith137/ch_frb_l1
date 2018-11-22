@@ -1003,25 +1003,11 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             fpgaseen.push_back(seen);
         }
 
-        /*
-        chlog("max_fpga: mask_stats size: " << _mask_stats->map.size());
-        for (const auto &it : _mask_stats->map) {
-            int beam_id = it.first.first;
-            string where = it.first.second;
-            shared_ptr<rf_pipelines::mask_measurements_ringbuf> ms = it.second;
-            seen.beam = beam_id;
-            seen.where = "mask_counter_" + where;
-            seen.max_fpga_seen = ms->max_fpga_seen;
-            fpgaseen.push_back(seen);
-        }
-         */
-
         chlog("max_fpga: latency monitors size: " << _latencies.size());
         for (size_t i=0; i<_latencies.size(); i++) {
             int beam_id = _latencies[i].first;
             const auto &late = _latencies[i].second;
-            //int beam_id = _stream->ini_params.beam_ids[i];
-            uint64_t fpga = ((late->pos_lo+1) * late->nt_chunk * _stream->ini_params.fpga_counts_per_sample
+            uint64_t fpga = ((late->pos_lo + late->nt_chunk) * _stream->ini_params.fpga_counts_per_sample
                              + _stream->get_first_fpga_count(beam_id));
             seen.beam = beam_id;
             seen.where = late->where;

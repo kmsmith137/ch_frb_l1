@@ -830,6 +830,9 @@ if __name__ == '__main__':
                     continue
                 print(f)
                 for where, beam, fpga in f:
+                    # python3
+                    if not isinstance(where, str):
+                        where = where.decode()
                     key = (server, beam, where)
                     if not key in plots:
                         plots[key] = []
@@ -854,22 +857,27 @@ if __name__ == '__main__':
             if t2 - t1 < 0.1:
                 time.sleep(t1 + 0.1 - t2)
 
-        fits = fitsio.FITS('max-fpga.fits', 'rw', clobber=True)
-        fits.write([np.array(c) for c in columns.values()] + [np.array(times)],
-                        names=list(columns.keys()) + ['time'])
-        fits.close()
-
+        try:
+            fits = fitsio.FITS('max-fpga.fits', 'rw', clobber=True)
+            fits.write([np.array(c) for c in columns.values()] + [np.array(times)],
+                       names=list(columns.keys()) + ['time'])
+            fits.close()
+        except:
+            import traceback
+            print_exc()
+            
         plt.clf()
         cc = OrderedDict()
         cc['packet_stream'] = ('k', 'packets')
         cc['chunk_flushed'] = ('c', 'flushed')
         cc['chunk_retrieved'] = ('m', 'retrieved')
-        cc['mask_counter_before_rfi'] = ('b', 'before RFI')
-        cc['mask_counter_after_rfi'] = ('g', 'after RFI')
+        cc['before_rfi'] = ('b', 'before RFI')
+        cc['after_rfi'] = ('g', 'after RFI')
         cc['bonsai'] = ('r', 'bonsai')
         leg = {}
-
         for (server,beam,where),plotvals in plots.items():
+            print('beam', beam, 'where', where)
+
             label = ''
             # if len(servers) > 1:
             #     label += server + ' '
@@ -877,9 +885,10 @@ if __name__ == '__main__':
             #     label += 'beam %i ' % beam
             # label += where
             color,label = cc.get(where, (None,where))
+            print('color', color, 'legend', label)
             dt = np.array([p[0] for p in plotvals])
             fpga = np.array([p[1] for p in plotvals]).astype(float)
-            print('FPGA range', fpga.min(), fpga.max())
+            #print('FPGA range', fpga.min(), fpga.max())
             fpga *= 2.56e-6
             I = np.flatnonzero(fpga > 0)
             p = plt.plot(dt[I], fpga[I], '.-', color=color)
@@ -887,11 +896,10 @@ if __name__ == '__main__':
             if not label in leg:
                 leg[label] = p[0]
 
-
         ll = [k for (c,k) in cc.values() if k in leg]
         lp = [leg[k] for (c,k) in cc.values() if k in leg]
         plt.xlabel('time (s)')
-        plt.ylabel('FPGA count / (FPGA/sec) (s)')
+        plt.ylabel('FPGA count (scaled to seconds) (s)')
         plt.legend(lp, ll, loc='upper left')
         plt.savefig('max-fpga.png')
 
