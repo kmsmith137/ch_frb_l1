@@ -39,7 +39,7 @@ SCRIPTS := ch-frb-make-acq-inventory
 
 # Is this the correct split into installed/non-installed?
 INSTALLED_BINARIES := ch-frb-l1 ch-frb-simulate-l0
-NON_INSTALLED_BINARIES := rpc-client test-l1-rpc sim-l0-set test-packet-rates
+NON_INSTALLED_BINARIES := rpc-client test-l1-rpc test-packet-rates
 
 all: $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES) simulate_l0.so
 
@@ -71,10 +71,7 @@ rpc-client: rpc_client.o
 ch-frb-l1: ch-frb-l1.o file_utils.o yaml_paramfile.o $(L1_OBJS) $(CIVET_OBJS)
 	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lrf_pipelines -lbonsai -lch_frb_io -lrf_kernels -lzmq -lyaml-cpp -ljsoncpp -ldl -lcurl
 
-sim-l0-set: sim-l0-set.cpp l0-sim.cpp
-	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io
-
-ch-frb-simulate-l0: ch-frb-simulate-l0.o l0-sim.o simulate-l0.o file_utils.o yaml_paramfile.o
+ch-frb-simulate-l0: ch-frb-simulate-l0.o simulate-l0.o file_utils.o yaml_paramfile.o
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io -lyaml-cpp
 
 PYTHON ?= python
