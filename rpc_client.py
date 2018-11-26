@@ -750,7 +750,6 @@ if __name__ == '__main__':
                         help='Request rate history for the list of L0 nodes')
     parser.add_argument('--masked-freqs', action='store_true', default=False,
                         help='Send request for masked frequencies history')
-<<<<<<< HEAD
     parser.add_argument('--masked-times', action='store_true', default=False,
                         help='Send request for masked times history')
     # alex test message
@@ -758,8 +757,6 @@ if __name__ == '__main__':
                         help='Send request for alex test reply message')
     parser.add_argument('--spulsar-writer-params', action='append', nargs=3, metavar='y', default=[],
                         help='Send new slow pulsar writer parameters: <nfreq_out> <nds_out> <nbits_out>')
-=======
->>>>>>> upstream/master
     parser.add_argument('ports', nargs='*',
                         help='Addresses or port numbers of RPC servers to contact')
     opt = parser.parse_args()
@@ -856,7 +853,6 @@ if __name__ == '__main__':
                 plt.savefig('masked-f-%i-%s.png' % (beam, where))
         doexit = True
 
-<<<<<<< HEAD
     if opt.masked_times:
         times = client.get_masked_times()
         for t in times:
@@ -933,8 +929,6 @@ if __name__ == '__main__':
                 print(replies)
         doexit = True
 
-=======
->>>>>>> upstream/master
     if opt.rate_history:
         kwa = {}
         if len(opt.l0):

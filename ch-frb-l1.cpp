@@ -815,7 +815,6 @@ void dedispersion_thread_context::_init_mask_counters(const shared_ptr<rf_pipeli
     }
 }
 
-<<<<<<< HEAD
 static void find_slow_pulsar_writer(shared_ptr<rf_pipelines::chime_slow_pulsar_writer> &sp_writer,
 				    const shared_ptr<rf_pipelines::pipeline_object> &pipe,
 				    int level)
@@ -829,8 +828,6 @@ static void find_slow_pulsar_writer(shared_ptr<rf_pipelines::chime_slow_pulsar_w
 
     sp_writer = sp;
 }
-=======
->>>>>>> upstream/master
 
 // Note: only called if config.tflag == false.
 void dedispersion_thread_context::_thread_main() const
@@ -887,10 +884,10 @@ void dedispersion_thread_context::_thread_main() const
     // cout << "RFI chain:" << endl;
     // rf_pipelines::print_pipeline(rfi_chain);
 
-<<<<<<< HEAD
-    if ((config.nrfifreq > 0) && (nchime != 1)) {
-        throw runtime_error("ch-frb-l1: need exactly one chime_mask_counter in the RFI config JSON file, or else RFI masks cannot be captured.");
-    }
+    // FIXME resolve merge conflict!?
+    // if ((config.nrfifreq > 0) && (nchime != 1)) {
+    //     throw runtime_error("ch-frb-l1: need exactly one chime_mask_counter in the RFI config JSON file, or else RFI masks cannot be captured.");
+    // }
 
     shared_ptr<rf_pipelines::chime_slow_pulsar_writer> sp_writer;
 
@@ -912,10 +909,8 @@ void dedispersion_thread_context::_thread_main() const
     sp_writer->init_real_time_state(sp_rts);
     sp_writer_hash->set(beam_id, sp_writer);
 	
-=======
     _init_mask_counters(rfi_chain, beam_id);
-    
->>>>>>> upstream/master
+
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);
     pipeline->add(rfi_chain);
@@ -1318,7 +1313,8 @@ void l1_server::make_input_streams()
 	ini_params.fpga_counts_per_sample = config.fpga_counts_per_sample;
 	ini_params.stream_id = istream + 1;   // +1 here since first NFS mount is /frb-archive-1, not /frb-archive-0
         ini_params.frame0_url = config.frame0_url;
-        ini_params.frame0_timeout = config.frame0_timeout;
+        // FIXME resolve merge conflict!?
+        // ini_params.frame0_timeout = config.frame0_timeout;
 	ini_params.force_fast_kernels = !config.slow_kernels;
 	ini_params.force_reference_kernels = config.slow_kernels;
 	ini_params.deliberately_crash = config.deliberately_crash;
