@@ -270,7 +270,7 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
                          vector<shared_ptr<const bonsai::dedisperser> > bonsais,
                          const string &port,
                          const string &cmdline,
-                         std::vector<std::pair<int, std::shared_ptr<const rf_pipelines::latency_monitor> > > monitors,
+                         std::vector<std::tuple<int, std::string, std::shared_ptr<const rf_pipelines::pipeline_object> > > monitors,
                          zmq::context_t *ctx
                          ) :
     _command_line(cmdline),
@@ -1005,12 +1005,13 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
         chlog("max_fpga: latency monitors size: " << _latencies.size());
         for (size_t i=0; i<_latencies.size(); i++) {
-            int beam_id = _latencies[i].first;
-            const auto &late = _latencies[i].second;
+            int beam_id = std::get<0>(_latencies[i]);
+            string where = std::get<1>(_latencies[i]);
+            const auto &late = std::get<2>(_latencies[i]);
             uint64_t fpga = (late->pos_lo * _stream->ini_params.fpga_counts_per_sample
                              + _stream->get_first_fpga_count(beam_id));
             seen.beam = beam_id;
-            seen.where = late->where;
+            seen.where = where;
             seen.max_fpga_seen = fpga;
             fpgaseen.push_back(seen);
         }

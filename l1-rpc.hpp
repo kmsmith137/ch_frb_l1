@@ -40,8 +40,8 @@ public:
                 std::vector<std::shared_ptr<const bonsai::dedisperser> >(),
                 const std::string &port = "",
                 const std::string &cmdline = "",
-                std::vector<std::pair<int, std::shared_ptr<const rf_pipelines::latency_monitor> > > monitors =
-                std::vector<std::pair<int, std::shared_ptr<const rf_pipelines::latency_monitor> > > (),
+                std::vector<std::tuple<int, std::string, std::shared_ptr<const rf_pipelines::pipeline_object> > > monitors =
+                std::vector<std::tuple<int, std::string, std::shared_ptr<const rf_pipelines::pipeline_object> > >(),
                 zmq::context_t* ctx = NULL
 );
                 
@@ -123,7 +123,7 @@ private:
     std::vector<std::shared_ptr<const bonsai::dedisperser> > _bonsais;
 
     // Latency monitors
-    std::vector<std::pair<int, std::shared_ptr<const rf_pipelines::latency_monitor> > > _latencies;
+    std::vector<std::tuple<int, std::string, std::shared_ptr<const rf_pipelines::pipeline_object> > > _latencies;
     
     // server start time
     struct timeval _time0;

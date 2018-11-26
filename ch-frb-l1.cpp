@@ -752,8 +752,8 @@ struct dedispersion_thread_context {
     shared_ptr<ch_frb_io::intensity_network_stream> sp;
     shared_ptr<mask_stats_map> ms_map;
     std::function<void(int, shared_ptr<const bonsai::dedisperser>,
-                       shared_ptr<const rf_pipelines::latency_monitor> latency_pre,
-                       shared_ptr<const rf_pipelines::latency_monitor> latency_post
+                       shared_ptr<const rf_pipelines::pipeline_object> latency_pre,
+                       shared_ptr<const rf_pipelines::pipeline_object> latency_post
                        )> set_bonsai;
     shared_ptr<bonsai::trigger_pipe> l1b_subprocess;   // warning: can be empty pointer!
     vector<int> allowed_cores;
@@ -876,22 +876,27 @@ void dedispersion_thread_context::_thread_main() const
 
     auto bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
 
-    // cout << "RFI chain:" << endl;
-    // rf_pipelines::print_pipeline(rfi_chain);
-
     _init_mask_counters(rfi_chain, beam_id);
 
-    auto latency1 = rf_pipelines::make_latency_monitor(ch_frb_io::constants::nt_per_assembled_chunk, "before_rfi");
-    auto latency2 = rf_pipelines::make_latency_monitor(ch_frb_io::constants::nt_per_assembled_chunk, "after_rfi");
-
-    set_bonsai(ibeam, dedisperser, latency1, latency2);
-    
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);
-    pipeline->add(latency1);
     pipeline->add(rfi_chain);
-    pipeline->add(latency2);
     pipeline->add(bonsai_transform);
+
+    shared_ptr<rf_pipelines::pipeline_object> latency1 = pipeline;
+    shared_ptr<rf_pipelines::pipeline_object> latency2;
+    auto find_last_transform = [&latency2]
+	(const shared_ptr<rf_pipelines::pipeline_object> &p, int depth) {
+        latency2 = p;
+    };
+    rf_pipelines::visit_pipeline(find_last_transform, rfi_chain);
+
+    cout << "RFI chain:" << endl;
+    rf_pipelines::print_pipeline(rfi_chain);
+    cout << "Found first stage for latency monitoring: " << latency1->name << endl;
+    cout << "Found last stage for latency monitoring: " << latency2->name << endl;
+
+    set_bonsai(ibeam, dedisperser, latency1, latency2);
 
     rf_pipelines::run_params rparams;
     rparams.outdir = "";  // disables
@@ -1029,8 +1034,8 @@ struct l1_server {
     std::mutex bonsai_dedisp_mutex;
     vector<shared_ptr<const bonsai::dedisperser> > bonsai_dedispersers;
 
-    vector<shared_ptr<const rf_pipelines::latency_monitor> > latency_monitors_pre;
-    vector<shared_ptr<const rf_pipelines::latency_monitor> > latency_monitors_post;
+    vector<shared_ptr<const rf_pipelines::pipeline_object> > latency_monitors_pre;
+    vector<shared_ptr<const rf_pipelines::pipeline_object> > latency_monitors_post;
 
     // The constructor reads the configuration files, does a lot of sanity checks,
     // but does not initialize any "heavyweight" data structures.
@@ -1058,8 +1063,8 @@ struct l1_server {
 
     // Called-back by dedispersion thread
     void set_bonsai(int ibeam, shared_ptr<const bonsai::dedisperser>,
-                    shared_ptr<const rf_pipelines::latency_monitor> latency_pre,
-                    shared_ptr<const rf_pipelines::latency_monitor> latency_post);
+                    shared_ptr<const rf_pipelines::pipeline_object> latency_pre,
+                    shared_ptr<const rf_pipelines::pipeline_object> latency_post);
 };
 
 
@@ -1383,11 +1388,13 @@ void l1_server::make_rpc_servers()
         // NOTE, at this point all dedispersers have been set, so we don't need
         // to lock the mutex any more.
         vector<shared_ptr<const bonsai::dedisperser> > rpc_bonsais;
-        vector<pair<int, shared_ptr<const rf_pipelines::latency_monitor> > > rpc_latency;
+        vector<tuple<int, string, shared_ptr<const rf_pipelines::pipeline_object> > > rpc_latency;
         for (int ib = 0; ib < nbeams_per_stream; ib++) {
             rpc_bonsais.push_back(bonsai_dedispersers[istream * nbeams_per_stream + ib]);
-            rpc_latency.push_back(make_pair(config.beam_ids[istream * nbeams_per_stream + ib], latency_monitors_pre[istream * nbeams_per_stream + ib]));
-            rpc_latency.push_back(make_pair(config.beam_ids[istream * nbeams_per_stream + ib], latency_monitors_post[istream * nbeams_per_stream + ib]));
+            rpc_latency.push_back(make_tuple(config.beam_ids[istream * nbeams_per_stream + ib], "before_rfi",
+                                             latency_monitors_pre[istream * nbeams_per_stream + ib]));
+            rpc_latency.push_back(make_tuple(config.beam_ids[istream * nbeams_per_stream + ib], "after_rfi",
+                                             latency_monitors_post[istream * nbeams_per_stream + ib]));
         }
 
 	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], mask_stats_maps[istream], rpc_bonsais,
@@ -1436,8 +1443,8 @@ void l1_server::spawn_dedispersion_threads()
     latency_monitors_post.resize(config.nbeams);
     
     std::function<void(int, shared_ptr<const bonsai::dedisperser>,
-                       shared_ptr<const rf_pipelines::latency_monitor>,
-                       shared_ptr<const rf_pipelines::latency_monitor>)> set_bonsai =
+                       shared_ptr<const rf_pipelines::pipeline_object>,
+                       shared_ptr<const rf_pipelines::pipeline_object>)> set_bonsai =
         std::bind(&l1_server::set_bonsai, this, std::placeholders::_1, std::placeholders::_2,
                   std::placeholders::_3, std::placeholders::_4);
 
@@ -1468,12 +1475,12 @@ void l1_server::spawn_dedispersion_threads()
 
 void l1_server::set_bonsai(int ibeam,
                            shared_ptr<const bonsai::dedisperser> bonsai,
-                           shared_ptr<const rf_pipelines::latency_monitor> latency_pre,
-                           shared_ptr<const rf_pipelines::latency_monitor> latency_post) {
+                           shared_ptr<const rf_pipelines::pipeline_object> latency_pre,
+                           shared_ptr<const rf_pipelines::pipeline_object> latency_post) {
     chlog("set_bonsai(" << ibeam << ")");
     ulock u(bonsai_dedisp_mutex);
     bonsai_dedispersers[ibeam] = bonsai;
-    latency_monitors_pre[ibeam] = latency_pre;
+    latency_monitors_pre [ibeam] = latency_pre;
     latency_monitors_post[ibeam] = latency_post;
 }
 
