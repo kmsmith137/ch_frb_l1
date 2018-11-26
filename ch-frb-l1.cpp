@@ -883,7 +883,7 @@ void dedispersion_thread_context::_thread_main() const
     pipeline->add(rfi_chain);
     pipeline->add(bonsai_transform);
 
-    shared_ptr<rf_pipelines::pipeline_object> latency1 = pipeline;
+    shared_ptr<rf_pipelines::pipeline_object> latency1 = stream;
     shared_ptr<rf_pipelines::pipeline_object> latency2;
     auto find_last_transform = [&latency2]
 	(const shared_ptr<rf_pipelines::pipeline_object> &p, int depth) {
