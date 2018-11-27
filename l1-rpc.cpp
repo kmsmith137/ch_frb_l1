@@ -264,7 +264,6 @@ bool chunk_status_map::get(const string& filename,
 
 void inject_data_request::swap(rf_pipelines::inject_data& dest) {
     std::swap(this->mode, dest.mode);
-    std::swap(this->fpga0, dest.fpga0);
     std::swap(this->sample_offset, dest.sample_offset);
     std::swap(this->ndata, dest.ndata);
     std::swap(this->data, dest.data);
@@ -273,7 +272,7 @@ void inject_data_request::swap(rf_pipelines::inject_data& dest) {
 // -------------------------------------------------------------------------------------------------
 
 L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
-                         vector<shared_ptr<rf_pipelines::injector> > injectors,
+                         vector<shared_ptr<rf_pipelines::intensity_injector> > injectors,
                          shared_ptr<const ch_frb_l1::mask_stats_map> ms,
                          bool heavy,
                          const string &port,
@@ -1009,6 +1008,7 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
     msgpack::object obj = oh.get();
     obj.convert(injreq);
     int beam = injreq->beam;
+    uint64_t fpga0 = injreq->fpga0;
     injreq->swap(*injdata);
     injreq.reset();
 
@@ -1021,6 +1021,17 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
     if (errstring.size())
         return errstring;
 
+    // find the injector for this beam
+    for (size_t i=0; i<_stream->ini_params.beam_ids.size(); i++)
+        if (_stream->ini_params.beam_ids[i] == beam) {
+            assert(i < _injectors.size());
+            inject = _injectors[i];
+            break;
+        }
+    // Matching beam
+    if (!inject)
+        return "inject_data: beam=" + to_string(beam) + " which is not a beam that I am handling";
+    
     // compute min_offset, max_offset elements
     int min_offset = injdata->sample_offset[0];
     int max_offset = injdata->sample_offset[0] + injdata->ndata[0];
@@ -1031,38 +1042,25 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
     injdata->min_offset = min_offset;
     injdata->max_offset = max_offset;
 
-    // find the injector for this beam; check that the first FPGAcount has not already passed!
-    for (size_t i=0; i<_stream->ini_params.beam_ids.size(); i++)
-        if (_stream->ini_params.beam_ids[i] == beam) {
-            assert(i < _injectors.size());
-            inject = _injectors[i];
-            break;
-        }
-    // _check_inject_data already checked that we should have a matching beam
-    assert(inject);
+    uint64_t stream_fpga0 = _stream->get_first_fpga_count(beam);
+    uint64_t stream_fpganow = _stream->packet_max_fpga_seen;
+    if (fpga0 < min_offset * _stream->ini_params.fpga_counts_per_sample)
+        // Bad fpga0
+        return "inject_data: bad FPGA0 / min_offset combo (FPGA goes negative)";
 
-    
-    
-    uint64_t last_fpga = inject->get_last_fpgacount_seen();
-    if (injdata->fpga0 < last_fpga)
-        return "inject_data: FPGA0 " + to_string(injdata->fpga0) + " is in the past!  Injector last saw " + to_string(last_fpga);
+    if (fpga0 + min_offset * _stream->ini_params.fpga_counts_per_sample >= stream_fpganow)
+        return "inject_data: FPGA0 " + to_string(fpga0) + " is in the past!  FPGA now: " + to_string(stream_fpganow);
+
+    // rf_pipelines sample offset
+    injdata->sample0 = ((int64_t)fpga0 - (int64_t)stream_fpga0) / (int64_t)_stream->ini_params.fpga_counts_per_sample;
 
     inject->inject(injdata);
-    cout << "Inject_data RPC: beam " << beam << ", mode " << injdata->mode << ", nfreq " << injdata->sample_offset.size() << ", FPGA0 " << injdata->fpga0 << ", offset range " << injdata->min_offset << ", " << injdata->max_offset << endl;
+    cout << "Inject_data RPC: beam " << beam << ", mode " << injdata->mode << ", nfreq " << injdata->sample_offset.size() << ", sample0 " << injdata->sample0 << ", offset range " << injdata->min_offset << ", " << injdata->max_offset << endl;
     return "";
 }
 
 string L1RpcServer::_check_inject_data(shared_ptr<rf_pipelines::inject_data> inj) {
     assert(_stream.get());
-    // Check beam number -- do I have the requested beam?
-    bool found = false;
-    for (int beam : _stream->ini_params.beam_ids)
-        if (beam == inj->beam) {
-            found = true;
-            break;
-        }
-    if (!found)
-        return "inject_data: beam=" + to_string(inj->beam) + " which is not a beam that I am handling";
     
     // Check mode.
     if (inj->mode != 0)
