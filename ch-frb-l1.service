@@ -8,8 +8,8 @@ After=network.target
 Type=simple
 
 User=l1operator
-WorkingDirectory=/home/l1operator/ch_frb_l1
-ExecStart=/home/l1operator/ch_frb_l1/ch-frb-l1-dispatch.sh
+WorkingDirectory=/home/l1operator/
+ExecStart=/home/l1operator/ch-frb-l1-dispatch.sh
 Restart=on-abnormal
 
 # [Install]
