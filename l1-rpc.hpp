@@ -37,7 +37,7 @@ public:
     // Creates a new RPC server listening on the given port, and reading
     // from the ring buffers of the given stream.
     L1RpcServer(std::shared_ptr<ch_frb_io::intensity_network_stream> stream,
-                std::vector<std::shared_ptr<rf_pipelines::injector> > injectors,
+                std::vector<std::shared_ptr<rf_pipelines::intensity_injector> > injectors,
                 std::shared_ptr<const ch_frb_l1::mask_stats_map> maskstats,
                 bool heavy = true,
                 const std::string &port = "",
@@ -123,7 +123,7 @@ private:
     std::shared_ptr<ch_frb_io::intensity_network_stream> _stream;
 
     // the injector_transforms for the beams we are running.
-    std::vector<std::shared_ptr<rf_pipelines::injector> > _injectors;
+    std::vector<std::shared_ptr<rf_pipelines::intensity_injector> > _injectors;
 
     // objects holding RFI mask statistics
     std::shared_ptr<const ch_frb_l1::mask_stats_map> _mask_stats;

@@ -263,7 +263,6 @@ bool chunk_status_map::get(const string& filename,
 }
 
 void inject_data_request::swap(rf_pipelines::inject_data& dest) {
-    std::swap(this->beam, dest.beam);
     std::swap(this->mode, dest.mode);
     std::swap(this->fpga0, dest.fpga0);
     std::swap(this->sample_offset, dest.sample_offset);
@@ -999,7 +998,7 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
 
     // This is the description of the data to be injected that we want to produce
     shared_ptr<rf_pipelines::inject_data> injdata = make_shared<rf_pipelines::inject_data>();
-    shared_ptr<rf_pipelines::injector> inject;
+    shared_ptr<rf_pipelines::intensity_injector> inject;
 
     struct timeval tv1 = get_time();
     
@@ -1009,6 +1008,7 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
 
     msgpack::object obj = oh.get();
     obj.convert(injreq);
+    int beam = injreq->beam;
     injreq->swap(*injdata);
     injreq.reset();
 
@@ -1033,7 +1033,7 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
 
     // find the injector for this beam; check that the first FPGAcount has not already passed!
     for (size_t i=0; i<_stream->ini_params.beam_ids.size(); i++)
-        if (_stream->ini_params.beam_ids[i] == injdata->beam) {
+        if (_stream->ini_params.beam_ids[i] == beam) {
             assert(i < _injectors.size());
             inject = _injectors[i];
             break;
@@ -1041,12 +1041,14 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
     // _check_inject_data already checked that we should have a matching beam
     assert(inject);
 
+    
+    
     uint64_t last_fpga = inject->get_last_fpgacount_seen();
     if (injdata->fpga0 < last_fpga)
         return "inject_data: FPGA0 " + to_string(injdata->fpga0) + " is in the past!  Injector last saw " + to_string(last_fpga);
 
     inject->inject(injdata);
-    cout << "Inject_data RPC: beam " << injdata->beam << ", mode " << injdata->mode << ", nfreq " << injdata->sample_offset.size() << ", FPGA0 " << injdata->fpga0 << ", offset range " << injdata->min_offset << ", " << injdata->max_offset << endl;
+    cout << "Inject_data RPC: beam " << beam << ", mode " << injdata->mode << ", nfreq " << injdata->sample_offset.size() << ", FPGA0 " << injdata->fpga0 << ", offset range " << injdata->min_offset << ", " << injdata->max_offset << endl;
     return "";
 }
 

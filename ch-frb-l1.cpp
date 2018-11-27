@@ -739,7 +739,7 @@ struct dedispersion_thread_context {
     shared_ptr<ch_frb_io::intensity_network_stream> sp;
     std::shared_ptr<mask_stats_map> ms_map;
     shared_ptr<bonsai::trigger_pipe> l1b_subprocess;   // warning: can be empty pointer!
-    shared_ptr<rf_pipelines::injector> injector_transform;
+    shared_ptr<rf_pipelines::intensity_injector> injector_transform;
     vector<int> allowed_cores;
     bool asynchronous_dedispersion;   // run RFI and dedispersion in separate threads?
     int ibeam;
@@ -1003,7 +1003,7 @@ struct l1_server {
     vector<std::thread> rpc_threads;
     vector<std::thread> heavy_rpc_threads;
     vector<std::thread> dedispersion_threads;
-    vector<shared_ptr<rf_pipelines::injector> > injectors;
+    vector<shared_ptr<rf_pipelines::intensity_injector> > injectors;
 
     // The constructor reads the configuration files, does a lot of sanity checks,
     // but does not initialize any "heavyweight" data structures.
@@ -1337,17 +1337,17 @@ void l1_server::make_rpc_servers()
     }
 
     for (int ibeam = 0; ibeam < config.nbeams; ibeam++)
-        this->injectors[ibeam] = rf_pipelines::make_injector(ch_frb_io::constants::nt_per_assembled_chunk);
+        this->injectors[ibeam] = rf_pipelines::make_intensity_injector(ch_frb_io::constants::nt_per_assembled_chunk);
 
     for (int istream = 0; istream < config.nstreams; istream++) {
         // Make a copy of the vector of injectors for beams operated by this stream.
 	int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
-        vector<shared_ptr<rf_pipelines::injector> > inj(nbeams_per_stream);
+        vector<shared_ptr<rf_pipelines::intensity_injector> > inj(nbeams_per_stream);
         for (int i=0; i<nbeams_per_stream; i++)
             inj[i] = injectors[istream * nbeams_per_stream + i];
 
         if (heavy) {
-            vector<shared_ptr<rf_pipelines::injector> > empty_inj;
+            vector<shared_ptr<rf_pipelines::intensity_injector> > empty_inj;
             // Light-weight RPC server gets no injectors
             rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], empty_inj, mask_stats_maps[istream], false, config.rpc_address[istream], command_line);
             heavy_rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], true, config.heavy_rpc_address[istream], command_line);
