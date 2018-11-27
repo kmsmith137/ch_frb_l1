@@ -22,7 +22,7 @@ frame0_url: ""
 
 # This configures the L1 server to use a single I/O thread for all writes.
 # See 'output_devices' in MANUAL.md for discussion!
-output_devices: [ "" ]
+output_devices: [ "" ]    # test: [/usr", '/tmp' ]
 
 slow_kernels: False
 

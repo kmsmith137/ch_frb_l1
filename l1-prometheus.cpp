@@ -1,3 +1,4 @@
+//#include <sys/stat.h>
 #include <unistd.h>
 #include <iostream>
 #include <sstream>
@@ -130,6 +131,42 @@ public:
                       "%s{device=\"%s\"} %llu\n", key, device.c_str(),
                       (unsigned long long)it->second);
         }
+
+        int nwritable = 0;
+        for (const auto &od : _stream->ini_params.output_devices) {
+            string path = od->ini_params.device_name + "/";
+            /*
+             struct stat st;
+             if (stat(path.c_str(), &st)) {
+             chlog("Failed to stat() an output_device: " << path);
+             continue;
+             }
+             mode_t wantmode = S_IFDIR | S_IWUSR | S_IXUSR;
+             if ((st.st_mode & wantmode) == wantmode)
+             nwriteable++;
+             else
+             chlog("Output device " << path << ": wanted mode " << wantmode << ", got " << st.st_mode);
+             */
+            if (access(path.c_str(), W_OK)) {
+                chlog("Failed to check access() an output_device: " << path <<
+                      ", error: " << strerror(errno));
+                continue;
+            }
+            nwritable++;
+        }
+        key = "output_devices_writable";
+        mg_printf(conn,
+                  "# HELP %s %s\n"
+                  "# TYPE %s gauge\n", key,
+                  "Number of L1 output devices that are writable", key);
+        mg_printf(conn, "%s %i\n", key, nwritable);
+
+        key = "output_devices_total";
+        mg_printf(conn,
+                  "# HELP %s %s\n"
+                  "# TYPE %s gauge\n", key,
+                  "Total number of L1 output devices", key);
+        mg_printf(conn, "%s %lu\n", key, _stream->ini_params.output_devices.size());
 
         // Retrieve and summarize the packet rate history.
         // How many seconds of history to retrieve--should match the
