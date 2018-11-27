@@ -1023,6 +1023,11 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             int nc = bonsai->get_nchunks_processed();
             uint64_t fpga = (nc * bonsai->nt_chunk * _stream->ini_params.fpga_counts_per_sample
                              + _stream->get_first_fpga_count(beam_id));
+            chlog("fpga (ints   ): " << fpga);
+            fpga = ((uint64_t)nc * (uint64_t)bonsai->nt_chunk * (uint64_t)_stream->ini_params.fpga_counts_per_sample
+                    + _stream->get_first_fpga_count(beam_id));
+            chlog("fpga (uint64s): " << fpga);
+
             seen.beam = beam_id;
             seen.where = "bonsai";
             seen.max_fpga_seen = fpga;
