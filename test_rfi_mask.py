@@ -21,11 +21,6 @@ l0 = simulate_l0.l0sim('l0_configs/l0_test_rfi.yml', 1.0)
 client = RpcClient({'a':'tcp://127.0.0.1:5555'})
 
 if True:
-    # Injection
-    l1cmd = './ch-frb-l1 -fv l1_configs/l1_test_norfi.yml rfi_configs/rfi_testing_inject.json bonsai_production_noups_nbeta1_v2.hdf5 xxx'
-    need_rfi = False
-    
-elif False:
     l1cmd = './ch-frb-l1 -fv l1_configs/l1_test_rfi.yml rfi_configs/rfi_testing.json bonsai_production_noups_nbeta1_v2.hdf5 xxx'
     need_rfi = True
 else:
@@ -57,37 +52,6 @@ prom_cmd = 'wget http://127.0.0.1:9999/metrics -O -'
 
 writereq = None
 
-if True:
-    # inject some data
-    beam = beam_id
-    fpga0 = 52 * 1024 * 384
-    nfreq = nf
-    sample_offsets = np.zeros(nfreq, np.int32)
-    data = []
-    for f in range(nfreq):
-        sample_offsets[f] = int(0.2 * f)
-        data.append(200. * np.ones(200, np.float32))
-    print('Injecting data spanning', np.min(sample_offsets), 'to', np.max(sample_offsets), ' samples')
-    inj = InjectData(beam, 0, fpga0, sample_offsets, data)
-    print('Inject_data')
-    R = client.inject_data(inj, wait=True)
-    print('Results:', R)
-
-    import simpulse
-    nt = 1024
-    nfreq = nf
-    freq_lo = 400.
-    freq_hi = 800.
-    dm = 500.
-    sm = 3. # ms
-    width = 0.05 # s
-    fluence = 100.
-    spectral_index = -1.
-    undispersed_t = 0.
-    sp = simpulse.single_pulse(nt, nfreq, freq_lo, freq_hi, dm, sm, width, fluence, spectral_index, undispersed_t)
-    R2 = client.inject_single_pulse(beam, nfreq, sp, fpga0, wait=True)
-    print('Results:', R2)
-    
 for i in range(20):
     data = np.clip(128. + 20. * np.random.normal(size=(nf, nt)), 1, 254).astype(np.uint8)
     # Make an RFI spike
@@ -159,26 +123,3 @@ for i,fn in enumerate(fns):
     plt.savefig(fn)
     print('Wrote', fn)
 
-
-fns = glob('chunk-writer-000000*.msgpack')
-fns.sort()
-for i,fn in enumerate(fns):
-    print('Reading', fn)
-    chunk = read_msgpack_file(fn)
-    print('Chunk: ', chunk)
-
-    sample0 = chunk.fpga0 / chunk.fpga_counts_per_sample
-    I,W = chunk.decode()
-    nf,nt = I.shape
-
-    plt.clf()
-    plt.imshow(I, interpolation='nearest', origin='lower',
-               #vmin=0, vmax=1, cmap='gray',
-               extent=[sample0, sample0+nt * chunk.binning, 0, nf], aspect='auto')
-    plt.xlabel('sample number (~ms)')
-    plt.ylabel('frequency bin')
-    plt.title('Intensity')
-    fn = 'chunk-intensity-%02i.png' % i
-    plt.savefig(fn)
-    print('Wrote', fn)
- 
