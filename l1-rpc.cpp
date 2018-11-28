@@ -995,9 +995,9 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
     // This struct defines the msgpack "wire protocol"
     shared_ptr<inject_data_request> injreq = make_shared<inject_data_request>();
 
-    // This is the description of the data to be injected that we want to produce
+    // This is the struct we will send to rf_pipelines
     shared_ptr<rf_pipelines::inject_data> injdata = make_shared<rf_pipelines::inject_data>();
-    shared_ptr<rf_pipelines::intensity_injector> inject;
+    shared_ptr<rf_pipelines::intensity_injector> syringe;
 
     struct timeval tv1 = get_time();
     
@@ -1017,7 +1017,8 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
     cout << "msgpack::unpack (size " << req_size << "): " << time_diff(tv1, tv2) << endl;
     cout << "convert: " << time_diff(tv2, tv3) << endl;
     
-    string errstring = _check_inject_data(injdata);
+    assert(_stream.get());
+    string errstring = injdata->check(_stream->ini_params.nupfreq * ch_frb_io::constants::nfreq_coarse_tot);
     if (errstring.size())
         return errstring;
 
@@ -1025,59 +1026,23 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
     for (size_t i=0; i<_stream->ini_params.beam_ids.size(); i++)
         if (_stream->ini_params.beam_ids[i] == beam) {
             assert(i < _injectors.size());
-            inject = _injectors[i];
+            syringe = _injectors[i];
             break;
         }
     // Matching beam
-    if (!inject)
+    if (!syringe)
         return "inject_data: beam=" + to_string(beam) + " which is not a beam that I am handling";
     
-    // compute min_offset, max_offset elements
-    int min_offset = injdata->sample_offset[0];
-    int max_offset = injdata->sample_offset[0] + injdata->ndata[0];
-    for (int i=0; i<injdata->sample_offset.size(); i++) {
-        min_offset = std::min(min_offset, injdata->sample_offset[i]);
-        max_offset = std::max(max_offset, injdata->sample_offset[i] + injdata->ndata[i]);
-    }
-    injdata->min_offset = min_offset;
-    injdata->max_offset = max_offset;
-
-    uint64_t stream_fpga0 = _stream->get_first_fpga_count(beam);
-    uint64_t stream_fpganow = _stream->packet_max_fpga_seen;
-    if (fpga0 < min_offset * _stream->ini_params.fpga_counts_per_sample)
-        // Bad fpga0
-        return "inject_data: bad FPGA0 / min_offset combo (FPGA goes negative)";
-
-    if (fpga0 + min_offset * _stream->ini_params.fpga_counts_per_sample >= stream_fpganow)
-        return "inject_data: FPGA0 " + to_string(fpga0) + " is in the past!  FPGA now: " + to_string(stream_fpganow);
-
     // rf_pipelines sample offset
+    uint64_t stream_fpga0 = _stream->get_first_fpga_count(beam);
     injdata->sample0 = ((int64_t)fpga0 - (int64_t)stream_fpga0) / (int64_t)_stream->ini_params.fpga_counts_per_sample;
 
-    inject->inject(injdata);
+    try {
+        syringe->inject(injdata);
+    } catch (const runtime_error &e) {
+        return e.what();
+    }
     cout << "Inject_data RPC: beam " << beam << ", mode " << injdata->mode << ", nfreq " << injdata->sample_offset.size() << ", sample0 " << injdata->sample0 << ", offset range " << injdata->min_offset << ", " << injdata->max_offset << endl;
-    return "";
-}
-
-string L1RpcServer::_check_inject_data(shared_ptr<rf_pipelines::inject_data> inj) {
-    assert(_stream.get());
-    
-    // Check mode.
-    if (inj->mode != 0)
-        return "inject_data: mode=" + to_string(inj->mode) + " but only mode=0 is known";
-
-    // Check array sizes
-    size_t nfreq = _stream->ini_params.nupfreq * ch_frb_io::constants::nfreq_coarse_tot;
-
-    if (inj->sample_offset.size() != nfreq)
-        return "inject_data: sample_offset array has size " + to_string(inj->sample_offset.size()) + ", expected nfreq=" + to_string(nfreq);
-    if (inj->ndata.size() != nfreq)
-        return "inject_data: ndata array has size " + to_string(inj->ndata.size()) + ", expected nfreq=" + to_string(nfreq);
-    size_t nd = 0;
-    for (uint16_t n : inj->ndata)
-        nd += n;
-    if (inj->data.size() != nd)
-        return "inject_data: data array has size " + to_string(inj->data.size()) + ", expected sum(ndata)=" + to_string(nd);
     return "";
 }
 
