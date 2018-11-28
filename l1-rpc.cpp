@@ -1034,8 +1034,16 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
         return "inject_data: beam=" + to_string(beam) + " which is not a beam that I am handling";
     
     // rf_pipelines sample offset
-    uint64_t stream_fpga0 = _stream->get_first_fpga_count(beam);
+    uint64_t stream_fpga0;
+    try {
+        // If the first packet has not been received, we don't know FPGA0.
+        stream_fpga0 = _stream->get_first_fpga_count(beam);
+    } catch (const runtime_error &e) {
+        return e.what();
+    }
     injdata->sample0 = ((int64_t)fpga0 - (int64_t)stream_fpga0) / (int64_t)_stream->ini_params.fpga_counts_per_sample;
+
+    cout << "L1-RPC inject_data: injection FPGA0 " << fpga0 << ", stream's first FPGA count: " << _stream->get_first_fpga_count(beam) << ", sample0 " << injdata->sample0 << endl;
 
     try {
         syringe->inject(injdata);
