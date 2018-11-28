@@ -2,6 +2,11 @@
     "class_name": "pipeline", 
     "elements": [
         {
+            "class_name": "chime_assembled_chunk_file_writer",
+            "filename": "chunk-writer-(CHUNK).msgpack",
+            "clobber": true
+        },
+        {
             "sub_pipeline": {
                 "class_name": "pipeline", 
                 "elements": [

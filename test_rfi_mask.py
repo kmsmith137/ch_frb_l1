@@ -21,6 +21,11 @@ l0 = simulate_l0.l0sim('l0_configs/l0_test_rfi.yml', 1.0)
 client = RpcClient({'a':'tcp://127.0.0.1:5555'})
 
 if True:
+    # Injection
+    l1cmd = './ch-frb-l1 -fv l1_configs/l1_test_norfi.yml rfi_configs/rfi_testing_inject.json bonsai_production_noups_nbeta1_v2.hdf5 xxx'
+    need_rfi = False
+    
+elif False:
     l1cmd = './ch-frb-l1 -fv l1_configs/l1_test_rfi.yml rfi_configs/rfi_testing.json bonsai_production_noups_nbeta1_v2.hdf5 xxx'
     need_rfi = True
 else:
