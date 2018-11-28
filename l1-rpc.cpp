@@ -483,7 +483,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         // grab beam_ids
         vector<int> beam_ids;
         int nbeams = oh.get().via.array.ptr[3].via.array.size;
-        for (size_t i=0; i<nbeams; i++) {
+        for (int i=0; i<nbeams; i++) {
             int beam = oh.get().via.array.ptr[3].via.array.ptr[i].as<int>();
             // Be forgiving about requests to stream beams that we
             // aren't handling -- otherwise the client has to keep
@@ -610,14 +610,14 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
         // all my beams, as a comma-separated string
         string allbeams = "";
-        for (int i=0; i<_stream->ini_params.beam_ids.size(); i++) {
+        for (size_t i=0; i<_stream->ini_params.beam_ids.size(); i++) {
             if (i) allbeams += ",";
             allbeams += std::to_string(_stream->ini_params.beam_ids[i]);
         }
         dict["all_beams"] = allbeams;
         // beams being streamed
         string strbeams = "";
-        for (int i=0; i<stream_beams.size(); i++) {
+        for (size_t i=0; i<stream_beams.size(); i++) {
             if (i) strbeams += ",";
             strbeams += std::to_string(stream_beams[i]);
         }
@@ -997,14 +997,10 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
 
     // This is the struct we will send to rf_pipelines
     shared_ptr<rf_pipelines::inject_data> injdata = make_shared<rf_pipelines::inject_data>();
+    // And this is the injector
     shared_ptr<rf_pipelines::intensity_injector> syringe;
-
-    struct timeval tv1 = get_time();
     
     msgpack::object_handle oh = msgpack::unpack(req_data, req_size, req_offset);
-
-    struct timeval tv2 = get_time();
-
     msgpack::object obj = oh.get();
     obj.convert(injreq);
     int beam = injreq->beam;
@@ -1012,11 +1008,6 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
     injreq->swap(*injdata);
     injreq.reset();
 
-    struct timeval tv3 = get_time();
-
-    cout << "msgpack::unpack (size " << req_size << "): " << time_diff(tv1, tv2) << endl;
-    cout << "convert: " << time_diff(tv2, tv3) << endl;
-    
     assert(_stream.get());
     string errstring = injdata->check(_stream->ini_params.nupfreq * ch_frb_io::constants::nfreq_coarse_tot);
     if (errstring.size())
@@ -1041,9 +1032,9 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
     } catch (const runtime_error &e) {
         return e.what();
     }
-    injdata->sample0 = ((int64_t)fpga0 - (int64_t)stream_fpga0) / (int64_t)_stream->ini_params.fpga_counts_per_sample;
-
-    cout << "L1-RPC inject_data: injection FPGA0 " << fpga0 << ", stream's first FPGA count: " << _stream->get_first_fpga_count(beam) << ", sample0 " << injdata->sample0 << endl;
+    injdata->sample0 = (ssize_t)(fpga0 / (uint64_t)_stream->ini_params.fpga_counts_per_sample) -
+        (ssize_t)(stream_fpga0 / (uint64_t)_stream->ini_params.fpga_counts_per_sample);
+    //cout << "L1-RPC inject_data: injection FPGA0 " << fpga0 << ", stream's first FPGA count: " << _stream->get_first_fpga_count(beam) << ", sample0 " << injdata->sample0 << endl;
 
     try {
         syringe->inject(injdata);
