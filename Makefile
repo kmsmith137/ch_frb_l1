@@ -41,6 +41,10 @@ SCRIPTS := ch-frb-make-acq-inventory
 INSTALLED_BINARIES := ch-frb-l1 ch-frb-simulate-l0
 NON_INSTALLED_BINARIES := rpc-client test-l1-rpc test-packet-rates
 
+debug: ch-frb-l1 ch-frb-simulate-l0 rpc-client test-l1-rpc test-packet-rates simulate_l0.so
+# debug:
+# 	@echo $(value INSTALLED_BINARIES) $(value NON_INSTALLED_BINARIES)
+
 all: $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES) simulate_l0.so
 
 .PHONY: all install uninstall

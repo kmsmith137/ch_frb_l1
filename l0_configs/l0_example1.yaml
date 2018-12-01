@@ -14,7 +14,7 @@ nt_per_packet: 64
 # Send data to the loopback address (127.0.0.1), UDP port 6677.
 
 ipaddr: "127.0.0.1"
-port: 6677
+port: [6677,]
 
 # Total number of threads used by the L0 simulator.
 # Note: nthreads must be a multiple of the number of "streams", which

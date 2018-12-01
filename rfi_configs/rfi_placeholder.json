@@ -21,6 +21,10 @@
                 "class_name": "mask_counter", 
                 "where": "after_rfi", 
                 "nt_chunk": 1024
+            },
+            {
+                "class_name": "chime_slow_pulsar_writer",
+                "nt_chunk": 1024
             }
         ], 
         "name": "pipeline"
