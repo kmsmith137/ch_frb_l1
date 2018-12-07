@@ -32,6 +32,7 @@ def main():
         'nfreq': 16384,
         'nrfifreq': 1024,
         'nt_per_packet': 16,
+        'nt_align': 4096,
         'beam_ids': [0, 1, 2, 3, 4, 5, 6, 7],
         'intensity_prescale': 0.0001,
         'ipaddr': [ "eno1",
