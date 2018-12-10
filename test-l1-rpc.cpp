@@ -135,7 +135,8 @@ int main(int argc, char** argv) {
         port = "tcp://127.0.0.1:" + to_string(portnum);
 
     chlog("Starting RPC server on port " << port);
-    L1RpcServer rpc(stream, ms, sp, port);
+    vector<shared_ptr<const bonsai::dedisperser> > bonsais;
+    L1RpcServer rpc(stream, ms, sp, bonsais, port);
     std::thread rpc_thread = rpc.start();
 
     std::random_device rd;

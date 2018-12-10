@@ -60,6 +60,7 @@ using namespace ch_frb_l1;
 // l1_config: reads and parses config files, does a lot of sanity checking,
 // but does not allocate any "heavyweight" data structures.
 
+typedef std::unique_lock<std::mutex> ulock;
 
 struct l1_config
 {
@@ -96,6 +97,7 @@ struct l1_config
     int nstreams = 0;
     int nt_per_packet = 0;
     int fpga_counts_per_sample = 384;
+    int nt_align = 0;   // used to align stream of assembled_chunks to RFI/dedispersion block size.
 
     // The number of frequencies in the downsampled RFI chain.
     // Must match the number of downsampled frequencies in the RFI chain JSON file.  (probably 1024)
@@ -378,6 +380,7 @@ l1_config::l1_config(int argc, char **argv)
     this->nfreq = p.read_scalar<int> ("nfreq");
     this->nt_per_packet = p.read_scalar<int> ("nt_per_packet");
     this->fpga_counts_per_sample = p.read_scalar<int> ("fpga_counts_per_sample", 384);
+    this->nt_align = p.read_scalar<int> ("nt_align");
     this->nrfifreq = p.read_scalar<int> ("nrfifreq");
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
@@ -518,6 +521,8 @@ l1_config::l1_config(int argc, char **argv)
 	throw runtime_error(l1_config_filename + ": 'nt_per_packet' must be >= 1");
     if (fpga_counts_per_sample <= 0)
 	throw runtime_error(l1_config_filename + ": 'fpga_counts_per_sample' must be >= 1");
+    if ((nt_align < 0) || (nt_align % ch_frb_io::constants::nt_per_assembled_chunk))
+	throw runtime_error(l1_config_filename + ": 'nt_align' must be a multiple of " + to_string(ch_frb_io::constants::nt_per_assembled_chunk));
     if (rpc_address.size() != (unsigned int)nstreams)
 	throw runtime_error(l1_config_filename + ": 'rpc_address' must be a list whose length is the number of (ip_addr,port) pairs");
     if (prometheus_address.size() != (unsigned int)nstreams)
@@ -746,8 +751,12 @@ void l1_config::_have_warnings() const
 struct dedispersion_thread_context {
     l1_config config;
     shared_ptr<ch_frb_io::intensity_network_stream> sp;
-    std::shared_ptr<mask_stats_map> ms_map;
+    shared_ptr<mask_stats_map> ms_map;
     std::shared_ptr<slow_pulsar_writer_hash> sp_writer_hash;
+    std::function<void(int, shared_ptr<const bonsai::dedisperser>,
+                       shared_ptr<const rf_pipelines::pipeline_object> latency_pre,
+                       shared_ptr<const rf_pipelines::pipeline_object> latency_post
+                       )> set_bonsai;
     shared_ptr<bonsai::trigger_pipe> l1b_subprocess;   // warning: can be empty pointer!
     vector<int> allowed_cores;
     bool asynchronous_dedispersion;   // run RFI and dedispersion in separate threads?
@@ -791,7 +800,6 @@ void dedispersion_thread_context::_init_mask_counters(const shared_ptr<rf_pipeli
 	}
     };
     
-    // cout << "Finding mask_counter stages..." << endl;
     rf_pipelines::visit_pipeline(find_mask_counters, pipeline);
 
     if (config.nrfifreq > 0) {
@@ -800,6 +808,8 @@ void dedispersion_thread_context::_init_mask_counters(const shared_ptr<rf_pipeli
 	if (clippers_after_mask_counters)
 	    throw runtime_error("ch-frb-l1: RFI masks requested, and clippers occur after the last mask_counter in the RFI config JSON file");
     }
+
+    chlog("Setting up " << mask_counters.size() << " mask counters");
 
     for (unsigned int i = 0; i < mask_counters.size(); i++) {
 	rf_pipelines::mask_counter_transform::runtime_attrs attrs;
@@ -915,6 +925,21 @@ void dedispersion_thread_context::_thread_main() const
     pipeline->add(stream);
     pipeline->add(rfi_chain);
     pipeline->add(bonsai_transform);
+
+    shared_ptr<rf_pipelines::pipeline_object> latency1 = stream;
+    shared_ptr<rf_pipelines::pipeline_object> latency2;
+    auto find_last_transform = [&latency2]
+	(const shared_ptr<rf_pipelines::pipeline_object> &p, int depth) {
+        latency2 = p;
+    };
+    rf_pipelines::visit_pipeline(find_last_transform, rfi_chain);
+
+    cout << "RFI chain:" << endl;
+    rf_pipelines::print_pipeline(rfi_chain);
+    cout << "Found first stage for latency monitoring: " << latency1->name << endl;
+    cout << "Found last stage for latency monitoring: " << latency2->name << endl;
+
+    set_bonsai(ibeam, dedisperser, latency1, latency2);
 
     rf_pipelines::run_params rparams;
     rparams.outdir = "";  // disables
@@ -1044,13 +1069,17 @@ struct l1_server {
     vector<shared_ptr<ch_frb_io::memory_slab_pool>> memory_slab_pools;
     vector<shared_ptr<ch_frb_io::intensity_network_stream>> input_streams;
 
-    std::mutex mask_stats_mutex;
     vector<shared_ptr<mask_stats_map> > mask_stats_maps;
     vector<shared_ptr<slow_pulsar_writer_hash>> slow_pulsar_writer_hashes;
     vector<shared_ptr<L1RpcServer>> rpc_servers;
     vector<shared_ptr<L1PrometheusServer>> prometheus_servers;
     vector<std::thread> rpc_threads;
     vector<std::thread> dedispersion_threads;
+    std::mutex bonsai_dedisp_mutex;
+    vector<shared_ptr<const bonsai::dedisperser> > bonsai_dedispersers;
+
+    vector<shared_ptr<const rf_pipelines::pipeline_object> > latency_monitors_pre;
+    vector<shared_ptr<const rf_pipelines::pipeline_object> > latency_monitors_post;
 
     // The constructor reads the configuration files, does a lot of sanity checks,
     // but does not initialize any "heavyweight" data structures.
@@ -1076,6 +1105,11 @@ struct l1_server {
     void _init_subscale();
     void _init_20cores_16beams();
     void _init_20cores_8beams();
+
+    // Called-back by dedispersion thread
+    void set_bonsai(int ibeam, shared_ptr<const bonsai::dedisperser>,
+                    shared_ptr<const rf_pipelines::pipeline_object> latency_pre,
+                    shared_ptr<const rf_pipelines::pipeline_object> latency_post);
 };
 
 
@@ -1311,6 +1345,7 @@ void l1_server::make_input_streams()
         ini_params.nrfifreq = config.nrfifreq;
 	ini_params.nt_per_packet = config.nt_per_packet;
 	ini_params.fpga_counts_per_sample = config.fpga_counts_per_sample;
+	ini_params.nt_align = config.nt_align;
 	ini_params.stream_id = istream + 1;   // +1 here since first NFS mount is /frb-archive-1, not /frb-archive-0
         ini_params.frame0_url = config.frame0_url;
         // FIXME resolve merge conflict!?
@@ -1372,14 +1407,50 @@ void l1_server::make_rpc_servers()
 	throw("ch-frb-l1 internal error: double call to make_rpc_servers()");
     if (input_streams.size() != size_t(config.nstreams))
 	throw("ch-frb-l1 internal error: make_rpc_servers() was called, without first calling make_input_streams()");
+    if (bonsai_dedispersers.size() != config.nbeams)
+        throw("ch-frb-l1 internal error: make_rpc_servers() was called, without first calling spawn_dedispersion_threads");
+
+    // Wait for all bonsai dedispersers to be created.
+    chlog("RPC servers: waiting for bonsai dedispersers to be created...");
+    while (true) {
+        {
+            ulock u(bonsai_dedisp_mutex);
+            int gotn = 0;
+            for (int i=0; i<config.nbeams; i++)
+                if (bonsai_dedispersers[i])
+                    gotn++;
+            if (gotn == config.nbeams)
+                break;
+        }
+        usleep(100000);
+    }
 
     this->rpc_servers.resize(config.nstreams);
     this->rpc_threads.resize(config.nstreams);
-    
+    int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
+
     for (int istream = 0; istream < config.nstreams; istream++) {
-	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], mask_stats_maps[istream], slow_pulsar_writer_hashes[istream], config.rpc_address[istream], command_line);
+        // Grab the subset of bonsai dedispersers for this stream.
+        // NOTE, at this point all dedispersers have been set, so we don't need
+        // to lock the mutex any more.
+        vector<shared_ptr<const bonsai::dedisperser> > rpc_bonsais;
+        vector<tuple<int, string, shared_ptr<const rf_pipelines::pipeline_object> > > rpc_latency;
+        for (int ib = 0; ib < nbeams_per_stream; ib++) {
+            rpc_bonsais.push_back(bonsai_dedispersers[istream * nbeams_per_stream + ib]);
+            rpc_latency.push_back(make_tuple(config.beam_ids[istream * nbeams_per_stream + ib], "before_rfi",
+                                             latency_monitors_pre[istream * nbeams_per_stream + ib]));
+            rpc_latency.push_back(make_tuple(config.beam_ids[istream * nbeams_per_stream + ib], "after_rfi",
+                                             latency_monitors_post[istream * nbeams_per_stream + ib]));
+        }
+
+	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], mask_stats_maps[istream],
+                                                         slow_pulsar_writer_hashes[istream],
+                                                         rpc_bonsais,
+                                                         config.rpc_address[istream], command_line,
+                                                         rpc_latency);
 	rpc_threads[istream] = rpc_servers[istream]->start();
     }
+    chlog("Created RPC servers.");
 }
 
 void l1_server::make_prometheus_servers()
@@ -1421,6 +1492,16 @@ void l1_server::spawn_dedispersion_threads()
     if (config.l1_verbosity >= 1)
 	cout << "ch-frb-l1: spawning " << config.nbeams << " dedispersion thread(s)" << endl;
 
+    bonsai_dedispersers.resize(config.nbeams);
+    latency_monitors_pre.resize(config.nbeams);
+    latency_monitors_post.resize(config.nbeams);
+    
+    std::function<void(int, shared_ptr<const bonsai::dedisperser>,
+                       shared_ptr<const rf_pipelines::pipeline_object>,
+                       shared_ptr<const rf_pipelines::pipeline_object>)> set_bonsai =
+        std::bind(&l1_server::set_bonsai, this, std::placeholders::_1, std::placeholders::_2,
+                  std::placeholders::_3, std::placeholders::_4);
+
     for (int ibeam = 0; ibeam < config.nbeams; ibeam++) {
 	int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
 	int istream = ibeam / nbeams_per_stream;
@@ -1430,6 +1511,7 @@ void l1_server::spawn_dedispersion_threads()
 	context.sp = this->input_streams[istream];
         context.ms_map = this->mask_stats_maps[istream];
 	context.sp_writer_hash = this->slow_pulsar_writer_hashes[istream];
+        context.set_bonsai = set_bonsai;
 	context.l1b_subprocess = this->l1b_subprocesses[ibeam];
 	context.allowed_cores = this->dedispersion_cores[ibeam];
 	context.asynchronous_dedispersion = this->asynchronous_dedispersion;
@@ -1446,6 +1528,16 @@ void l1_server::spawn_dedispersion_threads()
     }
 }
 
+void l1_server::set_bonsai(int ibeam,
+                           shared_ptr<const bonsai::dedisperser> bonsai,
+                           shared_ptr<const rf_pipelines::pipeline_object> latency_pre,
+                           shared_ptr<const rf_pipelines::pipeline_object> latency_post) {
+    chlog("set_bonsai(" << ibeam << ")");
+    ulock u(bonsai_dedisp_mutex);
+    bonsai_dedispersers[ibeam] = bonsai;
+    latency_monitors_pre [ibeam] = latency_pre;
+    latency_monitors_post[ibeam] = latency_post;
+}
 
 void l1_server::join_all_threads()
 {
@@ -1533,6 +1625,7 @@ int main(int argc, char **argv)
     server.make_rpc_servers();
     server.make_prometheus_servers();
     server.spawn_dedispersion_threads();
+    server.make_rpc_servers();
 
     server.join_all_threads();
     server.print_statistics();

@@ -15,8 +15,9 @@
 
 nbeams: 8
 nfreq: 16384
-nt_per_packet: 16
 nrfifreq: 1024
+nt_per_packet: 16
+nt_align: 4096
 fpga_counts_per_sample: 384
 
 # This example assumes the nodes are in a non-link-bonded configuration, where

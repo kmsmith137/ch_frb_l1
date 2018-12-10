@@ -560,6 +560,24 @@ class RpcClient(object):
                 else None
                 for p in parts]
 
+    def get_max_fpga_counts(self, servers=None, wait=True, timeout=-1):
+        '''
+        '''
+        if servers is None:
+            servers = self.servers.keys()
+        tokens = []
+        for k in servers:
+            self.token += 1
+            req = msgpack.packb(['get_max_fpga_counts', self.token])
+            tokens.append(self.token)
+            self.sockets[k].send(req)
+        if not wait:
+            return tokens
+        parts = self.wait_for_tokens(tokens, timeout=timeout)
+        # We expect one message part for each token.
+        return [msgpack.unpackb(p[0]) if p is not None else None
+                for p in parts]
+
     def _pop_token(self, t, d=None, get_socket=False):
         '''
         Pops a message for the given token number *t*, or returns *d*
@@ -736,6 +754,10 @@ if __name__ == '__main__':
                         help='Just send list_chunks command and exit.')
     parser.add_argument('--stats', action='store_true', default=False,
                         help='Just request stats and exit.')
+    parser.add_argument('--max-fpga', action='store_true', default=False,
+                        help='Request max FPGA counts seen at different places in the pipeline.')
+    parser.add_argument('--max-fpga-plot', type=float,
+                        help='Request max FPGA counts seen at different places in the pipeline, for N seconds, and make a plot of the results.')
     parser.add_argument('--identity', help='(ignored)')
     parser.add_argument('--stream', help='Stream to files')
     parser.add_argument('--stream-base', help='Stream base directory')
@@ -809,6 +831,117 @@ if __name__ == '__main__':
                 for k in keys:
                     print('  ', k, '=', d[k])
                 print()
+        doexit = True
+
+    if opt.max_fpga:
+        fpgas = client.get_max_fpga_counts(timeout=10)
+        for f,server in zip(fpgas, servers.values()):
+            print('', server)
+            if f is None:
+                print('  None')
+                continue
+            print(f)
+        doexit = True
+
+    if opt.max_fpga_plot:
+        import matplotlib
+        matplotlib.use('Agg')
+        import pylab as plt
+        import time
+        import fitsio
+        from collections import OrderedDict
+        t0 = time.time()
+
+        plots = {}
+
+        columns = {}
+        times = []
+
+        while True:
+            t1 = time.time()
+            if t1 - t0 > opt.max_fpga_plot:
+                break
+            fpgas = client.get_max_fpga_counts(wait=True, timeout=3.)
+            for f,server in zip(fpgas, servers.values()):
+                print('', server)
+                if f is None:
+                    print('  None')
+                    continue
+                print(f)
+                for where, beam, fpga in f:
+                    # python3
+                    if not isinstance(where, str):
+                        where = where.decode()
+                    key = (server, beam, where)
+                    if not key in plots:
+                        plots[key] = []
+                    plots[key].append((t1 - t0, fpga))
+
+                    if beam >= 0:
+                        key = 'beam_%i_%s' % (beam, where)
+                    else:
+                        key = where
+                    key = key.replace(' ', '_')
+                    if not key in columns:
+                        columns[key] = []
+                    # pad missing times
+                    npad = len(times) - len(columns[key])
+                    if npad:
+                        columns[key].extend([0]*npad)
+                    columns[key].append(fpga)
+            times.append(t1)
+                    
+            # Sleep to 0.1-second RPC cadence
+            t2 = time.time()
+            if t2 - t1 < 0.1:
+                time.sleep(t1 + 0.1 - t2)
+
+        try:
+            fits = fitsio.FITS('max-fpga.fits', 'rw', clobber=True)
+            fits.write([np.array(c) for c in columns.values()] + [np.array(times)],
+                       names=list(columns.keys()) + ['time'])
+            fits.close()
+        except:
+            import traceback
+            print_exc()
+            
+        plt.clf()
+        cc = OrderedDict()
+        cc['packet_stream'] = ('k', 'packets')
+        cc['chunk_flushed'] = ('c', 'flushed')
+        cc['chunk_retrieved'] = ('m', 'retrieved')
+        cc['before_rfi'] = ('b', 'before RFI')
+        cc['after_rfi'] = ('g', 'after RFI')
+        cc['bonsai'] = ('r', 'bonsai')
+        leg = {}
+        for (server,beam,where),plotvals in plots.items():
+            print('beam', beam, 'where', where)
+
+            label = ''
+            # if len(servers) > 1:
+            #     label += server + ' '
+            # if beam >= 0:
+            #     label += 'beam %i ' % beam
+            # label += where
+            color,label = cc.get(where, (None,where))
+            print('color', color, 'legend', label)
+            dt = np.array([p[0] for p in plotvals])
+            fpga = np.array([p[1] for p in plotvals]).astype(float)
+            #print('FPGA range', fpga.min(), fpga.max())
+            fpga *= 2.56e-6
+            I = np.flatnonzero(fpga > 0)
+            p = plt.plot(dt[I], fpga[I], '.-', color=color)
+            # label=label, 
+            if not label in leg:
+                leg[label] = p[0]
+
+        ll = [k for (c,k) in cc.values() if k in leg]
+        lp = [leg[k] for (c,k) in cc.values() if k in leg]
+        plt.xlabel('time (s)')
+        plt.ylabel('FPGA count (scaled to seconds) (s)')
+        plt.legend(lp, ll, loc='upper left')
+        plt.savefig('max-fpga.png')
+
         doexit = True
 
     if opt.stream:
