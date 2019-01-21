@@ -970,6 +970,83 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         zmq::message_t* reply = sbuffer_to_message(buffer);
         return _send_frontend_message(*client, *token_to_message(token), *reply);
 
+    } else if (funcname == "get_masked_frequencies_2") {
+
+        // arguments: [fpgacounts_low, fpgacounts_high]
+        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
+        if (oh.get().via.array.size != 2) {
+            chlog("get_masked_frequencies_2: expected an array of 2 uint64 args");
+            return -1;
+        }
+        uint64_t fpgastart = oh.get().via.array.ptr[0].as<uint64_t>();
+        uint64_t fpgaend   = oh.get().via.array.ptr[1].as<uint64_t>();
+
+        // Returns:
+        // FIXME this is not accurate
+        // list of [beam_id, nt, [ measurements ] ]
+        // where measurements is a list of uint16_ts, one per freq bin
+
+        msgpack::sbuffer buffer;
+        msgpack::packer<msgpack::sbuffer> pk(&buffer);
+
+        vector<shared_ptr<rf_pipelines::mask_measurements> > measlist;
+        vector<int> measbeams;
+        vector<uint64_t> measfpga0;
+
+        uint64_t fpga_counts_per_sample = _stream->ini_params.fpga_counts_per_sample;
+
+        for (const auto &it : _mask_stats->map) {
+            int beam_id = it.first.first;
+            string where = it.first.second;
+
+            chlog("get_masked_frequencies_2: beam " << beam_id << ", where " << where);
+            if (where != "after_rfi")
+                continue;
+
+            uint64_t fpga0;
+            try {
+                fpga0 = _stream->get_first_fpga_count(beam_id);
+            } catch (const std::exception& e) {
+                chlog("get_masked_frequencies_2: no fpga0 for beam " << beam_id);
+                continue;
+            }
+
+            ssize_t samplestart = (fpgastart - fpga0) / fpga_counts_per_sample;
+            ssize_t sampleend   = (fpgaend   - fpga0) / fpga_counts_per_sample;
+
+            chlog("get_masked_frequencies_2: sample range " << samplestart << " to " << sampleend);
+            
+            shared_ptr<rf_pipelines::mask_measurements_ringbuf> ms = it.second;
+            shared_ptr<rf_pipelines::mask_measurements> meas = ms->get_summed_measurements(samplestart, sampleend);
+            chlog("Got summed measurements: pos " << meas->pos << ", nt " << meas->nt);
+            measlist.push_back(meas);
+            measbeams.push_back(beam_id);
+            measfpga0.push_back(fpga0);
+        }
+
+        pk.pack_array(measlist.size());
+        for (size_t i=0; i<measlist.size(); i++) {
+            shared_ptr<rf_pipelines::mask_measurements> meas = measlist[i];
+            int beam_id = measbeams[i];
+            uint64_t fpga0 = measfpga0[i];
+            pk.pack_array(9);
+            pk.pack(beam_id);
+            pk.pack(fpga0 + meas->pos * fpga_counts_per_sample);
+            pk.pack(fpga0 + (meas->pos + meas->nt) * fpga_counts_per_sample);
+            pk.pack(meas->pos);
+            pk.pack(meas->nt);
+            pk.pack(meas->nf);
+            pk.pack(meas->nsamples);
+            pk.pack(meas->nsamples_unmasked);
+            pk.pack_array(meas->nf);
+            int* fum = meas->freqs_unmasked.get();
+            for (int k=0; k<meas->nf; k++)
+                pk.pack(meas->nt - fum[k]);
+        }
+        //  Send reply back to client.
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(*client, *token_to_message(token), *reply);
+
     } else if (funcname == "get_max_fpga_counts") {
 
         // Returns a list of tuples:
