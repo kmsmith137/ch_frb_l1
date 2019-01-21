@@ -1011,17 +1011,27 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
                 continue;
             }
 
-            ssize_t samplestart = (fpgastart - fpga0) / fpga_counts_per_sample;
-            ssize_t sampleend   = (fpgaend   - fpga0) / fpga_counts_per_sample;
+            chlog("  beam " << beam_id << " has fpga0 " << fpga0);
+
+            ssize_t samplestart = 0;
+            ssize_t sampleend   = 0;
+            if (fpgastart >= fpga0)
+                samplestart = (fpgastart - fpga0) / fpga_counts_per_sample;
+            if (fpgaend >= fpga0)
+                sampleend   = (fpgaend   - fpga0) / fpga_counts_per_sample;
 
             chlog("get_masked_frequencies_2: sample range " << samplestart << " to " << sampleend);
-            
+
             shared_ptr<rf_pipelines::mask_measurements_ringbuf> ms = it.second;
             shared_ptr<rf_pipelines::mask_measurements> meas = ms->get_summed_measurements(samplestart, sampleend);
-            chlog("Got summed measurements: pos " << meas->pos << ", nt " << meas->nt);
-            measlist.push_back(meas);
-            measbeams.push_back(beam_id);
-            measfpga0.push_back(fpga0);
+            if (!meas) {
+                chlog("Got empty measurement");
+            } else {
+                chlog("Got summed measurements: pos " << meas->pos << ", nt " << meas->nt);
+                measlist.push_back(meas);
+                measbeams.push_back(beam_id);
+                measfpga0.push_back(fpga0);
+            }
         }
 
         pk.pack_array(measlist.size());
@@ -1043,6 +1053,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             for (int k=0; k<meas->nf; k++)
                 pk.pack(meas->nt - fum[k]);
         }
+        chlog("Sending " << measlist.size() << " measurements to client");
         //  Send reply back to client.
         zmq::message_t* reply = sbuffer_to_message(buffer);
         return _send_frontend_message(*client, *token_to_message(token), *reply);
