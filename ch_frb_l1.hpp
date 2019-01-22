@@ -29,7 +29,7 @@ namespace ch_frb_l1 {
 struct l1_config
 {
     l1_config() { }
-    l1_config(int argc, char **argv);
+    l1_config(int argc, const char **argv);
 
     // Command-line arguments
     std::string l1_config_filename;
@@ -208,7 +208,7 @@ struct l1_server {
 
     // The constructor reads the configuration files, does a lot of sanity checks,
     // but does not initialize any "heavyweight" data structures.
-    l1_server(int argc, char **argv);
+    l1_server(int argc, const char **argv);
 
     // These methods incrementally construct the "heavyweight" data structures.
     void start_logging();

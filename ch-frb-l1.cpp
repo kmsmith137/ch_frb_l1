@@ -73,7 +73,7 @@ static void usage()
 
 
 // FIXME: split this monster constructor into multiple functions for readability?
-l1_config::l1_config(int argc, char **argv)
+l1_config::l1_config(int argc, const char **argv)
 {
     const int nfreq_c = ch_frb_io::constants::nfreq_coarse_tot;
 
@@ -850,7 +850,7 @@ static void dedispersion_thread_main(const dedispersion_thread_context &context)
 
 
 
-l1_server::l1_server(int argc, char **argv) :
+l1_server::l1_server(int argc, const char **argv) :
     config(argc, argv)
 {
     command_line = "";

@@ -5,7 +5,7 @@ using namespace ch_frb_l1;
 
 // -------------------------------------------------------------------------------------------------
 
-int main(int argc, char **argv)
+int main(int argc, const char **argv)
 {
     // for fetching frame0_ctime
     curl_global_init(CURL_GLOBAL_ALL);
