@@ -17,7 +17,8 @@ rpc_servers = ['tcp://127.0.0.1:5555']
 #client = RpcClient({'a':'tcp://127.0.0.1:5555'})
 client = RpcClient(dict([(s,s) for s in rpc_servers]))
 
-l1cmd = './ch-frb-l1 -fv l1_configs/l1_test_rfi.yml rfi_configs/rfi_testing.json bonsai_production_noups_nbeta1_v2.hdf5 xxx'
+#l1cmd = './ch-frb-l1 -fv l1_configs/l1_test_rfi.yml rfi_configs/rfi_testing.json bonsai_production_noups_nbeta1_v2.hdf5 xxx'
+l1cmd = './ch-frb-l1 -frv l1_configs/l1_test_rfi.yml rfi_configs/rfi_testing.json'
 need_rfi = True
 
 l1 = subprocess.Popen(l1cmd, shell=True)
@@ -81,6 +82,9 @@ for i in range(60):
         #print('Max fpga:', S)
         for fpgas,node in zip(R, rpc_servers):
             where = 'after_rfi'
+            if fpgas is None:
+                print('No get_max_fpga_counts from', node)
+                continue
             for wh,beam,fpga in fpgas:
                 if wh == where and fpga is not None and fpga > 0:
                     fpga_start = fpga

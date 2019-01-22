@@ -982,9 +982,11 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         uint64_t fpgaend   = oh.get().via.array.ptr[1].as<uint64_t>();
 
         // Returns:
-        // FIXME this is not accurate
-        // list of [beam_id, nt, [ measurements ] ]
-        // where measurements is a list of uint16_ts, one per freq bin
+        // list (one per beam) of:
+        // [beam_id, fpga_start, fpga_end, pos_start, nt, nf, nsamples,
+        //  nsamples_masked, FREQS_MASKED]
+        // here FREQS_MASKED is a list (array / histogram) of length "nf".
+        // "pos_start" and "nt" are in intensity samples.
 
         msgpack::sbuffer buffer;
         msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -1107,6 +1109,8 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         chlog("max_fpga: bonsais size: " << _bonsais.size());
         for (size_t i=0; i<_bonsais.size(); i++) {
             const auto &bonsai = _bonsais[i];
+            if (!bonsai)
+                continue;
             int beam_id = _stream->ini_params.beam_ids[i];
             int nc = bonsai->get_nchunks_processed();
             uint64_t fpga = (nc * bonsai->nt_chunk * _stream->ini_params.fpga_counts_per_sample

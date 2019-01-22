@@ -65,8 +65,8 @@ static void usage()
 	 << "  -w enables a very verbose debug trace of the logic for writing chunks\n"
 	 << "  -c deliberately crash dedispersion thread (for debugging, obviously)\n"
 	 << "  -t starts a \"toy server\" which assembles packets, but does not run RFI removal,\n"
-	 << "     dedispersion, or L1B (if -t is specified, then the last 3 arguments are optional)\n";
-
+	 << "     dedispersion, or L1B (if -t is specified, then the last 3 arguments are optional)\n"
+         << "  -r starts an \"RFI testing\" (semi-toy) server with no bonsai dedispersion or L1B (last 2 args are then optional).\n";
     exit(2);
 }
 #endif
@@ -96,6 +96,7 @@ l1_config::l1_config(int argc, const char **argv)
         ("w,write", "Eables a very verbose debug trace of the logic for writing chunks")
         ("c,crash", "Deliberately crash dedispersion thread (for debugging, obviously)")
         ("t,toy", "Starts a \"toy server\" which assembles packets, but does not run RFI removal, dedispersion, or L1B (if -t is specified, then the last 3 arguments are optional)")
+        ("r,rfi", "Starts an \"RFI testing\" (semi-toy) server with no bonsai dedispersion or L1B (last 2 args are then optional).")
         ("a,acq", "Stream data to disk, saving it to this acquisition directory name", cxxopts::value<std::string>(acq_name))
         ("n,nfs", "For streaming data acquisition, stream to NFS, not SSD")
         ("b,beam", "For streaming data acquisition, beam number to capture (can be repeated; default is all beams)", cxxopts::value<vector<int> >(acq_beams), "<beam number>")
@@ -120,8 +121,12 @@ l1_config::l1_config(int argc, const char **argv)
         this->deliberately_crash = true;
     if (opts.count("t"))
         this->tflag = true;
+    if (opts.count("r"))
+        this->rflag = true;
 
-    if (opts.count("help") || (args.size() == 0) || (!((args.size() == 4) || ((args.size() == 1) && (this->tflag)))) ){
+    if (opts.count("help") || (args.size() == 0) || (!((args.size() == 4) ||
+                                                       ((args.size() == 1) && (this->tflag)) ||
+                                                       ((args.size() == 2) && (this->rflag))))) {
         std::cout << parser.help({""}) << endl;
         exit(0);
     }
@@ -156,6 +161,8 @@ l1_config::l1_config(int argc, const char **argv)
     		this->deliberately_crash = true;
     	    else if (argv[i][j] == 't')
     		this->tflag = true;
+    	    else if (argv[i][j] == 'r')
+    		this->rflag = true;
     	    else
     		usage();
     	}
@@ -165,6 +172,10 @@ l1_config::l1_config(int argc, const char **argv)
  	this->rfi_config_filename = args[1];
  	this->bonsai_config_filename = args[2];
  	this->l1b_config_filename = args[3];
+    }
+    else if (rflag && (args.size() == 2)) {
+	this->l1_config_filename = args[0];
+ 	this->rfi_config_filename = args[1];
     }
     else if (tflag && (args.size() == 1))
 	this->l1_config_filename = args[0];
@@ -196,6 +207,8 @@ l1_config::l1_config(int argc, const char **argv)
 	}
 #endif
 
+    }
+    if (!tflag && !rflag) {
 	// Parse bonsai_config file and initialize 'bonsai_config'.
 	this->bonsai_config = bonsai::config_params(bonsai_config_filename);
 
@@ -357,7 +370,7 @@ l1_config::l1_config(int argc, const char **argv)
 	throw runtime_error(l1_config_filename + ": 'nbeams' must be >= 1");
     if (nrfifreq < 0)
 	throw runtime_error(l1_config_filename + ": 'nrfifreq' must be positive (or zero), and must match the number of downsampled frequencies in the RFI chain JSON file -- probably 1024.");
-    if (!tflag && (nfreq != bonsai_config.nfreq))
+    if (!tflag && !rflag && (nfreq != bonsai_config.nfreq))
 	throw runtime_error("ch-frb-l1: 'nfreq' values in l1 config file and bonsai config file must match");
     if (nfreq <= 0)
 	throw runtime_error(l1_config_filename + ": 'nfreq' must be >= 1");
@@ -524,7 +537,7 @@ l1_config::l1_config(int argc, const char **argv)
 
     // l1b_pipe_capacity
 
-    if (!tflag && (l1b_buffer_nsamples > 0)) {
+    if (!tflag && !rflag && (l1b_buffer_nsamples > 0)) {
 	int nt_chunk = bonsai_config.nt_chunk;
 	int nchunks = (l1b_buffer_nsamples + nt_chunk - 1) / nt_chunk;
 
@@ -562,7 +575,7 @@ l1_config::l1_config(int argc, const char **argv)
 	have_warnings = true;
     }
 
-    if (!tflag && (bonsai_config.nfreq > 4096) && slow_kernels) {
+    if (!tflag && !rflag && (bonsai_config.nfreq > 4096) && slow_kernels) {
 	cout << l1_config_filename << ": nfreq > 4096 and slow_kernels=true, presumably unintentional?" << endl;
 	have_warnings = true;
     }
@@ -684,55 +697,62 @@ void dedispersion_thread_context::_thread_main() const
     // Pin thread before allocating anything.
     ch_frb_io::pin_thread_to_cores(allowed_cores);
 
-    // Note: deep copy here, to get thread-local copy of transfer matrices!
-    bonsai::config_params bonsai_config = config.bonsai_config.deep_copy();
+    bonsai::config_params bonsai_config;
+    if (!config.rflag)
+        // Note: deep copy here, to get thread-local copy of transfer matrices!
+        bonsai_config = config.bonsai_config.deep_copy();
     
     // Note: the distinction between 'ibeam' and 'beam_id' is a possible source of bugs!
     int beam_id = config.beam_ids[ibeam];
     auto stream = rf_pipelines::make_chime_network_stream(sp, beam_id, config.intensity_prescale);
     auto rfi_chain = rf_pipelines::pipeline_object::from_json(config.rfi_transform_chain_json);
 
-    bonsai::dedisperser::initializer ini_params;
-    ini_params.fill_rfi_mask = true;                   // very important for real-time analysis!
-    ini_params.analytic_variance_on_the_fly = false;   // prevent accidental initialization from non-hdf5 config file (should have been checked already, but another check can't hurt)
-    ini_params.allocate = true;                        // redundant, but I like making it explicit
-    ini_params.verbosity = 0;
-
-    if (asynchronous_dedispersion) {
-	ini_params.asynchronous = true;
-
-	// The following line is now commented out.
-	//
-	//   ini_params.async_allowed_cores = allowed_cores;
-	//
-	// Previously, I was including this, even though it should be redundant given the call to pin_thread_to_cores() above.
-	// However, it appears that this is not safe, since std::hardware_concurreny() sometimes returns 1 after the first call
-	// to pin_thread_to_cores().  It is very strange that this only happens sometimes!  But commenting out the line above
-	// seems to fix it.
-    }
-
-    auto dedisperser = make_shared<bonsai::dedisperser> (bonsai_config, ini_params);  // not config.bonsai_config
-
-    // Trigger processors.
-
+    shared_ptr<rf_pipelines::wi_transform> bonsai_transform;
+    shared_ptr<bonsai::dedisperser> dedisperser;
     shared_ptr<bonsai::global_max_tracker> max_tracker;
 
-    if (config.track_global_trigger_max) {
-	max_tracker = make_shared<bonsai::global_max_tracker> ();
-	dedisperser->add_processor(max_tracker);
+    if (!config.rflag) {
+        bonsai::dedisperser::initializer ini_params;
+        ini_params.fill_rfi_mask = true;                   // very important for real-time analysis!
+        ini_params.analytic_variance_on_the_fly = false;   // prevent accidental initialization from non-hdf5 config file (should have been checked already, but another check can't hurt)
+        ini_params.allocate = true;                        // redundant, but I like making it explicit
+        ini_params.verbosity = 0;
+
+        if (asynchronous_dedispersion) {
+            ini_params.asynchronous = true;
+
+            // The following line is now commented out.
+            //
+            //   ini_params.async_allowed_cores = allowed_cores;
+            //
+            // Previously, I was including this, even though it should be redundant given the call to pin_thread_to_cores() above.
+            // However, it appears that this is not safe, since std::hardware_concurreny() sometimes returns 1 after the first call
+            // to pin_thread_to_cores().  It is very strange that this only happens sometimes!  But commenting out the line above
+            // seems to fix it.
+        }
+
+        dedisperser = make_shared<bonsai::dedisperser> (bonsai_config, ini_params);  // not config.bonsai_config
+
+        // Trigger processors.
+
+        if (config.track_global_trigger_max) {
+            max_tracker = make_shared<bonsai::global_max_tracker> ();
+            dedisperser->add_processor(max_tracker);
+        }
+
+        if (l1b_subprocess)
+            dedisperser->add_processor(l1b_subprocess);
+
+        bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
     }
-
-    if (l1b_subprocess)
-	dedisperser->add_processor(l1b_subprocess);
-
-    auto bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
 
     _init_mask_counters(rfi_chain, beam_id);
 
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);
     pipeline->add(rfi_chain);
-    pipeline->add(bonsai_transform);
+    if (!config.rflag)
+        pipeline->add(bonsai_transform);
 
     shared_ptr<rf_pipelines::pipeline_object> latency1 = stream;
     shared_ptr<rf_pipelines::pipeline_object> latency2;
@@ -778,7 +798,7 @@ void dedispersion_thread_context::_thread_main() const
 } 
 
 
-// Note: Called if config.tflag == false.
+// Note: Called if config.tflag == true.
 void dedispersion_thread_context::_toy_thread_main() const
 {
     assert(config.tflag);
@@ -978,7 +998,7 @@ void l1_server::spawn_l1b_subprocesses()
     
     this->l1b_subprocesses.resize(config.nbeams);
 
-    if (config.tflag)
+    if (config.tflag || config.rflag)
 	return;  // 
 
     if (config.l1b_executable_filename.size() == 0) {

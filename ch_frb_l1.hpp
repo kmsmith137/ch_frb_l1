@@ -46,6 +46,7 @@ struct l1_config
     //   2: pretty noisy
 
     bool tflag = false;
+    bool rflag = false;
     bool fflag = false;
     bool l1b_pipe_io_debug = false;
     bool memory_pool_debug = false;
