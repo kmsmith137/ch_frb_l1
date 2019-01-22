@@ -203,6 +203,7 @@ struct l1_server {
     std::vector<std::thread> dedispersion_threads;
     std::mutex bonsai_dedisp_mutex;
     std::vector<std::shared_ptr<const bonsai::dedisperser> > bonsai_dedispersers;
+    std::vector<bool> bonsai_dedispersers_set;
 
     std::vector<std::shared_ptr<const rf_pipelines::pipeline_object> > latency_monitors_pre;
     std::vector<std::shared_ptr<const rf_pipelines::pipeline_object> > latency_monitors_post;

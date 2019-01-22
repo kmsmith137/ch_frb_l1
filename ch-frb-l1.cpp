@@ -1173,7 +1173,7 @@ void l1_server::make_rpc_servers()
             ulock u(bonsai_dedisp_mutex);
             int gotn = 0;
             for (int i=0; i<config.nbeams; i++)
-                if (bonsai_dedispersers[i])
+                if (bonsai_dedispersers_set[i])
                     gotn++;
             if (gotn == config.nbeams)
                 break;
@@ -1241,6 +1241,7 @@ void l1_server::spawn_dedispersion_threads()
 	cout << "ch-frb-l1: spawning " << config.nbeams << " dedispersion thread(s)" << endl;
 
     bonsai_dedispersers.resize(config.nbeams);
+    bonsai_dedispersers_set.resize(config.nbeams);
     latency_monitors_pre.resize(config.nbeams);
     latency_monitors_post.resize(config.nbeams);
     
@@ -1282,6 +1283,7 @@ void l1_server::set_bonsai(int ibeam,
     chlog("set_bonsai(" << ibeam << ")");
     ulock u(bonsai_dedisp_mutex);
     bonsai_dedispersers[ibeam] = bonsai;
+    bonsai_dedispersers_set[ibeam] = true;
     latency_monitors_pre [ibeam] = latency_pre;
     latency_monitors_post[ibeam] = latency_post;
 }
