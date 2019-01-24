@@ -139,10 +139,12 @@ l1_config::l1_config(int argc, const char **argv)
     }
 
     this->l1_config_filename = args[0];
-    if (args.size() == 4) {
-	this->rfi_config_filename = args[1];
-	this->bonsai_config_filename = args[2];
-	this->l1b_config_filename = args[3];
+    if (args.size() == 2) {
+        this->rfi_config_filename = args[1];
+    } else if (args.size() == 4) {
+        this->rfi_config_filename = args[1];
+        this->bonsai_config_filename = args[2];
+        this->l1b_config_filename = args[3];
     }
 #else
     // Low-budget command line parsing
