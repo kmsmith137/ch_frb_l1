@@ -444,7 +444,8 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
     string funcname = rpcreq.function;
     uint32_t token = rpcreq.token;
 
-    chlog("Received RPC request for function: '" << funcname << "'");
+    struct timeval tv1 = get_time();
+    chlog("Received RPC request for function: '" << funcname << "', token " << token);
     //from client '" << msg_string(*client) << "'");
 
     int rtnval = -1;
@@ -547,7 +548,12 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         chlog("Error: unknown RPC function name: " << funcname);
         rtnval = -1;
     }
-    chlog("Completed RPC request for function: '" << funcname << "'");
+
+    struct timeval tv2 = get_time();
+    double dt = time_diff(tv1, tv2);
+    
+    chlog("Completed RPC request for function: '" << funcname << "', token " << token
+          << ": " << (int)(dt*1000.) << " ms");
     return rtnval;
 }
 

@@ -64,6 +64,22 @@ for i in range(60):
     print('Sending chunk...')
     l0.send_chunk(0, ch)
 
+    while True:
+        sleep(1)
+        print('Get stats')
+        R = client.get_statistics(timeout=1)
+        print('Got', R)
+        for stats,node in zip(R, rpc_servers):
+            if stats is None:
+                print('No stats from', node)
+                continue
+            udp = stats[0]['udp_ringbuf_size']
+            chunks = stats[2]['ringbuf_n_ready']
+            print('UDP packets waiting:', udp)
+            print('Chunks waiting:', chunks)
+            if udp == 0 and chunks == 0:
+                break
+            
     # Give L1 some time to process...
     sleep(2)
 
