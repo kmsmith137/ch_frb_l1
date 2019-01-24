@@ -103,7 +103,14 @@ l1_config::l1_config(int argc, const char **argv)
         ("positional", "Positional parameters", cxxopts::value<std::vector<std::string>>(args))
         ;
     parser.parse_positional({"positional"});
-    auto opts = parser.parse(argc, argv);
+
+    // deep copy for const correctness.  we memleak the copy, but it's tiny.
+    vector<char*> argv_v;
+    for (int i=0; i<argc; i++)
+        argv_v.push_back(strdup(argv[i]));
+    char** argv_copy = argv_v.data();
+    
+    auto opts = parser.parse(argc, argv_copy);
 
     if (opts.count("v"))
         this->l1_verbosity = 2;
@@ -1163,7 +1170,7 @@ void l1_server::make_rpc_servers()
 	throw("ch-frb-l1 internal error: double call to make_rpc_servers()");
     if (input_streams.size() != size_t(config.nstreams))
 	throw("ch-frb-l1 internal error: make_rpc_servers() was called, without first calling make_input_streams()");
-    if (bonsai_dedispersers.size() != config.nbeams)
+    if ((int)bonsai_dedispersers.size() != config.nbeams)
         throw("ch-frb-l1 internal error: make_rpc_servers() was called, without first calling spawn_dedispersion_threads");
 
     // Wait for all bonsai dedispersers to be created.
