@@ -39,7 +39,7 @@ static PyObject* l1_server_new(PyTypeObject *type, PyObject *args, PyObject *kwd
 static int l1_server_init(l1_server_py *self, PyObject *args, PyObject *keywords) {
     if (PySequence_Check(args) == 0) {
         PyErr_SetString(PyExc_ValueError, "l1_server: expect list of bytes");
-        return NULL;
+        return -1;
     }
     std::vector<std::string> stringargs;
     Py_ssize_t n = PySequence_Size(args);
