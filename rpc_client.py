@@ -530,6 +530,7 @@ class RpcClient(object):
                 for p in parts]
 
     def get_summed_masked_frequencies(self, fpgamin, fpgamax,
+                                      beam=-1, where='after_rfi',
                                       servers=None, wait=True, timeout=-1):
         if servers is None:
             servers = self.servers.keys()
@@ -537,7 +538,7 @@ class RpcClient(object):
         for k in servers:
             self.token += 1
             req = msgpack.packb(['get_masked_frequencies_2', self.token])
-            args = msgpack.packb([fpgamin, fpgamax])
+            args = msgpack.packb([beam, where, fpgamin, fpgamax])
             tokens.append(self.token)
             self.sockets[k].send(req + args)
         if not wait:
