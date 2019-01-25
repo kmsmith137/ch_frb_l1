@@ -207,15 +207,11 @@ l1_config::l1_config(int argc, const char **argv)
 	// FIXME bind() here?
 	auto rfi_chain = rf_pipelines::pipeline_object::from_json(rfi_transform_chain_json);
 
-#if 0
-	// FIXME pretty-print rfi_chain
+	// Pretty-print rfi_chain
 	if (l1_verbosity >= 2) {
-	    cout << rfi_config_filename << ": " << rfi_chain.size() << " transforms\n";
-	    for (unsigned int i = 0; i < rfi_chain.size(); i++)
-		cout << rfi_config_filename << ": transform " << i << "/" << rfi_chain.size() << ": " << rfi_chain[i]->name << "\n";
-	}
-#endif
-
+	    cout << rfi_config_filename << ": transforms:\n";
+            rf_pipelines::print_pipeline(rfi_chain);
+        }
     }
     if (!tflag && !rflag) {
 	// Parse bonsai_config file and initialize 'bonsai_config'.
@@ -763,6 +759,8 @@ void dedispersion_thread_context::_thread_main() const
     if (!config.rflag)
         pipeline->add(bonsai_transform);
 
+    // Find pipeline stages to use for latency monitoring: 'stream' input, and
+    // the last step in the RFI chain
     shared_ptr<rf_pipelines::pipeline_object> latency1 = stream;
     shared_ptr<rf_pipelines::pipeline_object> latency2;
     auto find_last_transform = [&latency2]
@@ -770,12 +768,6 @@ void dedispersion_thread_context::_thread_main() const
         latency2 = p;
     };
     rf_pipelines::visit_pipeline(find_last_transform, rfi_chain);
-
-    cout << "RFI chain:" << endl;
-    rf_pipelines::print_pipeline(rfi_chain);
-    cout << "Found first stage for latency monitoring: " << latency1->name << endl;
-    cout << "Found last stage for latency monitoring: " << latency2->name << endl;
-
     set_bonsai(ibeam, dedisperser, latency1, latency2);
 
     rf_pipelines::run_params rparams;
@@ -864,6 +856,7 @@ void dedispersion_thread_context::_toy_thread_main() const
 
 static void dedispersion_thread_main(const dedispersion_thread_context &context)
 {
+    ch_frb_io::chime_log_set_thread_name("Bonsai-" + std::to_string(context.ibeam));
     try {
 	if (context.config.tflag)
 	    context._toy_thread_main();
