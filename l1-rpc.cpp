@@ -15,6 +15,7 @@
 #include "l1-rpc.hpp"
 #include "rpc.hpp"
 #include "chlog.hpp"
+#include "bonsai.hpp"
 
 using namespace std;
 using namespace ch_frb_io;
@@ -266,9 +267,12 @@ bool chunk_status_map::get(const string& filename,
 
 L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
                          shared_ptr<const ch_frb_l1::mask_stats_map> ms,
+                         vector<shared_ptr<const bonsai::dedisperser> > bonsais,
                          const string &port,
                          const string &cmdline,
-                         zmq::context_t *ctx) :
+                         std::vector<std::tuple<int, std::string, std::shared_ptr<const rf_pipelines::pipeline_object> > > monitors,
+                         zmq::context_t *ctx
+                         ) :
     _command_line(cmdline),
     _ctx(ctx ? ctx : new zmq::context_t()),
     _created_ctx(ctx == NULL),
@@ -278,7 +282,9 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
     _chunk_status(make_shared<chunk_status_map>()),
     _shutdown(false),
     _stream(stream),
-    _mask_stats(ms)
+    _mask_stats(ms),
+    _bonsais(bonsais),
+    _latencies(monitors)
 {
     if (port.length())
         _port = port;
@@ -421,6 +427,13 @@ static string replaceAll(const string &input, const string &from, const string &
     return s;
 }
 
+struct fpga_counts_seen {
+    string where;
+    int beam;
+    uint64_t max_fpga_seen;
+    MSGPACK_DEFINE(where, beam, max_fpga_seen);
+};
+
 int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) {
     const char* req_data = reinterpret_cast<const char *>(request->data());
     std::size_t offset = 0;
@@ -468,7 +481,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         // grab beam_ids
         vector<int> beam_ids;
         int nbeams = oh.get().via.array.ptr[3].via.array.size;
-        for (size_t i=0; i<nbeams; i++) {
+        for (int i=0; i<nbeams; i++) {
             int beam = oh.get().via.array.ptr[3].via.array.ptr[i].as<int>();
             // Be forgiving about requests to stream beams that we
             // aren't handling -- otherwise the client has to keep
@@ -595,14 +608,14 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
         // all my beams, as a comma-separated string
         string allbeams = "";
-        for (int i=0; i<_stream->ini_params.beam_ids.size(); i++) {
+        for (size_t i=0; i<_stream->ini_params.beam_ids.size(); i++) {
             if (i) allbeams += ",";
             allbeams += std::to_string(_stream->ini_params.beam_ids[i]);
         }
         dict["all_beams"] = allbeams;
         // beams being streamed
         string strbeams = "";
-        for (int i=0; i<stream_beams.size(); i++) {
+        for (size_t i=0; i<stream_beams.size(); i++) {
             if (i) strbeams += ",";
             strbeams += std::to_string(stream_beams[i]);
         }
@@ -957,6 +970,71 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         zmq::message_t* reply = sbuffer_to_message(buffer);
         return _send_frontend_message(*client, *token_to_message(token), *reply);
 
+    } else if (funcname == "get_max_fpga_counts") {
+
+        // Returns a list of tuples:
+        // [(where, beam, max_fpgacount_seen), ...]
+        msgpack::sbuffer buffer;
+        msgpack::packer<msgpack::sbuffer> pk(&buffer);
+
+        vector<fpga_counts_seen> fpgaseen;
+        fpga_counts_seen seen;
+
+        seen.where = "packet_stream";
+        seen.beam = -1;
+        seen.max_fpga_seen = _stream->packet_max_fpga_seen;
+        fpgaseen.push_back(seen);
+
+        vector<uint64_t> flushed;
+        vector<uint64_t> retrieved;
+        _stream->get_max_fpga_count_seen(flushed, retrieved);
+        
+        intensity_network_stream::initializer ini = _stream->ini_params;
+        int nbeams = _stream->ini_params.beam_ids.size();
+        for (int i=0; i<nbeams; i++) {
+            // _stream->get_first_fpga_count(beamid)
+            seen.beam = _stream->ini_params.beam_ids[i];
+            seen.where = "chunk_flushed";
+            seen.max_fpga_seen = flushed[i];
+            fpgaseen.push_back(seen);
+
+            seen.where = "chunk_retrieved";
+            seen.max_fpga_seen = retrieved[i];
+            fpgaseen.push_back(seen);
+        }
+
+        chlog("max_fpga: latency monitors size: " << _latencies.size());
+        for (size_t i=0; i<_latencies.size(); i++) {
+            int beam_id = std::get<0>(_latencies[i]);
+            string where = std::get<1>(_latencies[i]);
+            const auto &late = std::get<2>(_latencies[i]);
+            uint64_t fpga = (late->pos_lo * _stream->ini_params.fpga_counts_per_sample
+                             + _stream->get_first_fpga_count(beam_id));
+            seen.beam = beam_id;
+            seen.where = where;
+            seen.max_fpga_seen = fpga;
+            fpgaseen.push_back(seen);
+        }
+        
+        chlog("max_fpga: bonsais size: " << _bonsais.size());
+        for (size_t i=0; i<_bonsais.size(); i++) {
+            const auto &bonsai = _bonsais[i];
+            int beam_id = _stream->ini_params.beam_ids[i];
+            int nc = bonsai->get_nchunks_processed();
+            uint64_t fpga = (nc * bonsai->nt_chunk * _stream->ini_params.fpga_counts_per_sample
+                             + _stream->get_first_fpga_count(beam_id));
+            seen.beam = beam_id;
+            seen.where = "bonsai";
+            seen.max_fpga_seen = fpga;
+            fpgaseen.push_back(seen);
+        }
+        
+        pk.pack(fpgaseen);
+
+        //  Send reply back to client.
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(*client, *token_to_message(token), *reply);
+        
     } else {
         // Silent failure?
         chlog("Error: unknown RPC function name: " << funcname);
