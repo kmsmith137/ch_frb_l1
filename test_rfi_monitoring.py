@@ -15,7 +15,8 @@ import time
 l0 = simulate_l0.l0sim('l0_configs/l0_test_rfi.yml', 1.0)
 rpc_servers = ['tcp://127.0.0.1:5555']
 #client = RpcClient({'a':'tcp://127.0.0.1:5555'})
-client = RpcClient(dict([(s,s) for s in rpc_servers]))
+client = RpcClient(dict([(s,s) for s in rpc_servers]), debug=False)
+timeout = 1000
 
 #l1cmd = './ch-frb-l1 -fv l1_configs/l1_test_rfi.yml rfi_configs/rfi_testing.json bonsai_production_noups_nbeta1_v2.hdf5 xxx'
 l1cmd = './ch-frb-l1 -frv l1_configs/l1_test_rfi.yml rfi_configs/rfi_testing.json'
@@ -23,7 +24,7 @@ need_rfi = True
 
 l1 = subprocess.Popen(l1cmd, shell=True)
 # wait until L1 is ready to receive
-sleep(5)
+sleep(2)
 
 
 #### FIXME -- time to create a test rig for the L1 process, giving us the ability
@@ -64,27 +65,31 @@ for i in range(60):
     print('Sending chunk...')
     l0.send_chunk(0, ch)
 
+    # Query L1 to see if it has finished processing...
+    todo = [node for node in rpc_servers]
     while True:
-        sleep(1)
-        print('Get stats')
-        R = client.get_statistics(timeout=1)
-        print('Got', R)
+        #print('Get stats')
+        R = client.get_statistics(servers=todo, timeout=timeout)
+        #print('Got', R)
         for stats,node in zip(R, rpc_servers):
             if stats is None:
                 print('No stats from', node)
                 continue
             udp = stats[0]['udp_ringbuf_size']
             chunks = stats[2]['ringbuf_n_ready']
-            print('UDP packets waiting:', udp)
-            print('Chunks waiting:', chunks)
+            print('UDP packets waiting:', udp, 'Chunks waiting:', chunks)
             if udp == 0 and chunks == 0:
+                todo.remove(node)
                 break
-            
+        if len(todo) == 0:
+            break
+        sleep(0.1)
+
     # Give L1 some time to process...
-    sleep(2)
+    #sleep(2)
 
     if fpga_counts_per_sample is None:
-        R = client.get_statistics(timeout=5)
+        R = client.get_statistics(timeout=timeout)
         for stats,node in zip(R, rpc_servers):
             if stats is not None:
                 key = 'fpga_counts_per_sample'
@@ -94,7 +99,7 @@ for i in range(60):
 
     fpga_start = None
     if fpga_start is None:
-        R = client.get_max_fpga_counts(timeout=5)
+        R = client.get_max_fpga_counts(timeout=timeout)
         #print('Max fpga:', S)
         for fpgas,node in zip(R, rpc_servers):
             where = 'after_rfi'
@@ -119,3 +124,4 @@ for i in range(60):
         R = client.get_summed_masked_frequencies(fpga_min, fpga_max)
         print('Got', R)
 
+l1.terminate()

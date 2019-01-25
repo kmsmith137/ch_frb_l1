@@ -1166,7 +1166,6 @@ int L1RpcServer::_handle_max_fpga(zmq::message_t* client, string funcname, uint3
         fpgaseen.push_back(seen);
     }
 
-    chlog("max_fpga: latency monitors size: " << _latencies.size());
     for (size_t i=0; i<_latencies.size(); i++) {
         int beam_id = std::get<0>(_latencies[i]);
         string where = std::get<1>(_latencies[i]);
@@ -1179,7 +1178,6 @@ int L1RpcServer::_handle_max_fpga(zmq::message_t* client, string funcname, uint3
         fpgaseen.push_back(seen);
     }
         
-    chlog("max_fpga: bonsais size: " << _bonsais.size());
     for (size_t i=0; i<_bonsais.size(); i++) {
         const auto &bonsai = _bonsais[i];
         if (!bonsai)
