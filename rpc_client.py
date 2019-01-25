@@ -162,6 +162,33 @@ class MaskedFrequencies(object):
             self.histories[(beam, where)] = np.array(hist).astype(np.float32) / nt
 
 
+class SummedMaskedFrequencies(object):
+    @staticmethod
+    def parse(msgpack):
+        # List, one element per beam
+        rtn = []
+        for m in msgpack:
+            mm = SummedMaskedFrequencies(*m)
+            rtn.append(mm)
+        return rtn
+
+    def __init__(self, beam, fpga_start, fpga_end, pos_start, nt, nf, nsamples,
+                 nsamples_masked, freqs_masked_array):
+        self.beam = beam
+        self.fpga_start = fpga_start
+        self.fpga_end   = fpga_end
+        self.pos_start = pos_start
+        self.nt = nt
+        self.nf = nf
+        self.nsamples = nsamples
+        self.nsamples_masked = nsamples_masked
+        self.freqs_masked = np.array(freqs_masked_array)
+
+    def __str__(self):
+        return ('SummedMaskedFreq: beam %i, samples %i + %i, nf %i, total masked %i/%i = %.1f %%, frequency histogram: length %i, type %s' %
+                (self.beam, self.pos_start, self.nt, self.nf, self.nsamples_masked, self.nsamples, 100.*(self.nsamples_masked)/float(self.nsamples), len(self.freqs_masked), self.freqs_masked.dtype))
+
+
 class PacketRate(object):
     def __init__(self, msgpack):
         self.start = msgpack[0]
@@ -534,7 +561,7 @@ class RpcClient(object):
             return tokens
         parts = self.wait_for_tokens(tokens, timeout=timeout)
         # We expect one message part for each token.
-        return [AverageMaskedFrequencies(msgpack.unpackb(p[0])) if p is not None
+        return [MaskedFrequencies(msgpack.unpackb(p[0])) if p is not None
                 else None
                 for p in parts]
 
@@ -554,8 +581,7 @@ class RpcClient(object):
             return tokens
         parts = self.wait_for_tokens(tokens, timeout=timeout)
         # We expect one message part for each token.
-        #return [MaskedFrequencies(msgpack.unpackb(p[0])) if p is not None
-        return [msgpack.unpackb(p[0]) if p is not None
+        return [SummedMaskedFrequencies.parse(msgpack.unpackb(p[0])) if p is not None
                 else None
                 for p in parts]
 
