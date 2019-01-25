@@ -28,8 +28,8 @@ rack=$(hostname | cut -c 3)
 
 #if [ $rack == 1 ]; then
 #if [ $(hostname) == cf1n0 ]; then
-#if [ true ]; then
-if [ false ]; then
+#if true; then
+if false; then
     echo "I am $(hostname) aka rack $rack node $node .  Running DEV version"
     export VERSION=dev
     export RFI_CONFIG=18-11-15-low-latency-uniform-v1-noplot.json
