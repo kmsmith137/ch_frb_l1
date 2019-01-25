@@ -27,10 +27,12 @@ node=$(hostname | cut -c 5)
 rack=$(hostname | cut -c 3)
 
 #if [ $rack == 1 ]; then
-if [ $(hostname) == cf1n0 ]; then
+#if [ $(hostname) == cf1n0 ]; then
+if [ true ]; then
     echo "I am $(hostname) aka rack $rack node $node .  Running DEV version"
     export VERSION=dev
-    export RFI_CONFIG=18-11-15-low-latency-nonuniform-v1-noplot.json
+    #export RFI_CONFIG=18-11-15-low-latency-nonuniform-v1-noplot.json
+    export RFI_CONFIG=18-11-15-low-latency-uniform-v1-noplot.json
     export BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
 else
     export VERSION=production
