@@ -568,6 +568,8 @@ class RpcClient(object):
     def get_summed_masked_frequencies(self, fpgamin, fpgamax,
                                       beam=-1, where='after_rfi',
                                       servers=None, wait=True, timeout=-1):
+        fpgamin = int(fpgamin)
+        fpgamax = int(fpgamax)
         if servers is None:
             servers = self.servers.keys()
         tokens = []

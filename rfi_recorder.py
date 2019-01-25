@@ -9,10 +9,35 @@ import os
 from glob import glob
 import time
 
-rpc_servers = ['tcp://cf1n0:5555']
+rpc_servers = [
+    "tcp://10.6.201.10:5555",
+    "tcp://10.7.201.10:5555",
+    "tcp://10.6.201.11:5555",
+    "tcp://10.7.201.11:5555",
+    "tcp://10.6.201.12:5555",
+    "tcp://10.7.201.12:5555",
+    "tcp://10.6.201.13:5555",
+    "tcp://10.7.201.13:5555",
+    "tcp://10.6.201.14:5555",
+    "tcp://10.7.201.14:5555",
+    "tcp://10.6.201.15:5555",
+    "tcp://10.7.201.15:5555",
+    "tcp://10.6.201.16:5555",
+    "tcp://10.7.201.16:5555",
+    "tcp://10.6.201.17:5555",
+    "tcp://10.7.201.17:5555",
+    "tcp://10.6.201.18:5555",
+    "tcp://10.7.201.18:5555",
+    "tcp://10.6.201.19:5555",
+    "tcp://10.7.201.19:5555",
+]
+#'tcp://cf1n0:5555']
 
 client = RpcClient(dict([(s,s) for s in rpc_servers]), debug=False)
 timeout = 1000
+
+# int
+period_seconds = 5
 
 fpga_counts_per_sample = None
 
@@ -55,9 +80,7 @@ while True:
         sleep(5)
         continue
 
-    #fpga_minute = fpga_counts_per_sample * 1024 * 60
-    #fpga_minute = fpga_counts_per_sample * 1024 * 5
-    fpga_minute = fpga_counts_per_sample * 1024 * 2
+    fpga_minute = fpga_counts_per_sample * 1024 * period_seconds
 
     t_minute = fpga_minute * 2.56e-6
     #print('Time period:', t_minute)
@@ -108,27 +131,28 @@ while True:
 
     f_lo,f_hi = 400.,800.
 
-    plt.clf()
-    nplots = len(beam_histories)
-    plt.subplots_adjust(hspace=0.1)
-    for i,(b,hh) in enumerate(beam_histories.items()):
-        latest = hh[-1]
-        plt.subplot(nplots, 1, i+1)
-        #plt.plot(np.linspace(400, 800, len(latest)), latest, '-', label='Beam '+str(b))
-
-        #plt.fill_between(np.linspace(400, 800, len(latest)), 0, latest, linestyle='-', label='Beam '+str(b))
-        plt.fill_between(np.linspace(f_lo, f_hi, len(latest)), 0, latest, lw=0., alpha=0.5, label='Beam '+str(b))
-        if i != nplots-1:
-            plt.xticks([])
-        plt.xlim(f_lo, f_hi)
-        plt.ylim(0, 1)
-        plt.yticks([])
-        plt.axhline(1., color='k', alpha=0.3)
-        plt.ylabel('Beam ' + str(b))
-    #plt.legend()
-    plt.xlabel('Frequency (MHz)')
-    plt.suptitle('Fraction masked, by beam')
-    plt.savefig('latest.png')
+    if False:
+        plt.clf()
+        nplots = len(beam_histories)
+        plt.subplots_adjust(hspace=0.1)
+        for i,(b,hh) in enumerate(beam_histories.items()):
+            latest = hh[-1]
+            plt.subplot(nplots, 1, i+1)
+            #plt.plot(np.linspace(400, 800, len(latest)), latest, '-', label='Beam '+str(b))
+    
+            #plt.fill_between(np.linspace(400, 800, len(latest)), 0, latest, linestyle='-', label='Beam '+str(b))
+            plt.fill_between(np.linspace(f_lo, f_hi, len(latest)), 0, latest, lw=0., alpha=0.5, label='Beam '+str(b))
+            if i != nplots-1:
+                plt.xticks([])
+            plt.xlim(f_lo, f_hi)
+            plt.ylim(0, 1)
+            plt.yticks([])
+            plt.axhline(1., color='k', alpha=0.3)
+            plt.ylabel('Beam ' + str(b))
+        #plt.legend()
+        plt.xlabel('Frequency (MHz)')
+        plt.suptitle('Fraction masked, by beam')
+        plt.savefig('latest.png')
 
     plt.clf()
     nplots = len(beam_histories)
@@ -144,6 +168,21 @@ while True:
     plt.savefig('latest2.png')
 
     plt.clf()
+    beamfreqs = []
+    for i,(b,hh) in enumerate(beam_histories.items()):
+        latest = hh[-1]
+        beamfreqs.append(latest)
+    beamfreqs = np.vstack(beamfreqs)
+    nb,nf = beamfreqs.shape
+    plt.imshow(beamfreqs, interpolation='nearest', origin='lower',
+               extent=[f_lo,f_hi,0,nb], cmap='hot', aspect='auto')
+    plt.xlim(f_lo, f_hi)
+    plt.xlabel('Frequency (MHz)')
+    plt.ylabel('Beam number')
+    plt.suptitle('Fraction masked, by beam x frequency')
+    plt.savefig('beamfreq.png')
+
+    plt.clf()
     sumimg = np.vstack(sum_history).T
     sh,sw = sumimg.shape
     plt.imshow(sumimg, interpolation='nearest', origin='lower', aspect='auto', cmap='hot',
@@ -156,7 +195,7 @@ while True:
 
     plt.clf()
     plt.imshow(beam_map, interpolation='nearest', origin='lower', aspect='auto', cmap='hot', vmin=0, vmax=1)
-    plt.yticks(np.arange(bh))
+    #plt.yticks(np.arange(bh))
     plt.ylabel('Beam y')
     plt.xticks(np.arange(bw))
     plt.xlabel('Beam x')
@@ -169,9 +208,9 @@ while True:
     sh,sw = sumimg.shape
     plt.imshow(sumimg, interpolation='nearest', origin='lower', aspect='auto', cmap='hot')
     #vmin=0, vmax=1)
-    plt.yticks(np.arange(sh))
-    plt.xlabel('Sample')
+    #plt.yticks(np.arange(sh))
     plt.ylabel('Beam number')
+    plt.xlabel('Sample')
     plt.colorbar()
     plt.title('Fraction masked, beam map, over time')
     plt.savefig('beam-hist.png')
