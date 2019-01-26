@@ -1,4 +1,5 @@
 from __future__ import print_function
+import sys
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.dates as mdates
@@ -9,7 +10,14 @@ import sqlite3
 from rpc_client import SummedMaskedFrequencies
 
 
-conn = sqlite3.connect('/data/frb-archiver/dstn/rfi-monitor.db')
+#conn = sqlite3.connect('/data/frb-archiver/dstn/rfi-monitor.db')
+# Read-only:
+#dbfn = '/data/frb-archiver/dstn/rfi-monitor.db'
+dbfn = '/tmp/rfi-monitor-tst.db'
+conn = sqlite3.connect(dbfn)
+#conn = sqlite3.connect('file:'+dbfn + '?mode=ro', uri=True)
+
+
 db = conn.cursor()
 
 # dates = []
@@ -17,6 +25,40 @@ db = conn.cursor()
 #     (d,) = row
 #     dates.append(d)
 # print('Dates:', dates[:10])
+
+# Frequency vs Time
+
+freqtime = []
+dates = []
+for row in db.execute('SELECT date, freqs, nt_total FROM rfi_sum ORDER BY date'):
+    (date,blob,nt) = row
+    freqs = np.frombuffer(blob, dtype='<i8')
+    freqtime.append(100. * freqs / nt)
+    dates.append(datetime.datetime.strptime(date, '%Y-%m-%dT%H:%M:%S'))
+freqtime = np.vstack(freqtime).T
+print('Freqtime shape', freqtime.shape)
+
+f_lo, f_hi = 400, 800
+
+date_lo, date_hi = [mdates.date2num(d) for d in [dates[0],dates[-1]]]
+
+plt.clf()
+plt.imshow(freqtime, interpolation='nearest', origin='lower', aspect='auto',
+           cmap='hot',
+           extent=[date_lo, date_hi, f_lo, f_hi])
+plt.colorbar()
+ax = plt.gca()
+ax.xaxis_date()
+ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
+fig = plt.gcf()
+fig.autofmt_xdate()
+plt.ylabel('Frequency (MHz)')
+plt.title('RFI masked percentage: Frequency vs Time')
+plt.savefig('freq-time.png')
+
+sys.exit(0)
+
+# Beam vs Time
 
 lastdate = None
 beamfrac = None
