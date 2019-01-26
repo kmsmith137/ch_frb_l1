@@ -124,9 +124,7 @@ while True:
         continue
 
     fpga_minute = fpga_counts_per_sample * 1024 * period_seconds
-
     t_minute = fpga_minute * 2.56e-6
-    #print('Time period:', t_minute)
 
     if fpga_last is None:
         fpga_min = ((fpga_start // fpga_minute) - 2) * fpga_minute
@@ -189,8 +187,8 @@ while True:
         db.execute('INSERT INTO rfi_sum VALUES (?,?,?,?,?,?,?,?,?,?,?)',
                    (date, len(allbeams), frame0_nano, r0.fpga_start, r0.fpga_end, r0.pos_start,
                     r0.nt, bignsamples, bignmasked, sumt, blob))
-    # (date text, nbeams int, frame0nano int, fpga_start int, sample_start int,
-    #  nt int, nsamples int, nsamples_masked int, nt_total int, freqs blob)''')
+        # (date text, nbeams int, frame0nano int, fpga_start int, sample_start int,
+        #  nt int, nsamples int, nsamples_masked int, nt_total int, freqs blob)''')
 
     conn.commit()
                  

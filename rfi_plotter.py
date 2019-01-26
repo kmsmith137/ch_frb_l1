@@ -13,18 +13,11 @@ from rpc_client import SummedMaskedFrequencies
 #conn = sqlite3.connect('/data/frb-archiver/dstn/rfi-monitor.db')
 # Read-only:
 #dbfn = '/data/frb-archiver/dstn/rfi-monitor.db'
+#conn = sqlite3.connect('file:'+dbfn + '?mode=ro', uri=True)
 dbfn = '/tmp/rfi-monitor-tst.db'
 conn = sqlite3.connect(dbfn)
-#conn = sqlite3.connect('file:'+dbfn + '?mode=ro', uri=True)
-
 
 db = conn.cursor()
-
-# dates = []
-# for row in db.execute('SELECT DISTINCT date from rfi'):
-#     (d,) = row
-#     dates.append(d)
-# print('Dates:', dates[:10])
 
 # Frequency vs Time
 
@@ -56,8 +49,6 @@ plt.ylabel('Frequency (MHz)')
 plt.title('RFI masked percentage: Frequency vs Time')
 plt.savefig('freq-time.png')
 
-sys.exit(0)
-
 # Beam vs Time
 
 lastdate = None
@@ -65,7 +56,7 @@ beamfrac = None
 dates = []
 beamdates = []
 
-for row in db.execute('SELECT date, beam, 100.*nsamples_masked/nsamples FROM rfi '
+for row in db.execute('SELECT date, beam, 100.*nsamples_masked/nsamples FROM rfi_meta '
                       'ORDER BY date, beam'):
     (date, beam, fmasked) = row
     if date != lastdate:
@@ -75,7 +66,8 @@ for row in db.execute('SELECT date, beam, 100.*nsamples_masked/nsamples FROM rfi
         beamfrac = {}
         lastdate = date
     # UNfortunately, "nsamples_masked" is actually "UNmasked"
-    beamfrac[beam] = 100. - fmasked
+    #beamfrac[beam] = 100. - fmasked
+    beamfrac[beam] = fmasked
 if beamfrac is not None:
     beamdates.append(beamfrac)
     dates.append(lastdate)
@@ -106,18 +98,12 @@ ax.xaxis_date()
 ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
 fig = plt.gcf()
 fig.autofmt_xdate()
-#locs,labels = plt.xticks()
-#print('x ticks:', locs)
-#datelabels = [dates[int(i)] for i in locs]
-#plt.xticks(locs, datelabels)
-#plt.xlabel('Sample number (time)')
 plt.xlabel('Date (UTC)')
 plt.ylabel('Beam')
 plt.title('RFI masked percentage, by beam')
 plt.savefig('beam-time.png')
 
-sys.exit(0)
-
+# Latest sample: beam vs freq
 
 db.execute('SELECT max(date) from rfi')
 latest = db.fetchone()
