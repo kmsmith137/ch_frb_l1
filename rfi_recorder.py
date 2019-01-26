@@ -12,18 +12,23 @@ import datetime
 
 import sqlite3
 
-dbfn = '/data/frb-archiver/dstn/rfi-monitor.db'
+date = datetime.datetime.utcnow().isoformat()[:19]
+date = date.replace(':', '-')
+
+dbfn = '/data/frb-archiver/dstn/rfi-monitor-' + date + '.db'
 
 create = not(os.path.exists(dbfn))
 conn = sqlite3.connect(dbfn)
-
-
 db = conn.cursor()
 
 if create:
     db.execute('''CREATE TABLE rfi
                  (date text, beam int, frame0nano int, fpga_start int, fpga_end int, sample_start int,
                   nt int, nsamples int, nsamples_masked int, freqs blob)''')
+    # Like "rfi" but without the "blob" -- makes for much faster scans for beam vs time plots.
+    db.execute('''CREATE TABLE rfi_meta
+                 (date text, beam int, frame0nano int, fpga_start int, fpga_end int, sample_start int,
+                  nt int, nsamples int, nsamples_masked int)''')
     # sum over all beams
     db.execute('''CREATE TABLE rfi_sum
                  (date text, nbeams int, frame0nano int, fpga_start int, fpga_end int, sample_start int,
@@ -60,7 +65,7 @@ client = RpcClient(dict([(s,s) for s in rpc_servers]), debug=False)
 timeout = 1000
 
 # int
-period_seconds = 5
+period_seconds = 60
 
 fpga_counts_per_sample = None
 
@@ -167,6 +172,10 @@ while True:
                     r.nsamples, r.nsamples_masked, blob))
         # (date text, beam int, frame0nano int, fpga_start int, fpga_end int, sample_start int,
         #  nt int, nsamples int, nsamples_masked int, freqs blob)
+
+        db.execute('INSERT INTO rfi_meta VALUES (?,?,?,?,?,?,?,?,?)',
+                   (date, r.beam, frame0_nano, r.fpga_start, r.fpga_end, r.pos_start, r.nt,
+                    r.nsamples, r.nsamples_masked))
 
         if r0 is None:
             r0 = r
