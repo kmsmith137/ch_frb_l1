@@ -173,7 +173,7 @@ class SummedMaskedFrequencies(object):
         return rtn
 
     def __init__(self, beam, fpga_start, fpga_end, pos_start, nt, nf, nsamples,
-                 nsamples_masked, freqs_masked_array):
+                 nsamples_unmasked, freqs_masked_array):
         self.beam = beam
         self.fpga_start = fpga_start
         self.fpga_end   = fpga_end
@@ -181,7 +181,8 @@ class SummedMaskedFrequencies(object):
         self.nt = nt
         self.nf = nf
         self.nsamples = nsamples
-        self.nsamples_masked = nsamples_masked
+        self.nsamples_unmasked = nsamples_unmasked
+        self.nsamples_masked = nsamples - nsamples_unmasked
         self.freqs_masked = np.array(freqs_masked_array)
 
     def __str__(self):
