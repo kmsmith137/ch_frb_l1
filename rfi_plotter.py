@@ -146,7 +146,7 @@ def main():
     
     # Latest sample: beam vs freq
     
-    db.execute('SELECT max(date) from rfi')
+    db.execute('SELECT max(date) from rfi_meta')
     latest = db.fetchone()
     print('Got latest date:', latest)
     
@@ -202,11 +202,11 @@ def main():
             ibeam = beamnum - beam_lo
             bf_sum[ibeam,:] += beamfreqs[i,:]
             bf_n  [ibeam] += 1
-        beamfreqs = bf_sum / bf_n[:,np.newaxis]
+        beamfreqs = bf_sum / np.maximum(1, bf_n[:,np.newaxis])
     
     nb,nf = beamfreqs.shape
     plt.imshow(beamfreqs, interpolation='nearest', origin='lower',
-               extent=[f_lo,f_hi,0,nb], cmap='hot', aspect='auto')
+               extent=[f_lo,f_hi,beam_lo,beam_hi], cmap='hot', aspect='auto')
     plt.xlim(f_lo, f_hi)
     plt.xlabel('Frequency (MHz)')
     if args.avg:
@@ -216,6 +216,69 @@ def main():
     plt.suptitle('Fraction masked, by beam x frequency')
     plt.savefig('beamfreq.png')
 
+    if not args.avg:
+        return
+    print('Beam vs freq movie...')
+    dates = []
+    for row in db.execute('SELECT DISTINCT date FROM rfi_meta'):
+        (date,) = row
+        dates.append(date)
+    dates.sort()
+    print('Found', len(dates), 'distinct dates')
+
+    nb,nf = beamfreqs.shape
+    bf_sum = np.zeros((nbeams, nf), np.float32)
+    bf_n   = np.zeros(nbeams)
+
+    beams = beamnum_map.keys()
+    bx = [beam_ew(b) for b in beams]
+    by = [beam_ns(b) for b in beams]
+    xlo,xhi = min(bx), max(bx)
+    ylo,yhi = min(by), max(by)
+    beam_map = np.zeros((1+yhi-ylo, 1+xhi-xlo))
+
+    for idate,date in enumerate(dates):
+        bf_sum[:,:] = 0
+        bf_n[:] = 0
+        beam_map[:,:] = 0
+
+        print('Beam-freq movie frame', idate+1, 'of', len(dates), date)
+
+        for row in db.execute("SELECT * FROM rfi WHERE date=?", (date,)):
+            (d, beam, frame0nano, fpga_start, fpga_end, sample_start, nt, nsamples,
+             nsamples_masked, blob) = row
+            # NOTE, these frequencies are not flipped (they're in 400..800 order)
+            freqs = np.frombuffer(blob, dtype='<i4')
+
+            beamnum = beamnum_map[beam]
+            ibeam = beamnum - beam_lo
+            bf_sum[ibeam,:] += freqs
+            bf_n  [ibeam] += 1
+
+            bx = beam_ew(beam)
+            by = beam_ns(beam)
+            beam_map[by-ylo, bx-xlo] = float(nsamples_masked) / float(nsamples)
+
+        bf = bf_sum / np.maximum(bf_n[:,np.newaxis], 1)
+
+        plt.clf()
+        plt.imshow(bf, interpolation='nearest', origin='lower',
+                   extent=[f_lo,f_hi,beam_lo,beam_hi], cmap='hot', aspect='auto')
+        plt.xlim(f_lo, f_hi)
+        plt.xlabel('Frequency (MHz)')
+        plt.ylabel('N-S Beam')
+        plt.suptitle('Fraction masked, by beam x frequency: %s' % date)
+        plt.savefig('beamfreq-%04i.png' % idate)
+
+        plt.clf()
+        plt.imshow(beam_map, interpolation='nearest', origin='lower',
+                   extent=[xlo-0.5, xhi+0.5, ylo-0.5, yhi+0.5],
+                   cmap='hot', aspect='auto', vmin=0.3, vmax=0.7)
+        plt.xticks(np.arange(1+xhi-xlo))
+        plt.xlabel('E-W Beam')
+        plt.ylabel('N-S Beam')
+        plt.suptitle('Fraction masked, by beam: %s' % date)
+        plt.savefig('beammap-%04i.png' % idate)
 
 if __name__ == '__main__':
     main()

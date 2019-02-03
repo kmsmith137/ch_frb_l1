@@ -30,14 +30,22 @@ def main(rpc_servers):
         db.execute('''CREATE TABLE rfi
                      (date text, beam int, frame0nano int, fpga_start int, fpga_end int, sample_start int,
                       nt int, nsamples int, nsamples_masked int, freqs blob)''')
+
+        db.execute('''CREATE INDEX rfi_date_index ON rfi(date)''')
+        db.execute('''CREATE INDEX rfi_beam_index ON rfi(beam)''')
+
         # Like "rfi" but without the "blob" -- makes for much faster scans for beam vs time plots.
         db.execute('''CREATE TABLE rfi_meta
                      (date text, beam int, frame0nano int, fpga_start int, fpga_end int, sample_start int,
                       nt int, nsamples int, nsamples_masked int)''')
+        db.execute('''CREATE INDEX rfi_meta_date_index ON rfi_meta(date)''')
+
         # sum over all beams
         db.execute('''CREATE TABLE rfi_sum
                      (date text, nbeams int, frame0nano int, fpga_start int, fpga_end int, sample_start int,
                       nt int, nsamples int, nsamples_masked int, nt_total, freqs blob)''')
+        db.execute('''CREATE INDEX rfi_sum_date_index ON rfi_sum(date)''')
+
         conn.commit()
 
     client = RpcClient(dict([(s,s) for s in rpc_servers]), debug=False)
