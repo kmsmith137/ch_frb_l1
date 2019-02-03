@@ -13,7 +13,11 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('rfi_db', nargs=1,
                     help='rfi database filename')
+parser.add_argument('--avg', action='store_true', default=False,
+                    help='Average over E-W rows?')
 args = parser.parse_args()
+
+f_lo, f_hi = 400, 800
 
 dbfn = args.rfi_db[0]
 #conn = sqlite3.connect('/data/frb-archiver/dstn/rfi-monitor.db')
@@ -37,14 +41,11 @@ for row in db.execute('SELECT date, freqs, nt_total FROM rfi_sum ORDER BY date')
 freqtime = np.vstack(freqtime).T
 print('Freqtime shape', freqtime.shape)
 
-f_lo, f_hi = 400, 800
-
 date_lo, date_hi = [mdates.date2num(d) for d in [dates[0],dates[-1]]]
 
 plt.clf()
 plt.imshow(freqtime, interpolation='nearest', origin='lower', aspect='auto',
-           cmap='hot',
-           extent=[date_lo, date_hi, f_lo, f_hi])
+           cmap='hot', extent=[date_lo, date_hi, f_lo, f_hi])
 plt.colorbar()
 ax = plt.gca()
 ax.xaxis_date()
@@ -85,8 +86,6 @@ for row in db.execute('SELECT date, beam, 100.*nsamples_masked/nsamples FROM rfi
             dates.append(lastdate)
         beamfrac = {}
         lastdate = date
-    # UNfortunately, "nsamples_masked" is actually "UNmasked"
-    #beamfrac[beam] = 100. - fmasked
     beamfrac[beam] = fmasked
 if beamfrac is not None:
     beamdates.append(beamfrac)
@@ -96,13 +95,29 @@ for beamfrac in beamdates:
     allbeams.update(beamfrac.keys())
 print('Got', len(dates), 'dates x', len(allbeams), 'total beams')
 print('All beams:', allbeams)
-beam_index = dict([(b,i) for i,b in enumerate(allbeams)])
 
-beam_times = np.zeros((len(allbeams), len(beamdates)))
+def beam_ns(beam):
+    return beam % 1000
+
+if args.avg:
+    beam_map = dict([(b, beam_ns(b)) for b in allbeams])
+else:
+    beam_map = dict([(b, b) for b in allbeams])
+
+beam_lo = min(beam_map.values())
+beam_hi = max(beam_map.values())
+
+nbeams = 1 + beam_hi - beam_lo
+
+beam_times = np.zeros((nbeams, len(beamdates)))
+beam_times_n = np.zeros((nbeams, len(beamdates)), np.uint8)
 for idate,beamfrac in enumerate(beamdates):
     for beam,f in beamfrac.items():
-        ibeam = beam_index[beam]
-        beam_times[ibeam, idate] = f
+        beamnum = beam_map[beam]
+        ibeam = beamnum - beam_lo
+        beam_times[ibeam, idate] += f
+        beam_times_n[ibeam, idate] += 1
+beam_times /= np.maximum(1, beam_times_n)
 
 dateobjs = [datetime.datetime.strptime(iso, '%Y-%m-%dT%H:%M:%S')
             for iso in dates]
@@ -111,7 +126,7 @@ ndates = [mdates.date2num(d) for d in dateobjs]
 
 plt.clf()
 plt.imshow(beam_times, interpolation='nearest', origin='lower', cmap='hot', aspect='auto',
-           extent=[ndates[0], ndates[-1], 0, len(allbeams)-1])
+           extent=[ndates[0], ndates[-1], beam_lo, beam_hi])
 plt.colorbar()
 ax = plt.gca()
 ax.xaxis_date()
@@ -119,7 +134,10 @@ ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
 fig = plt.gcf()
 fig.autofmt_xdate()
 plt.xlabel('Date (UTC)')
-plt.ylabel('Beam')
+if args.avg:
+    plt.ylabel('N-S Beam')
+else:
+    plt.ylabel('Beam number')
 plt.title('RFI masked percentage, by beam')
 plt.savefig('beam-time.png')
 
@@ -146,28 +164,40 @@ for row in db.execute("SELECT * FROM rfi WHERE date=?", latest):
 
 print('Parsed', len(allbeams), 'beams for latest date')
 
-beams = [r.beam for r in allbeams]
-
-bw = 1
-bh = 1 + max(beams)
-beam_map = np.zeros((bh,bw))
-for r in allbeams:
-    bx,by = 0, r.beam
-    beam_map[by,bx] = float(r.nsamples_masked) / float(r.nsamples)
-
-f_lo,f_hi = 400.,800.
+# beams = [r.beam for r in allbeams]
+# bw = 1
+# bh = 1 + max(beams)
+# beam_map = np.zeros((bh,bw))
+# for r in allbeams:
+#     bx,by = 0, r.beam
+#     beam_map[by,bx] = float(r.nsamples_masked) / float(r.nsamples)
 
 plt.clf()
 beamfreqs = []
 for r in allbeams:
     beamfreqs.append(r.freqs_masked)
 beamfreqs = np.vstack(beamfreqs)
+
+if args.avg:
+    nb,nf = beamfreqs.shape
+    bf_sum = np.zeros((nbeams, nf), np.float32)
+    bf_n   = np.zeros(nbeams)
+    for i,r in enumerate(allbeams):
+        beamnum = beam_map[r.beam]
+        ibeam = beamnum - beam_lo
+        bf_sum[ibeam,:] += beamfreqs[i,:]
+        bf_n  [ibeam] += 1
+    beamfreqs = bf_sum / bf_n[:,np.newaxis]
+
 nb,nf = beamfreqs.shape
 plt.imshow(beamfreqs, interpolation='nearest', origin='lower',
            extent=[f_lo,f_hi,0,nb], cmap='hot', aspect='auto')
 plt.xlim(f_lo, f_hi)
 plt.xlabel('Frequency (MHz)')
-plt.ylabel('Beam number')
+if args.avg:
+    plt.ylabel('N-S Beam')
+else:
+    plt.ylabel('Beam number')
 plt.suptitle('Fraction masked, by beam x frequency')
 plt.savefig('beamfreq.png')
 
