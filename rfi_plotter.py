@@ -9,12 +9,18 @@ import datetime
 import sqlite3
 from rpc_client import SummedMaskedFrequencies
 
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument('rfi_db', nargs=1,
+                    help='rfi database filename')
+args = parser.parse_args()
 
+dbfn = args.rfi_db[0]
 #conn = sqlite3.connect('/data/frb-archiver/dstn/rfi-monitor.db')
 # Read-only:
 #dbfn = '/data/frb-archiver/dstn/rfi-monitor.db'
 #conn = sqlite3.connect('file:'+dbfn + '?mode=ro', uri=True)
-dbfn = '/tmp/rfi-monitor-tst.db'
+#dbfn = '/data/frb-archiver/dstn/rfi-monitor-2019-01-26T15-51-40.db'
 conn = sqlite3.connect(dbfn)
 
 db = conn.cursor()
@@ -48,6 +54,20 @@ fig.autofmt_xdate()
 plt.ylabel('Frequency (MHz)')
 plt.title('RFI masked percentage: Frequency vs Time')
 plt.savefig('freq-time.png')
+
+# plt.clim(0, 25)
+# plt.ylim(550, 570)
+# plt.savefig('freq-time-zoom1.png')
+# plt.ylim(650, 670)
+# plt.savefig('freq-time-zoom2.png')
+# t1 = mdates.date2num(datetime.datetime(2019,1,27,18,0,0))
+# t2 = mdates.date2num(datetime.datetime(2019,1,28,0,0,0))
+# plt.xlim(t1, t2)
+# plt.ylim(550, 570)
+# plt.savefig('freq-time-zoom3.png')
+# plt.xlim(t1, t2)
+# plt.ylim(650, 670)
+# plt.savefig('freq-time-zoom4.png')
 
 # Beam vs Time
 
