@@ -1349,7 +1349,7 @@ void l1_server::make_input_streams()
 	ini_params.stream_id = istream + 1;   // +1 here since first NFS mount is /frb-archive-1, not /frb-archive-0
         ini_params.frame0_url = config.frame0_url;
         // FIXME resolve merge conflict!?
-        // ini_params.frame0_timeout = config.frame0_timeout;
+        ini_params.frame0_timeout = config.frame0_timeout;
 	ini_params.force_fast_kernels = !config.slow_kernels;
 	ini_params.force_reference_kernels = config.slow_kernels;
 	ini_params.deliberately_crash = config.deliberately_crash;
@@ -1622,7 +1622,6 @@ int main(int argc, char **argv)
     server.make_input_streams();
     server.make_mask_stats();
     server.make_slow_pulsar_writer_hashes();
-    server.make_rpc_servers();
     server.make_prometheus_servers();
     server.spawn_dedispersion_threads();
     server.make_rpc_servers();
