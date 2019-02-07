@@ -254,7 +254,7 @@ class RpcClient(object):
             return tokens
         parts = self.wait_for_tokens(tokens, timeout=timeout)
         # We expect one message part for each token.
-        self.debug('get_statistics raw reply:', parts)
+        #self.debug('get_statistics raw reply:', parts)
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
 
@@ -574,15 +574,25 @@ class RpcClient(object):
         if servers is None:
             servers = self.servers.keys()
         tokens = []
+        self.debug('get_summed_masked_frequencies: sending to', len(servers))
         for k in servers:
             self.token += 1
             req = msgpack.packb(['get_masked_frequencies_2', self.token])
             args = msgpack.packb([beam, where, fpgamin, fpgamax])
             tokens.append(self.token)
-            self.sockets[k].send(req + args)
+            try:
+                self.sockets[k].send(req + args, flags=zmq.NOBLOCK)
+            except:
+                import traceback
+                print('Socket.send() to', k, 'failed:')
+                traceback.print_exc()
+
+        self.debug('get_summed_masked_frequencies: sent to', len(servers))
         if not wait:
             return tokens
+        self.debug('get_summed_masked_frequencies: waiting for', len(tokens), 'tokens')
         parts = self.wait_for_tokens(tokens, timeout=timeout)
+        self.debug('get_summed_masked_frequencies: done waiting for',len(tokens), 'tokens')
         # We expect one message part for each token.
         return [SummedMaskedFrequencies.parse(msgpack.unpackb(p[0])) if p is not None
                 else None
@@ -696,18 +706,19 @@ class RpcClient(object):
         if timeout > 0:
             t0 = time.time()
         while len(todo):
-            self.debug('Still waiting for tokens:', todo)
+            self.debug('Still waiting for', len(todo), 'tokens:', todo)
             done = []
             for token in todo:
                 r = self._pop_token(token, get_socket=get_sockets)
                 if r is not None:
-                    self.debug('Popped token', token, '->', r)
+                    #self.debug('Popped token', token) #, '->', r)
                     done.append(token)
                     if get_sockets:
                         # unpack socket,result tuple
                         socket,r = r
                         sockets[token] = socket
                     results[token] = r
+            self.debug('Popped', len(done), 'tokens:', done)
             for token in done:
                 todo.remove(token)
             if len(todo):
@@ -721,7 +732,7 @@ class RpcClient(object):
                     tnow = time.time()
                     timeout = max(0, t0 + timeout - tnow)
                     t0 = tnow
-        self.debug('Results:', results)
+        #self.debug('Results:', results)
         if not get_sockets:
             return [results.get(token, None) for token in tokens]
         return ([results.get(token, None) for token in tokens],
