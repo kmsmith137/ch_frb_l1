@@ -128,6 +128,8 @@ def main(rpc_servers):
             if r is not None:
                 allbeams.extend(r)
         print('Got results for', len(allbeams), 'beams out of', len(R), 'nodes')
+
+        t_0 = time.time()
     
         date = datetime.datetime.utcnow().isoformat()[:19]
     
@@ -174,6 +176,9 @@ def main(rpc_servers):
             #  nt int, nsamples int, nsamples_masked int, nt_total int, freqs blob)''')
     
         conn.commit()
+
+        t_db = time.time()
+        print('Inserting data into database took', t_db-t_0, 'seconds')
                      
         if t_last is None:
             t_last = time.time()
@@ -183,9 +188,13 @@ def main(rpc_servers):
         print('Sleeping for', t_sleep)
         if t_sleep < 0:
             print('We have fallen behind!')
-            sys.exit(-1)
-    
-        sleep(t_sleep)
+            # Just continue anyway -- if we haven't fallen *too* far behind
+            # (eg, database write just stalled for a bit), like a couple of minutes,
+            # then we can still retrieve the RFI stats from the nodes' ring buffers.
+            # Uncertain what happens if we fall late past the length of the ring buffers.
+            #sys.exit(-1)
+        else:
+            sleep(t_sleep)
 
 
 rack1 = [
