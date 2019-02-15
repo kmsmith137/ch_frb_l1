@@ -29,7 +29,7 @@ def main(rpc_servers):
     if create:
         db.execute('''CREATE TABLE rfi
                      (date text, beam int, frame0nano int, fpga_start int, fpga_end int, sample_start int,
-                      nt int, nsamples int, nsamples_masked int, freqs blob)''')
+                      nt int, nsamples int, nsamples_masked int, freqs blob, where_rfi text)''')
 
         db.execute('''CREATE INDEX rfi_date_index ON rfi(date)''')
         db.execute('''CREATE INDEX rfi_beam_index ON rfi(beam)''')
@@ -37,13 +37,14 @@ def main(rpc_servers):
         # Like "rfi" but without the "blob" -- makes for much faster scans for beam vs time plots.
         db.execute('''CREATE TABLE rfi_meta
                      (date text, beam int, frame0nano int, fpga_start int, fpga_end int, sample_start int,
-                      nt int, nsamples int, nsamples_masked int)''')
+                      nt int, nsamples int, nsamples_masked int, where_rfi text)''')
         db.execute('''CREATE INDEX rfi_meta_date_index ON rfi_meta(date)''')
+        db.execute('''CREATE INDEX rfi_meta_beam_index ON rfi_meta(beam)''')
 
         # sum over all beams
         db.execute('''CREATE TABLE rfi_sum
                      (date text, nbeams int, frame0nano int, fpga_start int, fpga_end int, sample_start int,
-                      nt int, nsamples int, nsamples_masked int, nt_total, freqs blob)''')
+                      nt int, nsamples int, nsamples_masked int, nt_total, freqs blob, where_rfi text)''')
         db.execute('''CREATE INDEX rfi_sum_date_index ON rfi_sum(date)''')
 
         conn.commit()
@@ -67,29 +68,18 @@ def main(rpc_servers):
             print('Sending get_stats()')
             R = client.get_statistics(timeout=timeout)
             for stats,node in zip(R, rpc_servers):
-                # keys = list(stats[0].keys())
-                # keys.sort()
-                # for k in keys:
-                #     print('  ', k, '=', stats[0][k])
-    
                 if stats is not None:
                     key = b'fpga_counts_per_sample'
                     fpga_counts_per_sample = stats[0][key]
                     print('Got fpga counts per sample = ', fpga_counts_per_sample)
-    
                     key = b'frame0_nano'
                     frame0_nano = stats[0][key]
                     print('Got frame0_nano', frame0_nano)
-    
                     break
     
-    
-    
         # If we wanted to dead-reckon the time between requests, we could avoid this call...
-        #fpga_start = None
         if fpga_start is None:
             R = client.get_max_fpga_counts(timeout=timeout)
-            #print('Max fpga:', S)
             for fpgas,node in zip(R, rpc_servers):
                 where = b'after_rfi'
                 if fpgas is None:
@@ -122,63 +112,71 @@ def main(rpc_servers):
     
         print('Now (UTC):', datetime.datetime.utcnow().isoformat()[:19])
         print('Requesting RFI mask for FPGA range', fpga_min, 'to', fpga_max)
-        R = client.get_summed_masked_frequencies(fpga_min, fpga_max, timeout=timeout)
-        allbeams = []
-        for r in R:
-            if r is not None:
-                allbeams.extend(r)
-        print('Got results for', len(allbeams), 'beams out of', len(R), 'nodes')
 
         t_0 = time.time()
-    
         date = datetime.datetime.utcnow().isoformat()[:19]
+        for where in ['after_rfi', 'before_rfi']:
+            t_q0 = time.time()
+            R = client.get_summed_masked_frequencies(fpga_min, fpga_max, where=where,
+                                                     timeout=timeout)
+            t_q = time.time()
+            print('Query took', t_q-t_q0, 'seconds')
+            allbeams = []
+            for r in R:
+                if r is not None:
+                    allbeams.extend(r)
+            print('Got results for', len(allbeams), 'beams out of', len(R),
+                  'nodes for', where)
     
-        sumhist = 0
-        sumt = 0
-        bignsamples = 0
-        bignmasked = 0
+            # Sum of the frequency histogram over all beams
+            sumhist = 0
+            sumt = 0
+            # Scalar sum of masked samples, over all beams
+            bignsamples = 0
+            bignmasked = 0
+        
+            r0 = None
+            for r in allbeams:
+                # Frequency ordering flip!
+                f = np.flip(r.freqs_masked, 0)
+                sumhist = sumhist + f
+                sumt += r.nt
+        
+                bignsamples += r.nsamples
+                bignmasked += r.nsamples_masked
+        
+                blob = f.astype('<i4').tobytes()
     
-        r0 = None
-        for r in allbeams:
-            # Frequency ordering flip!
-            f = np.flip(r.freqs_masked, 0)
-            sumhist = sumhist + f
-            sumt += r.nt
+                db.execute('INSERT INTO rfi VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+                           (date, r.beam, frame0_nano, r.fpga_start, r.fpga_end,
+                            r.pos_start, r.nt, r.nsamples, r.nsamples_masked,
+                            blob, where))
+                # (date text, beam int, frame0nano int, fpga_start int, fpga_end int, sample_start int,
+                #  nt int, nsamples int, nsamples_masked int, freqs blob, where_rfi text)
     
-            bignsamples += r.nsamples
-            bignmasked += r.nsamples_masked
+                db.execute('INSERT INTO rfi_meta VALUES (?,?,?,?,?,?,?,?,?,?)',
+                           (date, r.beam, frame0_nano, r.fpga_start, r.fpga_end, r.pos_start, r.nt,
+                            r.nsamples, r.nsamples_masked, where))
     
-            blob = f.astype('<i4').tobytes()
-    
-            db.execute('INSERT INTO rfi VALUES (?,?,?,?,?,?,?,?,?,?)',
-                       (date, r.beam, frame0_nano, r.fpga_start, r.fpga_end, r.pos_start, r.nt,
-                        r.nsamples, r.nsamples_masked, blob))
-            # (date text, beam int, frame0nano int, fpga_start int, fpga_end int, sample_start int,
-            #  nt int, nsamples int, nsamples_masked int, freqs blob)
-    
-            db.execute('INSERT INTO rfi_meta VALUES (?,?,?,?,?,?,?,?,?)',
-                       (date, r.beam, frame0_nano, r.fpga_start, r.fpga_end, r.pos_start, r.nt,
-                        r.nsamples, r.nsamples_masked))
-    
-            if r0 is None:
-                r0 = r
-            else:
-                if r.fpga_start != r0.fpga_start:
-                    print('Warning: mismatch fpga_start!')
-    
-        if len(allbeams):
-            # sum over all beams
-            blob = sumhist.astype('<i8').tobytes()
-            db.execute('INSERT INTO rfi_sum VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-                       (date, len(allbeams), frame0_nano, r0.fpga_start, r0.fpga_end, r0.pos_start,
-                        r0.nt, bignsamples, bignmasked, sumt, blob))
-            # (date text, nbeams int, frame0nano int, fpga_start int, sample_start int,
-            #  nt int, nsamples int, nsamples_masked int, nt_total int, freqs blob)''')
+                if r0 is None:
+                    r0 = r
+                else:
+                    if r.fpga_start != r0.fpga_start:
+                        print('Warning: mismatch fpga_start!')
+
+            if len(allbeams):
+                # sum over all beams
+                blob = sumhist.astype('<i8').tobytes()
+                db.execute('INSERT INTO rfi_sum VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+                           (date, len(allbeams), frame0_nano, r0.fpga_start, r0.fpga_end, r0.pos_start,
+                            r0.nt, bignsamples, bignmasked, sumt, blob, where))
+                # (date text, nbeams int, frame0nano int, fpga_start int, sample_start int,
+                #  nt int, nsamples int, nsamples_masked int, nt_total int, freqs blob, where_rfi text)
     
         conn.commit()
 
         t_db = time.time()
-        print('Inserting data into database took', t_db-t_0, 'seconds')
+        print('RPC query + inserting into database took', t_db-t_0, 'seconds')
                      
         if t_last is None:
             t_last = time.time()
