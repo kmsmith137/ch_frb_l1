@@ -263,7 +263,7 @@ bool chunk_status_map::get(const string& filename,
     }
 }
 
-void inject_data_request::swap(rf_pipelines::inject_data& dest) {
+void inject_data_request::swap(rf_pipelines::intensity_injector::inject_args& dest) {
     std::swap(this->mode, dest.mode);
     std::swap(this->sample_offset, dest.sample_offset);
     std::swap(this->ndata, dest.ndata);
@@ -1072,7 +1072,8 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
     shared_ptr<inject_data_request> injreq = make_shared<inject_data_request>();
 
     // This is the struct we will send to rf_pipelines
-    shared_ptr<rf_pipelines::inject_data> injdata = make_shared<rf_pipelines::inject_data>();
+    shared_ptr<rf_pipelines::intensity_injector::inject_args> injdata = make_shared<rf_pipelines::intensity_injector::inject_args>();
+
     // And this is the injector
     shared_ptr<rf_pipelines::intensity_injector> syringe;
     

@@ -250,7 +250,7 @@ struct inject_data_request {
     
     MSGPACK_DEFINE(beam, mode, fpga0, sample_offset, ndata, data);
 
-    void swap(rf_pipelines::inject_data& dest);
+    void swap(rf_pipelines::intensity_injector::inject_args& dest);
 };
 
 

@@ -87,8 +87,10 @@ struct l1_config
     std::vector<std::string> ipaddr;
     std::vector<int> port;
 
-    // One L1-RPC per stream
+    // One L1-RPC per stream for light calls, one for heavy-weight
     std::vector<std::string> rpc_address;
+    std::vector<std::string> heavy_rpc_address;
+
     // One L1-prometheus per stream
     std::vector<std::string> prometheus_address;
     // Optional chlog logging server address
@@ -198,8 +200,11 @@ struct l1_server {
 
     std::vector<std::shared_ptr<mask_stats_map> > mask_stats_maps;
     std::vector<std::shared_ptr<L1RpcServer>> rpc_servers;
+    std::vector<std::shared_ptr<L1RpcServer>> heavy_rpc_servers;
     std::vector<std::shared_ptr<L1PrometheusServer>> prometheus_servers;
+    std::vector<std::shared_ptr<rf_pipelines::intensity_injector> > injectors;
     std::vector<std::thread> rpc_threads;
+    std::vector<std::thread> heavy_rpc_threads;
     std::vector<std::thread> dedispersion_threads;
     std::mutex bonsai_dedisp_mutex;
     std::vector<std::shared_ptr<const bonsai::dedisperser> > bonsai_dedispersers;

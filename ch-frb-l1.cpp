@@ -746,8 +746,6 @@ void dedispersion_thread_context::_thread_main() const
     if (l1b_subprocess)
 	dedisperser->add_processor(l1b_subprocess);
 
-    auto bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
-
     _init_mask_counters(rfi_chain, beam_id);
         
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
@@ -870,7 +868,7 @@ static void dedispersion_thread_main(const dedispersion_thread_context &context)
 
 
 
-l1_server::l1_server(int argc, char **argv) :
+l1_server::l1_server(int argc, const char **argv) :
     config(argc, argv)
 {
     command_line = "";
