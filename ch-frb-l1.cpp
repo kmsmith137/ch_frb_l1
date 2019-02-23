@@ -1243,7 +1243,7 @@ void l1_server::spawn_dedispersion_threads()
 	cout << "ch-frb-l1: spawning " << config.nbeams << " dedispersion thread(s)" << endl;
 
     bonsai_dedispersers.resize(config.nbeams);
-    bonsai_dedispersers_set.resize(config.nbeams);
+    bonsai_dedispersers_set.resize(config.nbeams, false);
     latency_monitors_pre.resize(config.nbeams);
     latency_monitors_post.resize(config.nbeams);
     
