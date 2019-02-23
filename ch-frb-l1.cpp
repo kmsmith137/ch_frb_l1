@@ -19,7 +19,6 @@
 //   cores 20-29:  secondary hyperthread on CPU1
 //   cores 30-39:  secondary hyperthread on CPU2
 
-
 #include <thread>
 #include <fstream>
 #include <iomanip>
@@ -29,12 +28,6 @@
 #include <ifaddrs.h>
 
 #include <curl/curl.h>
-
-#include <ch_frb_io_internals.hpp>
-#include <rf_pipelines.hpp>
-#include <bonsai.hpp>
-#include <l1-rpc.hpp>
-#include <l1-prometheus.hpp>
 
 #include "ch_frb_l1.hpp"
 #include "chlog.hpp"
@@ -54,151 +47,9 @@
 using namespace std;
 using namespace ch_frb_l1;
 
-// -------------------------------------------------------------------------------------------------
-//
-// l1_config: reads and parses config files, does a lot of sanity checking,
-// but does not allocate any "heavyweight" data structures.
 
 typedef std::unique_lock<std::mutex> ulock;
 
-struct l1_config
-{
-    l1_config() { }
-    l1_config(int argc, char **argv);
-
-    // Command-line arguments
-    string l1_config_filename;
-    string rfi_config_filename;
-    string bonsai_config_filename;
-    string l1b_config_filename;
-
-    Json::Value rfi_transform_chain_json;
-    bonsai::config_params bonsai_config;
-
-    // Command-line flags
-    // Currently, l1_verbosity can have the following values (I may add more later):
-    //   1: pretty quiet
-    //   2: pretty noisy
-
-    bool tflag = false;
-    bool fflag = false;
-    bool l1b_pipe_io_debug = false;
-    bool memory_pool_debug = false;
-    bool write_chunk_debug = false;
-    bool deliberately_crash = false;
-    bool ignore_end_of_stream = false;
-    int l1_verbosity = 1;
-
-    // nstreams is automatically determined by the number of (ipaddr, port) pairs.
-    // There will be one (network_thread, assembler_thread, rpc_server) triple for each stream.
-    int nbeams = 0;
-    int nfreq = 0;
-    int nstreams = 0;
-    int nt_per_packet = 0;
-    int fpga_counts_per_sample = 384;
-    int nt_align = 0;   // used to align stream of assembled_chunks to RFI/dedispersion block size.
-
-    // The number of frequencies in the downsampled RFI chain.
-    // Must match the number of downsampled frequencies in the RFI chain JSON file.  (probably 1024)
-    int nrfifreq = 0;
-
-    // If slow_kernels=false (the default), the L1 server will use fast assembly language kernels
-    // for its packet processing.  If slow_kernels=true, then it will use reference kernels which
-    // are much slower.
-    //
-    // Note 1: the slow kernels are too slow for non-subscale use!  If slow kernels are used on
-    // the "production-scale" L1 server with (nbeams, nupfreq) = (16, 16), it may crash.
-    //
-    // Note 2: the fast kernels can only be used if certain conditions are met.  As of this writing,
-    // the conditions are: (a) nupfreq must be even, and (b) nt_per_packet must be 16.  In particular,
-    // for a subscale run with nupfreq=1, the fast kernels can't be used.
-    //
-    // Conditions (a) and (b) could be generalized by writing a little more code, if this would be useful
-    // then let me know!
-    bool slow_kernels = false;
-
-    // Both vectors have length nstreams.
-    vector<string> ipaddr;
-    vector<int> port;
-
-    // One L1-RPC per stream
-    vector<string> rpc_address;
-    // One L1-prometheus per stream
-    vector<string> prometheus_address;
-    // Optional chlog logging server address
-    string logger_address;
-
-    // Optional URL to get frame0-ctime
-    string frame0_url;
-    // Timeout (in ms) for retrieving frame0-ctime
-    int frame0_timeout;
-
-    // Size of RFI mask measurement ringbuffer (15 seconds required for prometheus; more could be useful for other monitoring tools)
-    int rfi_mask_meas_history;
-
-    // A vector of length nbeams, containing the beam_ids that will be processed on this L1 server.
-    // It is currently assumed that these are known in advance and never change!
-    // If unspecified, 'beam_ids' defaults to { 0, ..., nbeams-1 }.
-    vector<int> beam_ids;
-
-    // Buffer sizes, as specified in config file.
-    int unassembled_ringbuf_nsamples = 4096;
-    int assembled_ringbuf_nsamples = 8192;
-    vector<int> telescoping_ringbuf_nsamples;
-    double write_staging_area_gb = 0.0;
-    
-    // "Derived" unassembled ringbuf parameters.
-    int unassembled_ringbuf_capacity = 0;
-    int unassembled_nbytes_per_list = 0;
-    int unassembled_npackets_per_list = 0;
-
-    // "Derived" assembled and telescoping ringbuf parameters.
-    int assembled_ringbuf_nchunks = 0;
-    vector<int> telescoping_ringbuf_nchunks;
-
-    // Parameters of the memory_slab_pool(s)
-    int nbytes_per_memory_slab = 0;     // size (in bytes) of memory slab used to store assembled_chunk
-    int total_memory_slabs = 0;         // total for node
-
-    // List of output devices (e.g. '/ssd', '/nfs')
-    vector<string> output_device_names;
-
-    // If 'intensity_prescale' is specified, then all intensity values will be multiplied by its value.
-    // This is a workaround for 16-bit overflow issues in bonsai.  When data is saved to disk, the
-    // prescaling will not be applied.
-    float intensity_prescale = 1.0;
-
-    // L1b linkage.  Note: assumed L1b command line is:
-    //   <l1b_executable_filename> <l1b_config_filename> <beam_id>
-
-    string l1b_executable_filename;
-    bool l1b_search_path = false;     // will $PATH be searched for executable?
-    int l1b_buffer_nsamples = 0;      // determines buffer size between L1a and L1b (0 = system default)
-    double l1b_pipe_timeout = 0.0;    // timeout in seconds between L1a and L1
-    bool l1b_pipe_blocking = false;   // setting this to true is equivalent to a very large l1b_pipe_timeout
-
-    // "Derived" parameter: L1b pipe capacity (derived from l1b_buffer_nsamples)
-    int l1b_pipe_capacity = 0;
-
-    // Forces RFI removal and dedispersion to run in separate threads (shouldn't
-    // need to specify this explicitly, except for debugging).
-    bool force_asynchronous_dedispersion = false;
-
-    // Occasionally useful for debugging: If track_global_trigger_max is true, then when 
-    // the L1 server exits, it will print the (DM, arrival time) of the most significant FRB.
-    bool track_global_trigger_max = false;
-
-    // Also intended for debugging.  If the optional parameter 'stream_acqname' is
-    // specified, then the L1 server will auto-stream all chunks to disk.  Warning:
-    // it's very easy to use a lot of disk space this way!
-    
-    string stream_devname;            // specified in config file, options are "ssd" or "nfs", defaults to "ssd"
-    string stream_acqname;            // specified in config file, defaults to "", which results in no streaming acquisition
-    vector<int> stream_beam_ids;      // specified in config file, defaults to all beam ID's on node
-    string stream_filename_pattern;   // derived from 'stream_devname' and 'stream_acqname'
-
-    void _have_warnings() const;
-};
 
 
 #if HAVE_CXXOPTS
@@ -214,15 +65,15 @@ static void usage()
 	 << "  -w enables a very verbose debug trace of the logic for writing chunks\n"
 	 << "  -c deliberately crash dedispersion thread (for debugging, obviously)\n"
 	 << "  -t starts a \"toy server\" which assembles packets, but does not run RFI removal,\n"
-	 << "     dedispersion, or L1B (if -t is specified, then the last 3 arguments are optional)\n";
-
+	 << "     dedispersion, or L1B (if -t is specified, then the last 3 arguments are optional)\n"
+         << "  -r starts an \"RFI testing\" (semi-toy) server with no bonsai dedispersion or L1B (last 2 args are then optional).\n";
     exit(2);
 }
 #endif
 
 
 // FIXME: split this monster constructor into multiple functions for readability?
-l1_config::l1_config(int argc, char **argv)
+l1_config::l1_config(int argc, const char **argv)
 {
     const int nfreq_c = ch_frb_io::constants::nfreq_coarse_tot;
 
@@ -245,13 +96,21 @@ l1_config::l1_config(int argc, char **argv)
         ("w,write", "Eables a very verbose debug trace of the logic for writing chunks")
         ("c,crash", "Deliberately crash dedispersion thread (for debugging, obviously)")
         ("t,toy", "Starts a \"toy server\" which assembles packets, but does not run RFI removal, dedispersion, or L1B (if -t is specified, then the last 3 arguments are optional)")
+        ("r,rfi", "Starts an \"RFI testing\" (semi-toy) server with no bonsai dedispersion or L1B (last 2 args are then optional).")
         ("a,acq", "Stream data to disk, saving it to this acquisition directory name", cxxopts::value<std::string>(acq_name))
         ("n,nfs", "For streaming data acquisition, stream to NFS, not SSD")
         ("b,beam", "For streaming data acquisition, beam number to capture (can be repeated; default is all beams)", cxxopts::value<vector<int> >(acq_beams), "<beam number>")
         ("positional", "Positional parameters", cxxopts::value<std::vector<std::string>>(args))
         ;
     parser.parse_positional({"positional"});
-    auto opts = parser.parse(argc, argv);
+
+    // deep copy for const correctness.  we memleak the copy, but it's tiny.
+    vector<char*> argv_v;
+    for (int i=0; i<argc; i++)
+        argv_v.push_back(strdup(argv[i]));
+    char** argv_copy = argv_v.data();
+    
+    auto opts = parser.parse(argc, argv_copy);
 
     if (opts.count("v"))
         this->l1_verbosity = 2;
@@ -269,17 +128,23 @@ l1_config::l1_config(int argc, char **argv)
         this->deliberately_crash = true;
     if (opts.count("t"))
         this->tflag = true;
+    if (opts.count("r"))
+        this->rflag = true;
 
-    if (opts.count("help") || (args.size() == 0) || (!((args.size() == 4) || ((args.size() == 1) && (this->tflag)))) ){
+    if (opts.count("help") || (args.size() == 0) || (!((args.size() == 4) ||
+                                                       ((args.size() == 1) && (this->tflag)) ||
+                                                       ((args.size() == 2) && (this->rflag))))) {
         std::cout << parser.help({""}) << endl;
         exit(0);
     }
 
     this->l1_config_filename = args[0];
-    if (args.size() == 4) {
-	this->rfi_config_filename = args[1];
-	this->bonsai_config_filename = args[2];
-	this->l1b_config_filename = args[3];
+    if (args.size() == 2) {
+        this->rfi_config_filename = args[1];
+    } else if (args.size() == 4) {
+        this->rfi_config_filename = args[1];
+        this->bonsai_config_filename = args[2];
+        this->l1b_config_filename = args[3];
     }
 #else
     // Low-budget command line parsing
@@ -305,6 +170,8 @@ l1_config::l1_config(int argc, char **argv)
     		this->deliberately_crash = true;
     	    else if (argv[i][j] == 't')
     		this->tflag = true;
+    	    else if (argv[i][j] == 'r')
+    		this->rflag = true;
     	    else
     		usage();
     	}
@@ -314,6 +181,10 @@ l1_config::l1_config(int argc, char **argv)
  	this->rfi_config_filename = args[1];
  	this->bonsai_config_filename = args[2];
  	this->l1b_config_filename = args[3];
+    }
+    else if (rflag && (args.size() == 2)) {
+	this->l1_config_filename = args[0];
+ 	this->rfi_config_filename = args[1];
     }
     else if (tflag && (args.size() == 1))
 	this->l1_config_filename = args[0];
@@ -336,15 +207,13 @@ l1_config::l1_config(int argc, char **argv)
 	// FIXME bind() here?
 	auto rfi_chain = rf_pipelines::pipeline_object::from_json(rfi_transform_chain_json);
 
-#if 0
-	// FIXME pretty-print rfi_chain
+	// Pretty-print rfi_chain
 	if (l1_verbosity >= 2) {
-	    cout << rfi_config_filename << ": " << rfi_chain.size() << " transforms\n";
-	    for (unsigned int i = 0; i < rfi_chain.size(); i++)
-		cout << rfi_config_filename << ": transform " << i << "/" << rfi_chain.size() << ": " << rfi_chain[i]->name << "\n";
-	}
-#endif
-
+	    cout << rfi_config_filename << ": transforms:\n";
+            rf_pipelines::print_pipeline(rfi_chain);
+        }
+    }
+    if (!tflag && !rflag) {
 	// Parse bonsai_config file and initialize 'bonsai_config'.
 	this->bonsai_config = bonsai::config_params(bonsai_config_filename);
 
@@ -506,7 +375,7 @@ l1_config::l1_config(int argc, char **argv)
 	throw runtime_error(l1_config_filename + ": 'nbeams' must be >= 1");
     if (nrfifreq < 0)
 	throw runtime_error(l1_config_filename + ": 'nrfifreq' must be positive (or zero), and must match the number of downsampled frequencies in the RFI chain JSON file -- probably 1024.");
-    if (!tflag && (nfreq != bonsai_config.nfreq))
+    if (!tflag && !rflag && (nfreq != bonsai_config.nfreq))
 	throw runtime_error("ch-frb-l1: 'nfreq' values in l1 config file and bonsai config file must match");
     if (nfreq <= 0)
 	throw runtime_error(l1_config_filename + ": 'nfreq' must be >= 1");
@@ -673,7 +542,7 @@ l1_config::l1_config(int argc, char **argv)
 
     // l1b_pipe_capacity
 
-    if (!tflag && (l1b_buffer_nsamples > 0)) {
+    if (!tflag && !rflag && (l1b_buffer_nsamples > 0)) {
 	int nt_chunk = bonsai_config.nt_chunk;
 	int nchunks = (l1b_buffer_nsamples + nt_chunk - 1) / nt_chunk;
 
@@ -711,7 +580,7 @@ l1_config::l1_config(int argc, char **argv)
 	have_warnings = true;
     }
 
-    if (!tflag && (bonsai_config.nfreq > 4096) && slow_kernels) {
+    if (!tflag && !rflag && (bonsai_config.nfreq > 4096) && slow_kernels) {
 	cout << l1_config_filename << ": nfreq > 4096 and slow_kernels=true, presumably unintentional?" << endl;
 	have_warnings = true;
     }
@@ -833,56 +702,65 @@ void dedispersion_thread_context::_thread_main() const
     // Pin thread before allocating anything.
     ch_frb_io::pin_thread_to_cores(allowed_cores);
 
-    // Note: deep copy here, to get thread-local copy of transfer matrices!
-    bonsai::config_params bonsai_config = config.bonsai_config.deep_copy();
+    bonsai::config_params bonsai_config;
+    if (!config.rflag)
+        // Note: deep copy here, to get thread-local copy of transfer matrices!
+        bonsai_config = config.bonsai_config.deep_copy();
     
     // Note: the distinction between 'ibeam' and 'beam_id' is a possible source of bugs!
     int beam_id = config.beam_ids[ibeam];
     auto stream = rf_pipelines::make_chime_network_stream(sp, beam_id, config.intensity_prescale);
     auto rfi_chain = rf_pipelines::pipeline_object::from_json(config.rfi_transform_chain_json);
 
-    bonsai::dedisperser::initializer ini_params;
-    ini_params.fill_rfi_mask = true;                   // very important for real-time analysis!
-    ini_params.analytic_variance_on_the_fly = false;   // prevent accidental initialization from non-hdf5 config file (should have been checked already, but another check can't hurt)
-    ini_params.allocate = true;                        // redundant, but I like making it explicit
-    ini_params.verbosity = 0;
-
-    if (asynchronous_dedispersion) {
-	ini_params.asynchronous = true;
-
-	// The following line is now commented out.
-	//
-	//   ini_params.async_allowed_cores = allowed_cores;
-	//
-	// Previously, I was including this, even though it should be redundant given the call to pin_thread_to_cores() above.
-	// However, it appears that this is not safe, since std::hardware_concurreny() sometimes returns 1 after the first call
-	// to pin_thread_to_cores().  It is very strange that this only happens sometimes!  But commenting out the line above
-	// seems to fix it.
-    }
-
-    auto dedisperser = make_shared<bonsai::dedisperser> (bonsai_config, ini_params);  // not config.bonsai_config
-
-    // Trigger processors.
-
+    shared_ptr<rf_pipelines::wi_transform> bonsai_transform;
+    shared_ptr<bonsai::dedisperser> dedisperser;
     shared_ptr<bonsai::global_max_tracker> max_tracker;
 
-    if (config.track_global_trigger_max) {
-	max_tracker = make_shared<bonsai::global_max_tracker> ();
-	dedisperser->add_processor(max_tracker);
+    if (!config.rflag) {
+        bonsai::dedisperser::initializer ini_params;
+        ini_params.fill_rfi_mask = true;                   // very important for real-time analysis!
+        ini_params.analytic_variance_on_the_fly = false;   // prevent accidental initialization from non-hdf5 config file (should have been checked already, but another check can't hurt)
+        ini_params.allocate = true;                        // redundant, but I like making it explicit
+        ini_params.verbosity = 0;
+
+        if (asynchronous_dedispersion) {
+            ini_params.asynchronous = true;
+
+            // The following line is now commented out.
+            //
+            //   ini_params.async_allowed_cores = allowed_cores;
+            //
+            // Previously, I was including this, even though it should be redundant given the call to pin_thread_to_cores() above.
+            // However, it appears that this is not safe, since std::hardware_concurreny() sometimes returns 1 after the first call
+            // to pin_thread_to_cores().  It is very strange that this only happens sometimes!  But commenting out the line above
+            // seems to fix it.
+        }
+
+        dedisperser = make_shared<bonsai::dedisperser> (bonsai_config, ini_params);  // not config.bonsai_config
+
+        // Trigger processors.
+
+        if (config.track_global_trigger_max) {
+            max_tracker = make_shared<bonsai::global_max_tracker> ();
+            dedisperser->add_processor(max_tracker);
+        }
+
+        if (l1b_subprocess)
+            dedisperser->add_processor(l1b_subprocess);
+
+        bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
     }
-
-    if (l1b_subprocess)
-	dedisperser->add_processor(l1b_subprocess);
-
-    auto bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
 
     _init_mask_counters(rfi_chain, beam_id);
 
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);
     pipeline->add(rfi_chain);
-    pipeline->add(bonsai_transform);
+    if (!config.rflag)
+        pipeline->add(bonsai_transform);
 
+    // Find pipeline stages to use for latency monitoring: 'stream' input, and
+    // the last step in the RFI chain
     shared_ptr<rf_pipelines::pipeline_object> latency1 = stream;
     shared_ptr<rf_pipelines::pipeline_object> latency2;
     auto find_last_transform = [&latency2]
@@ -890,12 +768,6 @@ void dedispersion_thread_context::_thread_main() const
         latency2 = p;
     };
     rf_pipelines::visit_pipeline(find_last_transform, rfi_chain);
-
-    cout << "RFI chain:" << endl;
-    rf_pipelines::print_pipeline(rfi_chain);
-    cout << "Found first stage for latency monitoring: " << latency1->name << endl;
-    cout << "Found last stage for latency monitoring: " << latency2->name << endl;
-
     set_bonsai(ibeam, dedisperser, latency1, latency2);
 
     rf_pipelines::run_params rparams;
@@ -927,7 +799,7 @@ void dedispersion_thread_context::_thread_main() const
 } 
 
 
-// Note: Called if config.tflag == false.
+// Note: Called if config.tflag == true.
 void dedispersion_thread_context::_toy_thread_main() const
 {
     assert(config.tflag);
@@ -984,6 +856,7 @@ void dedispersion_thread_context::_toy_thread_main() const
 
 static void dedispersion_thread_main(const dedispersion_thread_context &context)
 {
+    ch_frb_io::chime_log_set_thread_name("Bonsai-" + std::to_string(context.ibeam));
     try {
 	if (context.config.tflag)
 	    context._toy_thread_main();
@@ -997,78 +870,9 @@ static void dedispersion_thread_main(const dedispersion_thread_context &context)
 }
 
 
-// -------------------------------------------------------------------------------------------------
-//
-// This master data structure defines an L1 server instance.
 
 
-struct l1_server {        
-    using corelist_t = vector<int>;
-
-    const l1_config config;
-    
-    int ncpus = 0;
-    vector<corelist_t> cores_on_cpu;   // length-ncpus, defines mapping of cores to cpus
-    
-    // Core-pinning scheme
-    corelist_t output_thread_cores;             // assumed same corelist for all I/O threads
-    corelist_t network_thread_cores;            // assumed same for all network threads
-    vector<corelist_t> dedispersion_cores;      // length config.nbeams, used for (RFI, dedisp, L1B).
-    vector<corelist_t> assembler_thread_cores;  // length nstreams
-    bool asynchronous_dedispersion = false;     // run RFI and dedispersion in separate threads?
-    double sleep_hack = 0.0;                    // a temporary kludge that will go away soon
-
-    string command_line;
-
-    // "Heavyweight" data structures.
-    vector<shared_ptr<bonsai::trigger_pipe>> l1b_subprocesses;   // can be vector of empty pointers, if L1B is not being run.
-    vector<shared_ptr<ch_frb_io::output_device>> output_devices;
-    vector<shared_ptr<ch_frb_io::memory_slab_pool>> memory_slab_pools;
-    vector<shared_ptr<ch_frb_io::intensity_network_stream>> input_streams;
-
-    vector<shared_ptr<mask_stats_map> > mask_stats_maps;
-    vector<shared_ptr<L1RpcServer>> rpc_servers;
-    vector<shared_ptr<L1PrometheusServer>> prometheus_servers;
-    vector<std::thread> rpc_threads;
-    vector<std::thread> dedispersion_threads;
-    std::mutex bonsai_dedisp_mutex;
-    vector<shared_ptr<const bonsai::dedisperser> > bonsai_dedispersers;
-
-    vector<shared_ptr<const rf_pipelines::pipeline_object> > latency_monitors_pre;
-    vector<shared_ptr<const rf_pipelines::pipeline_object> > latency_monitors_post;
-
-    // The constructor reads the configuration files, does a lot of sanity checks,
-    // but does not initialize any "heavyweight" data structures.
-    l1_server(int argc, char **argv);
-
-    // These methods incrementally construct the "heavyweight" data structures.
-    void start_logging();
-    void spawn_l1b_subprocesses();
-    void make_output_devices();
-    void make_memory_slab_pools();
-    void make_input_streams();
-    void make_mask_stats();
-    void make_rpc_servers();
-    void make_prometheus_servers();
-    void spawn_dedispersion_threads();
-
-    // These methods wait for the server to exit, and print some summary info.
-    void join_all_threads();
-    void print_statistics();
-
-    // Helper methods called by constructor.
-    void _init_subscale();
-    void _init_20cores_16beams();
-    void _init_20cores_8beams();
-
-    // Called-back by dedispersion thread
-    void set_bonsai(int ibeam, shared_ptr<const bonsai::dedisperser>,
-                    shared_ptr<const rf_pipelines::pipeline_object> latency_pre,
-                    shared_ptr<const rf_pipelines::pipeline_object> latency_post);
-};
-
-
-l1_server::l1_server(int argc, char **argv) :
+l1_server::l1_server(int argc, const char **argv) :
     config(argc, argv)
 {
     command_line = "";
@@ -1196,7 +1000,7 @@ void l1_server::spawn_l1b_subprocesses()
     
     this->l1b_subprocesses.resize(config.nbeams);
 
-    if (config.tflag)
+    if (config.tflag || config.rflag)
 	return;  // 
 
     if (config.l1b_executable_filename.size() == 0) {
@@ -1361,7 +1165,7 @@ void l1_server::make_rpc_servers()
 	throw("ch-frb-l1 internal error: double call to make_rpc_servers()");
     if (input_streams.size() != size_t(config.nstreams))
 	throw("ch-frb-l1 internal error: make_rpc_servers() was called, without first calling make_input_streams()");
-    if (bonsai_dedispersers.size() != config.nbeams)
+    if ((int)bonsai_dedispersers.size() != config.nbeams)
         throw("ch-frb-l1 internal error: make_rpc_servers() was called, without first calling spawn_dedispersion_threads");
 
     // Wait for all bonsai dedispersers to be created.
@@ -1371,7 +1175,7 @@ void l1_server::make_rpc_servers()
             ulock u(bonsai_dedisp_mutex);
             int gotn = 0;
             for (int i=0; i<config.nbeams; i++)
-                if (bonsai_dedispersers[i])
+                if (bonsai_dedispersers_set[i])
                     gotn++;
             if (gotn == config.nbeams)
                 break;
@@ -1439,6 +1243,7 @@ void l1_server::spawn_dedispersion_threads()
 	cout << "ch-frb-l1: spawning " << config.nbeams << " dedispersion thread(s)" << endl;
 
     bonsai_dedispersers.resize(config.nbeams);
+    bonsai_dedispersers_set.resize(config.nbeams);
     latency_monitors_pre.resize(config.nbeams);
     latency_monitors_post.resize(config.nbeams);
     
@@ -1480,6 +1285,7 @@ void l1_server::set_bonsai(int ibeam,
     chlog("set_bonsai(" << ibeam << ")");
     ulock u(bonsai_dedisp_mutex);
     bonsai_dedispersers[ibeam] = bonsai;
+    bonsai_dedispersers_set[ibeam] = true;
     latency_monitors_pre [ibeam] = latency_pre;
     latency_monitors_post[ibeam] = latency_post;
 }
@@ -1551,28 +1357,3 @@ void l1_server::print_statistics()
 }
 
 
-// -------------------------------------------------------------------------------------------------
-
-int main(int argc, char **argv)
-{
-    // for fetching frame0_ctime
-    curl_global_init(CURL_GLOBAL_ALL);
-
-    l1_server server(argc, argv);
-
-    server.start_logging();
-    server.spawn_l1b_subprocesses();
-    server.make_output_devices();
-    server.make_memory_slab_pools();
-    server.make_input_streams();
-    server.make_mask_stats();
-    server.make_prometheus_servers();
-    server.spawn_dedispersion_threads();
-    server.make_rpc_servers();
-
-    server.join_all_threads();
-    server.print_statistics();
-
-    curl_global_cleanup();
-    return 0;
-}

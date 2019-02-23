@@ -267,7 +267,7 @@ void l0_params::send_chunks(int istream,
         }
     }
 
-    for (int ichunk = 0; ichunk < data.size(); ichunk++) {
+    for (size_t ichunk = 0; ichunk < data.size(); ichunk++) {
 	//int64_t fpga_count = int64_t(ichunk) * int64_t(ostream->fpga_counts_per_chunk);
         int64_t fpga_count = fpgacounts[ichunk];
 

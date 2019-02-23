@@ -161,6 +161,35 @@ class MaskedFrequencies(object):
             where = where.decode()
             self.histories[(beam, where)] = np.array(hist).astype(np.float32) / nt
 
+
+class SummedMaskedFrequencies(object):
+    @staticmethod
+    def parse(msgpack):
+        # List, one element per beam
+        rtn = []
+        for m in msgpack:
+            mm = SummedMaskedFrequencies(*m)
+            rtn.append(mm)
+        return rtn
+
+    def __init__(self, beam, fpga_start, fpga_end, pos_start, nt, nf, nsamples,
+                 nsamples_unmasked, freqs_masked_array):
+        self.beam = beam
+        self.fpga_start = fpga_start
+        self.fpga_end   = fpga_end
+        self.pos_start = pos_start
+        self.nt = nt
+        self.nf = nf
+        self.nsamples = nsamples
+        self.nsamples_unmasked = nsamples_unmasked
+        self.nsamples_masked = nsamples - nsamples_unmasked
+        self.freqs_masked = np.array(freqs_masked_array)
+
+    def __str__(self):
+        return ('SummedMaskedFreq: beam %i, samples %i + %i, nf %i, total masked %i/%i = %.1f %%, frequency histogram: length %i, type %s' %
+                (self.beam, self.pos_start, self.nt, self.nf, self.nsamples_masked, self.nsamples, 100.*(self.nsamples_masked)/float(self.nsamples), len(self.freqs_masked), self.freqs_masked.dtype))
+
+
 class PacketRate(object):
     def __init__(self, msgpack):
         self.start = msgpack[0]
@@ -171,7 +200,7 @@ class PacketRate(object):
         return 'PacketRate: start %g, period %g, packets: ' % (self.start, self.period) + str(self.packets)
         
 class RpcClient(object):
-    def __init__(self, servers, context=None, identity=None):
+    def __init__(self, servers, context=None, identity=None, debug=False):
         '''
         *servers*: a dict of [key, address] entries, where each
           *address* is a string address of an RPC server: eg,
@@ -181,12 +210,15 @@ class RpcClient(object):
            my socket.
 
         *identity*: (ignored; here for backward-compatibility)
+
+        NOTE throughout this class that *timeout* is in *milliseconds*!
         '''
         if context is None:
             self.context = zmq.Context()
         else:
             self.context = context
 
+        self.do_debug = debug
         self.servers = servers
         self.sockets = {}
         self.rsockets = {}
@@ -199,6 +231,11 @@ class RpcClient(object):
         # Buffer of received messages: token->[(message,socket), ...]
         self.received = {}
 
+    def debug(self, *args):
+        if not self.do_debug:
+            return
+        print(*args)
+        
     def get_statistics(self, servers=None, wait=True, timeout=-1):
         '''
         Retrieves statistics from each server.  Return value is one
@@ -217,6 +254,7 @@ class RpcClient(object):
             return tokens
         parts = self.wait_for_tokens(tokens, timeout=timeout)
         # We expect one message part for each token.
+        self.debug('get_statistics raw reply:', parts)
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
 
@@ -528,6 +566,28 @@ class RpcClient(object):
                 else None
                 for p in parts]
 
+    def get_summed_masked_frequencies(self, fpgamin, fpgamax,
+                                      beam=-1, where='after_rfi',
+                                      servers=None, wait=True, timeout=-1):
+        fpgamin = int(fpgamin)
+        fpgamax = int(fpgamax)
+        if servers is None:
+            servers = self.servers.keys()
+        tokens = []
+        for k in servers:
+            self.token += 1
+            req = msgpack.packb(['get_masked_frequencies_2', self.token])
+            args = msgpack.packb([beam, where, fpgamin, fpgamax])
+            tokens.append(self.token)
+            self.sockets[k].send(req + args)
+        if not wait:
+            return tokens
+        parts = self.wait_for_tokens(tokens, timeout=timeout)
+        # We expect one message part for each token.
+        return [SummedMaskedFrequencies.parse(msgpack.unpackb(p[0])) if p is not None
+                else None
+                for p in parts]
+
     def get_max_fpga_counts(self, servers=None, wait=True, timeout=-1):
         '''
         '''
@@ -627,7 +687,7 @@ class RpcClient(object):
         Returns a list of result messages, one for each *token*.
         '''
 
-        #print('Waiting for tokens (timeout', timeout, '):', tokens)
+        self.debug('Waiting for tokens (timeout', timeout, '):', tokens)
 
         results = {}
         if get_sockets:
@@ -636,12 +696,12 @@ class RpcClient(object):
         if timeout > 0:
             t0 = time.time()
         while len(todo):
-            #print('Still waiting for tokens:', todo)
+            self.debug('Still waiting for tokens:', todo)
             done = []
             for token in todo:
                 r = self._pop_token(token, get_socket=get_sockets)
                 if r is not None:
-                    #print('Popped token', token, '->', r)
+                    self.debug('Popped token', token, '->', r)
                     done.append(token)
                     if get_sockets:
                         # unpack socket,result tuple
@@ -651,16 +711,17 @@ class RpcClient(object):
             for token in done:
                 todo.remove(token)
             if len(todo):
-                #print('Receiving (timeout', timeout, ')')
+                self.debug('receive(timeout=', timeout, ')')
                 if not self._receive(timeout=timeout):
                     # timed out
-                    #print('timed out')
+                    self.debug('timed out')
                     break
                 # adjust timeout
                 if timeout > 0:
                     tnow = time.time()
                     timeout = max(0, t0 + timeout - tnow)
                     t0 = tnow
+        self.debug('Results:', results)
         if not get_sockets:
             return [results.get(token, None) for token in tokens]
         return ([results.get(token, None) for token in tokens],

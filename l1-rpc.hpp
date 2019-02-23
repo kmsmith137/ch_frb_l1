@@ -69,6 +69,36 @@ protected:
     // reply or queuing work for worker threads.
     int _handle_request(zmq::message_t* client, zmq::message_t* request);
 
+    int _handle_streaming_request(zmq::message_t* client, std::string funcname, uint32_t token,
+                                  const char* req_data, std::size_t length, std::size_t& offset);
+                                  
+    int _handle_stream_status(zmq::message_t* client, std::string funcname, uint32_t token,
+                              const char* req_data, std::size_t length, std::size_t& offset);
+
+    int _handle_packet_rate(zmq::message_t* client, std::string funcname, uint32_t token,
+                            const char* req_data, std::size_t length, std::size_t& offset);
+
+    int _handle_packet_rate_history(zmq::message_t* client, std::string funcname, uint32_t token,
+                                    const char* req_data, std::size_t length, std::size_t& offset);
+
+    int _handle_get_statistics(zmq::message_t* client, std::string funcname, uint32_t token,
+                               const char* req_data, std::size_t length, std::size_t& offset);
+
+    int _handle_list_chunks(zmq::message_t* client, std::string funcname, uint32_t token,
+                            const char* req_data, std::size_t length, std::size_t& offset);
+
+    int _handle_write_chunks(zmq::message_t* client, std::string funcname, uint32_t token,
+                             const char* req_data, std::size_t length, std::size_t& offset);
+
+    int _handle_masked_freqs(zmq::message_t* client, std::string funcname, uint32_t token,
+                             const char* req_data, std::size_t length, std::size_t& offset);
+
+    int _handle_masked_freqs_2(zmq::message_t* client, std::string funcname, uint32_t token,
+                             const char* req_data, std::size_t length, std::size_t& offset);
+
+    int _handle_max_fpga(zmq::message_t* client, std::string funcname, uint32_t token,
+                             const char* req_data, std::size_t length, std::size_t& offset);
+    
     void _check_backend_queue();
 
     // retrieves assembled_chunks overlapping the given range of

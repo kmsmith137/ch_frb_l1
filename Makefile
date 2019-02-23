@@ -41,7 +41,7 @@ SCRIPTS := ch-frb-make-acq-inventory
 INSTALLED_BINARIES := ch-frb-l1 ch-frb-simulate-l0
 NON_INSTALLED_BINARIES := rpc-client test-l1-rpc test-packet-rates
 
-all: $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES) simulate_l0.so
+all: $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES) simulate_l0.so l1_server.so
 
 .PHONY: all install uninstall
 
@@ -68,7 +68,7 @@ civetweb/civetweb.o: civetweb/civetweb.c
 rpc-client: rpc_client.o
 	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lch_frb_io -lzmq
 
-ch-frb-l1: ch-frb-l1.o file_utils.o yaml_paramfile.o $(L1_OBJS) $(CIVET_OBJS)
+ch-frb-l1: ch-frb-l1-main.o ch-frb-l1.o file_utils.o yaml_paramfile.o $(L1_OBJS) $(CIVET_OBJS)
 	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lrf_pipelines -lbonsai -lch_frb_io -lrf_kernels -lzmq -lyaml-cpp -ljsoncpp -ldl -lcurl
 
 ch-frb-simulate-l0: ch-frb-simulate-l0.o simulate-l0.o file_utils.o yaml_paramfile.o
@@ -78,6 +78,9 @@ PYTHON ?= python
 
 simulate_l0.so: simulate_l0_py.o simulate-l0.o file_utils.o yaml_paramfile.o
 	$(CPP) $(CPP_LFLAGS) -shared -o $@ $^ -lch_frb_io -lyaml-cpp $(LIBS_PYMODULE)
+
+l1_server.so: l1_server_py.o ch-frb-l1.o file_utils.o yaml_paramfile.o $(L1_OBJS) $(CIVET_OBJS)
+	$(CPP) $(CPP_LFLAGS) -shared -o $@ $^ -lrf_pipelines -lbonsai -lch_frb_io -lrf_kernels -lzmq -lyaml-cpp -ljsoncpp -ldl -lcurl -lyaml-cpp $(LIBS_PYMODULE)
 
 ch-frb-test: ch-frb-test.cpp $(L1_OBJS)
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io -lzmq -lhdf5
