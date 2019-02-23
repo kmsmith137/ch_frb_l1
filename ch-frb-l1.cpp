@@ -71,6 +71,55 @@ static void usage()
 }
 #endif
 
+static unordered_map<string, string> get_interface_map() {
+    unordered_map<string, string> interfaces;
+    // Get list of network interfaces...
+    struct ifaddrs *ifaces, *iface;
+    if (getifaddrs(&ifaces))
+        throw runtime_error("Failed to get network interfaces -- getifaddrs(): " + string(strerror(errno)));
+    for (iface = ifaces; iface; iface = iface->ifa_next) {
+        struct sockaddr* address = iface->ifa_addr;
+        if (address->sa_family != AF_INET)
+            continue;
+        struct sockaddr_in* inaddress = reinterpret_cast<struct sockaddr_in*>(address);
+        struct in_addr addr = inaddress->sin_addr;
+        char* addrstring = inet_ntoa(addr);
+        chlog("Network interface: " << iface->ifa_name << " has IP " << addrstring);
+        interfaces[string(iface->ifa_name)] = string(addrstring);
+    }
+    freeifaddrs(ifaces);
+    return interfaces;
+}
+
+// "tcp://eno2:5555" -> "tcp://10.7.100.15:5555"
+static string convert_zmq_address(const string& addr, const unordered_map<string, string>& interfaces) {
+    size_t proto = addr.find("//");
+    if (proto == std::string::npos)
+        return addr;
+    size_t port = addr.rfind(":");
+    if (port == std::string::npos)
+        return addr;
+    string host = addr.substr(proto + 2, port - (proto+2));
+    auto val = interfaces.find(host);
+    if (val == interfaces.end())
+        return addr;
+    return addr.substr(0, proto+2) + val->second + addr.substr(port);
+}
+
+static string convert_ip_address(const string& addr, const unordered_map<string, string>& interfaces) {
+    // Try to parse as dotted-decimal IP address
+    struct in_addr inaddr;
+    if (inet_aton(addr.c_str(), &inaddr) == 1)
+        // Correctly parsed as dotted-decimal IP address.
+        return addr;
+    // If doesn't parse as dotted-decimal, lookup in interfaces mapping.
+    auto val = interfaces.find(addr);
+    if (val == interfaces.end())
+        throw runtime_error("Config file ipaddr entry \"" + addr + "\" was not dotted IP address and was not one of the known network interfaces");
+    //chlog("Mapped IP addr " << ipaddr[i] << " to " << val->second);
+    return val->second;
+}
+
 
 // FIXME: split this monster constructor into multiple functions for readability?
 l1_config::l1_config(int argc, const char **argv)
@@ -253,6 +302,7 @@ l1_config::l1_config(int argc, const char **argv)
     this->ipaddr = p.read_vector<string> ("ipaddr");
     this->port = p.read_vector<int> ("port");
     this->rpc_address = p.read_vector<string> ("rpc_address");
+    this->heavy_rpc_address = p.read_vector<string> ("heavy_rpc_address", vector<string>());
     this->prometheus_address = p.read_vector<string> ("prometheus_address");
     this->logger_address = p.read_scalar<string> ("logger_address", "");
     this->frame0_url = p.read_scalar<string> ("frame0_url");
@@ -273,88 +323,26 @@ l1_config::l1_config(int argc, const char **argv)
     this->force_asynchronous_dedispersion = p.read_scalar<bool> ("force_asynchronous_dedispersion", false);
     this->track_global_trigger_max = p.read_scalar<bool> ("track_global_trigger_max", false);
 
-    // Create the map from network interface names ("eno2") to IP address.
-    unordered_map<string, string> interfaces;
-    // Get list of network interfaces...
-    {
-        struct ifaddrs *ifaces, *iface;
-        if (getifaddrs(&ifaces)) {
-            throw runtime_error("Failed to get network interfaces -- getifaddrs(): " + string(strerror(errno)));
-        }
-        for (iface = ifaces; iface; iface = iface->ifa_next) {
-            //chlog("Network interface: " << iface->ifa_name);
-            //if (string(iface->ifa_name) != ipaddr[i]) {
-            //continue;
-            //}
-            struct sockaddr* address = iface->ifa_addr;
-            if (address->sa_family != AF_INET) {
-                //chlog("not INET");
-                continue;
-            }
-            struct sockaddr_in* inaddress = reinterpret_cast<struct sockaddr_in*>(address);
-            struct in_addr addr = inaddress->sin_addr;
-            char* addrstring = inet_ntoa(addr);
-            chlog("Network interface: " << iface->ifa_name << " has IP " << addrstring);
-            //chlog("Found match with IP address: " << addrstring);
-            interfaces[string(iface->ifa_name)] = string(addrstring);
-            //ipaddr[i] = string(addrstring);
-            //break;
-        }
-        freeifaddrs(ifaces);
-    }
+    // Get the map from network interface names ("eno2") to IP address.
+    unordered_map<string, string> interfaces = get_interface_map();
 
     // Convert network interface names in "ipaddr", eg, "eno2", into the interface's IP address.
-    for (size_t i=0; i<ipaddr.size(); i++) {
-        // Try to parse as dotted-decimal IP address
-        struct in_addr inaddr;
-        if (inet_aton(ipaddr[i].c_str(), &inaddr) == 1) {
-            // Correctly parsed as dotted-decimal IP address.
-            continue;
-        }
-        // If doesn't parse as dotted-decimal, lookup in interfaces mapping.
-        auto val = interfaces.find(ipaddr[i]);
-        if (val == interfaces.end()) {
-            throw runtime_error("Config file ipaddr entry \"" + ipaddr[i] + "\" was not dotted IP address and was not one of the known network interfaces");
-        }
-        chlog("Mapped IP addr " << ipaddr[i] << " to " << val->second);
-        ipaddr[i] = val->second;
-    }
+    for (size_t i=0; i<ipaddr.size(); i++)
+        ipaddr[i] = convert_ip_address(ipaddr[i], interfaces);
 
     // Convert network interface names in "rpc_address" entries.
-    for (size_t i=0; i<rpc_address.size(); i++) {
+    for (size_t i=0; i<rpc_address.size(); i++)
         // "tcp://eno2:5555" -> "tcp://10.7.100.15:5555"
-        size_t proto = rpc_address[i].find("//");
-        if (proto == std::string::npos)
-            continue;
-        size_t port = rpc_address[i].rfind(":");
-        if (port == std::string::npos)
-            continue;
-        string host = rpc_address[i].substr(proto + 2, port - (proto+2));
-        //chlog("RPC address host: \"" << host << "\"");
-        auto val = interfaces.find(host);
-        if (val != interfaces.end()) {
-            string new_addr = rpc_address[i].substr(0, proto+2) + val->second + rpc_address[i].substr(port);
-            chlog("Mapping RPC address " << rpc_address[i] << " to " << new_addr);
-            rpc_address[i] = new_addr;
-        }
-    }
+        rpc_address[i] = convert_zmq_address(rpc_address[i], interfaces);
 
+    // Convert network interface names in "rpc_address" entries.
+    for (size_t i=0; i<heavy_rpc_address.size(); i++)
+        // "tcp://eno2:5555" -> "tcp://10.7.100.15:5555"
+        heavy_rpc_address[i] = convert_zmq_address(heavy_rpc_address[i], interfaces);
+    
     // Convert network interface names in "prometheus_address" entries.
-    for (size_t i=0; i<prometheus_address.size(); i++) {
-        // "eno2:8888" -> "10.7.100.15:8888"
-        // "8888" -> "8888"
-        size_t port = prometheus_address[i].find(":");
-        if (port == std::string::npos)
-            continue;
-        string host = prometheus_address[i].substr(0, port);
-        chlog("Prometheus address host: \"" << host << "\"");
-        auto val = interfaces.find(host);
-        if (val != interfaces.end()) {
-            string new_addr = val->second + prometheus_address[i].substr(port);
-            chlog("Mapping Prometheus address " << prometheus_address[i] << " to " << new_addr);
-            prometheus_address[i] = new_addr;
-        }
-    }
+    for (size_t i=0; i<prometheus_address.size(); i++)
+        prometheus_address[i] = convert_zmq_address(prometheus_address[i], interfaces);
 
     // Lots of sanity checks.
     // First check that we have a consistent 'nstreams'.
@@ -393,6 +381,9 @@ l1_config::l1_config(int argc, const char **argv)
 	throw runtime_error(l1_config_filename + ": 'nt_align' must be a multiple of " + to_string(ch_frb_io::constants::nt_per_assembled_chunk));
     if (rpc_address.size() != (unsigned int)nstreams)
 	throw runtime_error(l1_config_filename + ": 'rpc_address' must be a list whose length is the number of (ip_addr,port) pairs");
+    if (heavy_rpc_address.size() &&
+        (heavy_rpc_address.size() != (unsigned int)nstreams))
+	throw runtime_error(l1_config_filename + ": 'heavy_rpc_address', if specified, must be a list whose length is the number of (ip_addr,port) pairs");
     if (prometheus_address.size() != (unsigned int)nstreams)
 	throw runtime_error(l1_config_filename + ": 'prometheus_address' must be a list whose length is the number of (ip_addr,port) pairs");
     if (!slow_kernels && (nt_per_packet != 16))
@@ -625,6 +616,7 @@ struct dedispersion_thread_context {
                        shared_ptr<const rf_pipelines::pipeline_object> latency_post
                        )> set_bonsai;
     shared_ptr<bonsai::trigger_pipe> l1b_subprocess;   // warning: can be empty pointer!
+    shared_ptr<rf_pipelines::intensity_injector> injector_transform;
     vector<int> allowed_cores;
     bool asynchronous_dedispersion;   // run RFI and dedispersion in separate threads?
     int ibeam;
@@ -751,10 +743,16 @@ void dedispersion_thread_context::_thread_main() const
         bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
     }
 
-    _init_mask_counters(rfi_chain, beam_id);
+    if (l1b_subprocess)
+	dedisperser->add_processor(l1b_subprocess);
 
+    auto bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
+
+    _init_mask_counters(rfi_chain, beam_id);
+        
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);
+    pipeline->add(injector_transform);
     pipeline->add(rfi_chain);
     if (!config.rflag)
         pipeline->add(bonsai_transform);
@@ -872,7 +870,7 @@ static void dedispersion_thread_main(const dedispersion_thread_context &context)
 
 
 
-l1_server::l1_server(int argc, const char **argv) :
+l1_server::l1_server(int argc, char **argv) :
     config(argc, argv)
 {
     command_line = "";
@@ -1183,8 +1181,20 @@ void l1_server::make_rpc_servers()
         usleep(100000);
     }
 
+    // Split into light-weight and heavy-weight RPC servers?
+    bool heavy = config.heavy_rpc_address.size();
+    
     this->rpc_servers.resize(config.nstreams);
     this->rpc_threads.resize(config.nstreams);
+    this->injectors.resize(config.nbeams);
+    if (heavy) {
+        this->heavy_rpc_servers.resize(config.nstreams);
+        this->heavy_rpc_threads.resize(config.nstreams);
+    }
+
+    for (int ibeam = 0; ibeam < config.nbeams; ibeam++)
+        this->injectors[ibeam] = rf_pipelines::make_intensity_injector(ch_frb_io::constants::nt_per_assembled_chunk);
+    
     int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
 
     for (int istream = 0; istream < config.nstreams; istream++) {
@@ -1193,7 +1203,9 @@ void l1_server::make_rpc_servers()
         // to lock the mutex any more.
         vector<shared_ptr<const bonsai::dedisperser> > rpc_bonsais;
         vector<tuple<int, string, shared_ptr<const rf_pipelines::pipeline_object> > > rpc_latency;
+        vector<shared_ptr<rf_pipelines::intensity_injector> > inj(nbeams_per_stream);
         for (int ib = 0; ib < nbeams_per_stream; ib++) {
+            inj[ib] = injectors[istream * nbeams_per_stream + ib];
             rpc_bonsais.push_back(bonsai_dedispersers[istream * nbeams_per_stream + ib]);
             rpc_latency.push_back(make_tuple(config.beam_ids[istream * nbeams_per_stream + ib], "before_rfi",
                                              latency_monitors_pre[istream * nbeams_per_stream + ib]));
@@ -1201,9 +1213,17 @@ void l1_server::make_rpc_servers()
                                              latency_monitors_post[istream * nbeams_per_stream + ib]));
         }
 
-	rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], mask_stats_maps[istream], rpc_bonsais,
-                                                         config.rpc_address[istream], command_line,
-                                                         rpc_latency);
+        if (heavy) {
+            vector<shared_ptr<rf_pipelines::intensity_injector> > empty_inj;
+            // Light-weight RPC server gets no injectors
+            rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], empty_inj, mask_stats_maps[istream], rpc_bonsais, false, config.rpc_address[istream], command_line, rpc_latency);
+            // Heavy-weight RPC server does get injectors
+            heavy_rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], rpc_bonsais, true, config.heavy_rpc_address[istream], command_line, rpc_latency);
+            heavy_rpc_threads[istream] = heavy_rpc_servers[istream]->start();
+        } else {
+            // ?? Allow the single RPC server to support heavy-weight RPCs?
+            rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], rpc_bonsais, true, config.rpc_address[istream], command_line, rpc_latency);
+        }
 	rpc_threads[istream] = rpc_servers[istream]->start();
     }
     chlog("Created RPC servers.");
@@ -1236,9 +1256,11 @@ void l1_server::spawn_dedispersion_threads()
 	throw("ch-frb-l1 internal error: spawn_dedispersion_threads() was called, without first calling make_input_streams()");
     if (l1b_subprocesses.size() != size_t(config.nbeams))
 	throw("ch-frb-l1 internal error: spawn_dedispersion_threads() was called, without first calling spawn_l1b_subprocesses()");
+    if (injectors.size() != size_t(config.nbeams))
+        throw("ch-frb-l1 internal error: spawn_dedispersion_threads() was called, without first calling make_rpc_servers()");
 
     this->dedispersion_threads.resize(config.nbeams);
-    
+
     if (config.l1_verbosity >= 1)
 	cout << "ch-frb-l1: spawning " << config.nbeams << " dedispersion thread(s)" << endl;
 
@@ -1260,6 +1282,7 @@ void l1_server::spawn_dedispersion_threads()
 	dedispersion_thread_context context;
 	context.config = this->config;
 	context.sp = this->input_streams[istream];
+        context.injector_transform = this->injectors[ibeam];
         context.ms_map = this->mask_stats_maps[istream];
         context.set_bonsai = set_bonsai;
 	context.l1b_subprocess = this->l1b_subprocesses[ibeam];
@@ -1304,13 +1327,16 @@ void l1_server::join_all_threads()
 
     cout << "All write requests written, shutting down RPC servers..." << endl;
 
-    for (size_t istream = 0; istream < rpc_servers.size(); istream++)
-	rpc_servers[istream]->do_shutdown();
-    for (size_t istream = 0; istream < rpc_threads.size(); istream++)
-	rpc_threads[istream].join();
-
-    for (size_t istream = 0; istream < prometheus_servers.size(); istream++)
-        prometheus_servers[istream].reset();
+    for (auto rpc : rpc_servers)
+        rpc->do_shutdown();
+    for (auto rpc : heavy_rpc_servers)
+        rpc->do_shutdown();
+    for (auto& th : rpc_threads)
+        th.join();
+    for (auto& th : heavy_rpc_threads)
+        th.join();
+    for (auto& prom : prometheus_servers)
+        prom.reset();
 }
 
 

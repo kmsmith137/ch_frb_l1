@@ -1,0 +1,67 @@
+{
+    "class_name": "pipeline", 
+    "elements": [
+        {
+            "class_name": "chime_assembled_chunk_file_writer",
+            "filename": "chunk-injected-(CHUNK).msgpack",
+            "clobber": true
+        },
+        {
+            "sub_pipeline": {
+                "class_name": "pipeline", 
+                "elements": [
+                    {
+                        "class_name": "mask_counter",
+                        "nt_chunk": 1024,
+                        "where": "before_rfi"
+                    },
+                    {
+                        "Df": 1, 
+                        "class_name": "std_dev_clipper", 
+                        "nt_chunk": 1024, 
+                        "Dt": 1, 
+                        "sigma": 3, 
+                        "two_pass": true, 
+                        "axis": "AXIS_TIME"
+                    }, 
+                    {
+                        "Df": 1, 
+                        "class_name": "std_dev_clipper", 
+                        "nt_chunk": 6144, 
+                        "Dt": 1, 
+                        "sigma": 3, 
+                        "two_pass": true, 
+                        "axis": "AXIS_TIME"
+                    }, 
+                    {
+                        "Df": 1, 
+                        "class_name": "std_dev_clipper", 
+                        "nt_chunk": 6144, 
+                        "Dt": 1, 
+                        "sigma": 3, 
+                        "two_pass": false, 
+                        "axis": "AXIS_FREQ"
+                    }, 
+                    {
+                        "class_name": "mask_counter",
+                        "nt_chunk": 1024,
+                        "where": "after_rfi"
+                    }
+                ]
+            }, 
+            "Df": 0, 
+            "class_name": "wi_sub_pipeline", 
+            "nds_out": 1, 
+            "nfreq_out": 1024, 
+            "w_cutoff": 0, 
+            "Dt": 0
+        },
+        {
+            "class_name": "spline_detrender", 
+            "epsilon": 0.0003, 
+            "nt_chunk": 0, 
+            "nbins": 6, 
+            "axis": "AXIS_FREQ"
+        }
+    ]
+}

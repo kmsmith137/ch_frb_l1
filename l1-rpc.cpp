@@ -263,17 +263,27 @@ bool chunk_status_map::get(const string& filename,
     }
 }
 
+void inject_data_request::swap(rf_pipelines::inject_data& dest) {
+    std::swap(this->mode, dest.mode);
+    std::swap(this->sample_offset, dest.sample_offset);
+    std::swap(this->ndata, dest.ndata);
+    std::swap(this->data, dest.data);
+}
+
 // -------------------------------------------------------------------------------------------------
 
 L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
+                         vector<shared_ptr<rf_pipelines::intensity_injector> > injectors,
                          shared_ptr<const ch_frb_l1::mask_stats_map> ms,
                          vector<shared_ptr<const bonsai::dedisperser> > bonsais,
+                         bool heavy,
                          const string &port,
                          const string &cmdline,
                          std::vector<std::tuple<int, std::string, std::shared_ptr<const rf_pipelines::pipeline_object> > > monitors,
                          zmq::context_t *ctx
                          ) :
     _command_line(cmdline),
+    _heavy(heavy),
     _ctx(ctx ? ctx : new zmq::context_t()),
     _created_ctx(ctx == NULL),
     _frontend(*_ctx, ZMQ_ROUTER),
@@ -282,10 +292,15 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
     _chunk_status(make_shared<chunk_status_map>()),
     _shutdown(false),
     _stream(stream),
+    _injectors(injectors),
     _mask_stats(ms),
     _bonsais(bonsais),
     _latencies(monitors)
 {
+    if ((_injectors.size() != 0) &&
+        (_injectors.size() != _stream->ini_params.beam_ids.size()))
+        throw runtime_error("L1RpcServer: expected injectors array size to be zero or the same size as the beams array");
+
     if (port.length())
         _port = port;
     else
@@ -388,16 +403,16 @@ void L1RpcServer::run() {
 
 	try {
 	    _handle_request(&client, &msg);
-	} catch (const std::exception& e) {
-	    chlog("Warning: Failed to handle RPC request... ignoring!  Error: " << e.what());
-	    try {
-		msgpack::object_handle oh = msgpack::unpack(reinterpret_cast<const char *>(msg.data()), msg.size());
-		msgpack::object obj = oh.get();
-		chlog("  message: " << obj);
-	    } catch (...) {
-		chlog("  failed to un-msgpack message");
-	    }
-	}
+        } catch (const std::exception& e) {
+            chlog("Warning: Failed to handle RPC request... ignoring!  Error: " << e.what());
+            try {
+        	msgpack::object_handle oh = msgpack::unpack(reinterpret_cast<const char *>(msg.data()), msg.size());
+        	msgpack::object obj = oh.get();
+        	chlog("  message: " << obj);
+            } catch (...) {
+        	chlog("  failed to un-msgpack message");
+            }
+    	}
     }
 
     chlog("L1 RPC server: exiting.");
@@ -531,6 +546,15 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         zmq::message_t* reply = sbuffer_to_message(buffer);
         rtnval = _send_frontend_message(*client, *token_to_message(token), *reply);
 
+    } else if (funcname == "inject_data") {
+
+        string errstring = _handle_inject(req_data, request->size(), offset);
+        msgpack::sbuffer buffer;
+        msgpack::pack(buffer, errstring);
+        //  Send reply back to client.
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(*client, *token_to_message(token), *reply);
+        
     } else if (funcname == "get_masked_frequencies") {
 
         rtnval = _handle_masked_freqs(client, funcname, token, req_data, request->size(), offset);
@@ -1040,6 +1064,62 @@ int L1RpcServer::_handle_masked_freqs(zmq::message_t* client, string funcname, u
     return _send_frontend_message(*client, *token_to_message(token), *reply);
 }
 
+string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t req_offset) {
+    if (!_heavy || (_injectors.size() == 0))
+        return "This RPC endoint does not support the inject_data call.  Try the heavy-weight RPC port.";
+
+    // This struct defines the msgpack "wire protocol"
+    shared_ptr<inject_data_request> injreq = make_shared<inject_data_request>();
+
+    // This is the struct we will send to rf_pipelines
+    shared_ptr<rf_pipelines::inject_data> injdata = make_shared<rf_pipelines::inject_data>();
+    // And this is the injector
+    shared_ptr<rf_pipelines::intensity_injector> syringe;
+    
+    msgpack::object_handle oh = msgpack::unpack(req_data, req_size, req_offset);
+    msgpack::object obj = oh.get();
+    obj.convert(injreq);
+    int beam = injreq->beam;
+    uint64_t fpga0 = injreq->fpga0;
+    injreq->swap(*injdata);
+    injreq.reset();
+
+    assert(_stream.get());
+    string errstring = injdata->check(_stream->ini_params.nupfreq * ch_frb_io::constants::nfreq_coarse_tot);
+    if (errstring.size())
+        return errstring;
+
+    // find the injector for this beam
+    for (size_t i=0; i<_stream->ini_params.beam_ids.size(); i++)
+        if (_stream->ini_params.beam_ids[i] == beam) {
+            assert(i < _injectors.size());
+            syringe = _injectors[i];
+            break;
+        }
+    // Matching beam
+    if (!syringe)
+        return "inject_data: beam=" + to_string(beam) + " which is not a beam that I am handling";
+    
+    // rf_pipelines sample offset
+    uint64_t stream_fpga0;
+    try {
+        // If the first packet has not been received, we don't know FPGA0.
+        stream_fpga0 = _stream->get_first_fpga_count(beam);
+    } catch (const runtime_error &e) {
+        return e.what();
+    }
+    injdata->sample0 = (ssize_t)(fpga0 / (uint64_t)_stream->ini_params.fpga_counts_per_sample) -
+        (ssize_t)(stream_fpga0 / (uint64_t)_stream->ini_params.fpga_counts_per_sample);
+    //cout << "L1-RPC inject_data: injection FPGA0 " << fpga0 << ", stream's first FPGA count: " << _stream->get_first_fpga_count(beam) << ", sample0 " << injdata->sample0 << endl;
+
+    try {
+        syringe->inject(injdata);
+    } catch (const runtime_error &e) {
+        return e.what();
+    }
+    cout << "Inject_data RPC: beam " << beam << ", mode " << injdata->mode << ", nfreq " << injdata->sample_offset.size() << ", sample0 " << injdata->sample0 << ", offset range " << injdata->min_offset << ", " << injdata->max_offset << endl;
+    return "";
+}
 
 int L1RpcServer::_handle_masked_freqs_2(zmq::message_t* client, string funcname, uint32_t token,
                                         const char* req_data, size_t req_len, size_t& offset) {

@@ -253,7 +253,8 @@ void l0_params::send_chunks(int istream,
 
         //cout << "elts per chunk " << ostream->elts_per_chunk << ", nt per chunk " << ostream->nt_per_chunk << endl;
         int nsub = chunk->nt_coarse * chunk->nt_per_packet / ostream->nt_per_chunk;
-        cout << "splitting assembled chunk into " << nsub << " pieces" << endl;
+        //cout << "splitting assembled chunk into " << nsub << " pieces" << endl;
+        cout << "simulate-l0: sending chunk with fpgacounts " << chunk->fpga_begin << " = sample " << chunk->fpga_begin / chunk->fpga_counts_per_sample << endl;
         for (int i=0; i<nsub; i++) {
             vector<float> intensity(ostream->elts_per_chunk, 0.0);
             vector<float> weights(ostream->elts_per_chunk, 1.0);
@@ -273,7 +274,6 @@ void l0_params::send_chunks(int istream,
 
         int stride = ostream->nt_per_chunk;
         pair<vector<float>,vector<float> > iw = data[ichunk];
-        cout << "sending chunk " << ichunk << " with fpgacounts " << fpga_count << endl;
         ostream->send_chunk(iw.first.data(), stride,
                             iw.second.data(), stride,
                             fpga_count);

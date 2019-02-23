@@ -198,7 +198,37 @@ class PacketRate(object):
 
     def __str__(self):
         return 'PacketRate: start %g, period %g, packets: ' % (self.start, self.period) + str(self.packets)
-        
+
+class InjectData(object):
+    # matching rf_pipelines_inventory :: inject_data + ch_frb_l1 :: rpc.hpp
+    def __init__(self, beam, mode, fpga0, sample_offsets, data):
+        '''
+        *mode*: 0 = ADD to stream.
+        *data*: list of numpy arrays, one per frequency.
+        *sample_offsets*: int, numpy array, one per frequency.
+        '''
+        self.beam = beam
+        self.mode = mode
+        self.fpga0 = fpga0
+        self.sample_offsets = sample_offsets
+        self.data = data
+
+    def pack(self):
+        ndata = np.array([len(d) for d in self.data]).astype(np.uint16)
+        alldata = np.hstack(self.data).astype(np.float32)
+        # msgpack_binary_vector: version 1 packing.
+        v = 1
+        msg = [self.beam, self.mode, self.fpga0,
+               [v, len(self.sample_offsets),
+                bytes(self.sample_offsets.astype(np.int32).data)],
+                [v, len(ndata),
+                 bytes(ndata.data)],
+                [v, len(alldata),
+                 bytes(alldata.data)]]
+        packer = msgpack.Packer(use_single_float=True, use_bin_type=True)
+        b = packer.pack(msg)
+        return b
+
 class RpcClient(object):
     def __init__(self, servers, context=None, identity=None, debug=False):
         '''
@@ -312,6 +342,50 @@ class RpcClient(object):
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
 
+    def inject_data(self, inj,
+                    servers=None, wait=True, timeout=-1):
+        '''
+        inj: InjectData object
+        '''
+        if servers is None:
+            servers = self.servers.keys()
+        tokens = []
+        for k in servers:
+            self.token += 1
+            req = msgpack.packb(['inject_data', self.token])
+            args = inj.pack()
+            print('inject_data argument:', len(args), 'bytes')
+            tokens.append(self.token)
+            self.sockets[k].send(req + args)
+        if not wait:
+            return tokens
+        parts = self.wait_for_tokens(tokens, timeout=timeout)
+        # We expect one message part for each token.
+        return [msgpack.unpackb(p[0]) if p is not None else None
+                for p in parts]
+
+    def inject_single_pulse(self, beam, nfreq, sp, fpga0, **kwargs):
+        '''
+        sp: simpulse.single_pulse object.
+        '''
+        # NOTE, some approximations here
+        t0,t1 = sp.get_endpoints()
+        nt = int((t1 - t0) / (384 * 2.56e-6))
+        nsparse = sp.get_n_sparse(t0, t1, nt)
+        print('Pulse time range:', t0, t1, 'NT', nt, 'N sparse:', nsparse)
+        sparse_data = np.zeros(nsparse, np.float32)
+        sparse_i0 = np.zeros(nfreq, np.int32)
+        sparse_n = np.zeros(nfreq, np.int32)
+        sp.add_to_timestream_sparse(sparse_data, sparse_i0, sparse_n, t0, t1, nt, 1.)
+        # convert sparse_data into a list of numpy arrays (one per freq)
+        data = []
+        ntotal = 0
+        for n in sparse_n:
+            data.append(sparse_data[ntotal:ntotal+n])
+            ntotal += n
+        injdata = InjectData(beam, 0, fpga0, sparse_i0, data)
+        return self.inject_data(injdata, **kwargs)
+        
     ## the acq_beams should perhaps be a list of lists of beam ids,
     ## one list per L1 server.
     def stream(self, acq_name, acq_dev='', acq_meta='', acq_beams=[],
@@ -792,13 +866,15 @@ if __name__ == '__main__':
     parser.add_argument('--stream-base', help='Stream base directory')
     parser.add_argument('--stream-meta', help='Stream metadata', default='')
     parser.add_argument('--stream-beams', action='append', default=[], help='Stream a subset of beams.  Can be a comma-separated list of integers.  Can be repeated.')
-    
+
     parser.add_argument('--rate', action='store_true', default=False,
                         help='Send packet rate matrix request')
     parser.add_argument('--rate-history', action='store_true', default=False,
                         help='Send packet rate history request')
     parser.add_argument('--l0', action='append', default=[],
                         help='Request rate history for the list of L0 nodes')
+    parser.add_argument('--inject', action='store_true', default=False,
+                        help='Inject some data')
     parser.add_argument('--masked-freqs', action='store_true', default=False,
                         help='Send request for masked frequencies history')
     parser.add_argument('ports', nargs='*',
@@ -1051,6 +1127,23 @@ if __name__ == '__main__':
                     print('  ', r)
         doexit = True
 
+    if opt.inject:
+        beam = 0
+        #fpga0 = 52 * 1024 * 384
+        fpga0 = 5 * 1024 * 384
+        nfreq = 16384
+        sample_offsets = np.zeros(nfreq, np.int32)
+        data = []
+        for f in range(nfreq):
+            sample_offsets[f] = int(0.2 * f)
+            data.append(100. * np.ones(1000, np.float32))
+        print('Injecting data spanning', np.min(sample_offsets), 'to', np.max(sample_offsets), ' samples')
+        inj = InjectData(beam, 0, fpga0, sample_offsets, data)
+        R = client.inject_data(inj, wait=True)
+        print('Results:', R)
+        
+        doexit = True
+        
     if doexit:
         sys.exit(0)
     
