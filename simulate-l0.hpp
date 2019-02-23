@@ -52,6 +52,7 @@ struct l0_params {
     // Note: max_packet_size=8900 is appropriate for 9000-byte jumbo ethernet frames, minus 100 bytes for IP and UDP headers.
     int fpga_counts_per_sample = 384;
     int max_packet_size = 8900;
+    uint64_t initial_time_index = 0;
 
     // Optional, will be assigned a reasonable default if not specified in the config file.
     int nfreq_coarse_per_packet = 0;
