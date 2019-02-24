@@ -645,9 +645,6 @@ void dedispersion_thread_context::_thread_main() const
         bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
     }
 
-    if (l1b_subprocess)
-	dedisperser->add_processor(l1b_subprocess);
-
     _init_mask_counters(rfi_chain, beam_id);
         
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
@@ -1063,7 +1060,9 @@ void l1_server::make_rpc_servers()
 	throw("ch-frb-l1 internal error: double call to make_rpc_servers()");
     if (input_streams.size() != size_t(config.nstreams))
 	throw("ch-frb-l1 internal error: make_rpc_servers() was called, without first calling make_input_streams()");
-    if ((int)bonsai_dedispersers.size() != config.nbeams)
+    if (bonsai_dedispersers.size() != size_t(config.nbeams))
+        throw("ch-frb-l1 internal error: make_rpc_servers() was called, without first calling spawn_dedispersion_threads");
+    if (injectors.size() != size_t(config.nbeams))
         throw("ch-frb-l1 internal error: make_rpc_servers() was called, without first calling spawn_dedispersion_threads");
 
     // Wait for all bonsai dedispersers to be created.
@@ -1086,15 +1085,11 @@ void l1_server::make_rpc_servers()
     
     this->rpc_servers.resize(config.nstreams);
     this->rpc_threads.resize(config.nstreams);
-    this->injectors.resize(config.nbeams);
     if (heavy) {
         this->heavy_rpc_servers.resize(config.nstreams);
         this->heavy_rpc_threads.resize(config.nstreams);
     }
 
-    for (int ibeam = 0; ibeam < config.nbeams; ibeam++)
-        this->injectors[ibeam] = rf_pipelines::make_intensity_injector(ch_frb_io::constants::nt_per_assembled_chunk);
-    
     int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
 
     for (int istream = 0; istream < config.nstreams; istream++) {
@@ -1156,18 +1151,19 @@ void l1_server::spawn_dedispersion_threads()
 	throw("ch-frb-l1 internal error: spawn_dedispersion_threads() was called, without first calling make_input_streams()");
     if (l1b_subprocesses.size() != size_t(config.nbeams))
 	throw("ch-frb-l1 internal error: spawn_dedispersion_threads() was called, without first calling spawn_l1b_subprocesses()");
-    if (injectors.size() != size_t(config.nbeams))
-        throw("ch-frb-l1 internal error: spawn_dedispersion_threads() was called, without first calling make_rpc_servers()");
-
-    this->dedispersion_threads.resize(config.nbeams);
 
     if (config.l1_verbosity >= 1)
 	cout << "ch-frb-l1: spawning " << config.nbeams << " dedispersion thread(s)" << endl;
 
+    dedispersion_threads.resize(config.nbeams);
+    injectors.resize(config.nbeams);
     bonsai_dedispersers.resize(config.nbeams);
     bonsai_dedispersers_set.resize(config.nbeams, false);
     latency_monitors_pre.resize(config.nbeams);
     latency_monitors_post.resize(config.nbeams);
+
+    for (int ibeam = 0; ibeam < config.nbeams; ibeam++)
+        this->injectors[ibeam] = rf_pipelines::make_intensity_injector(ch_frb_io::constants::nt_per_assembled_chunk);
     
     std::function<void(int, shared_ptr<const bonsai::dedisperser>,
                        shared_ptr<const rf_pipelines::pipeline_object>,
