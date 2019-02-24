@@ -1232,7 +1232,7 @@ int L1RpcServer::_handle_max_fpga(zmq::message_t* client, string funcname, uint3
     vector<uint64_t> flushed;
     vector<uint64_t> retrieved;
     _stream->get_max_fpga_count_seen(flushed, retrieved);
-        
+
     intensity_network_stream::initializer ini = _stream->ini_params;
     int nbeams = _stream->ini_params.beam_ids.size();
     for (int i=0; i<nbeams; i++) {
@@ -1251,8 +1251,16 @@ int L1RpcServer::_handle_max_fpga(zmq::message_t* client, string funcname, uint3
         int beam_id = std::get<0>(_latencies[i]);
         string where = std::get<1>(_latencies[i]);
         const auto &late = std::get<2>(_latencies[i]);
+
+        uint64_t fpga0 = 0;
+        try {
+            fpga0 = _stream->get_first_fpga_count(beam_id);
+        } catch (const runtime_error &e) {
+            // if first packet has not been received
+            continue;
+        }
         uint64_t fpga = (late->pos_lo * _stream->ini_params.fpga_counts_per_sample
-                         + _stream->get_first_fpga_count(beam_id));
+                         + fpga0);
         seen.beam = beam_id;
         seen.where = where;
         seen.max_fpga_seen = fpga;
@@ -1265,8 +1273,15 @@ int L1RpcServer::_handle_max_fpga(zmq::message_t* client, string funcname, uint3
             continue;
         int beam_id = _stream->ini_params.beam_ids[i];
         int nc = bonsai->get_nchunks_processed();
+        uint64_t fpga0 = 0;
+        try {
+            fpga0 = _stream->get_first_fpga_count(beam_id);
+        } catch (const runtime_error &e) {
+            // if first packet has not been received
+            continue;
+        }
         uint64_t fpga = (nc * bonsai->nt_chunk * _stream->ini_params.fpga_counts_per_sample
-                         + _stream->get_first_fpga_count(beam_id));
+                         + fpga0);
         seen.beam = beam_id;
         seen.where = "bonsai";
         seen.max_fpga_seen = fpga;
