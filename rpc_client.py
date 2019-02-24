@@ -16,6 +16,13 @@ This client can talk to multiple RPC servers at once.
 '''
 
 class AssembledChunk(object):
+    '''
+    This class represents an "assembled chunk" of CHIME/FRB intensity
+    data read from a msgpack-format file.
+
+    You probably want to use *read_msgpack_file* to create one of
+    these.
+    '''
     def __init__(self, msgpacked_chunk):
         c = msgpacked_chunk
         # print('header', c[0])
@@ -110,21 +117,31 @@ class AssembledChunk(object):
         return intensities,weights
 
     def time_start(self):
+        '''
+        Returns a unix-time (seconds since 1970) value for the start of this
+        chunk of data.
+        '''
         # Nanoseconds per FPGA count
         fpga_nano = 2560
         return 1e-9 * (self.frame0_nano +
                        self.fpga_counts_per_sample * fpga_nano * self.fpga0)
 
     def time_end(self):
+        '''
+        Returns a unix-time (seconds since 1970) value for the end of this
+        chunk of data.
+        '''
         # Nanoseconds per FPGA count
         fpga_nano = 2560
         return 1e-9 * (self.frame0_nano +
                        self.fpga_counts_per_sample * fpga_nano * (self.fpga0 + self.fpgaN))
 
 def read_msgpack_file(fn):
-    f = open(fn, 'rb')
-    m = msgpack.unpackb(f.read())
-    return AssembledChunk(m)
+    ''' Reads the given *fn* msgpack-formatted CHIME/FRB intensity
+    data ("assembled chunk").
+    '''
+    f = open(fn, 'rb') m =
+    msgpack.unpackb(f.read()) return AssembledChunk(m)
 
 class WriteChunkReply(object):
     '''
@@ -152,6 +169,10 @@ class WriteChunkReply(object):
         return str(self)
 
 class MaskedFrequencies(object):
+    '''
+    The reply to a *get_masked_frequencies* RPC request: a vector of (beam, where) ->
+    spectrum mappings giving the fraction of masked samples.
+    '''
     def __init__(self, msgpack):
         #print('Masked frequencies: got ', msgpack)
         self.histories = {}
@@ -163,6 +184,11 @@ class MaskedFrequencies(object):
 
 
 class SummedMaskedFrequencies(object):
+    '''
+    The reply to a *get_summed_masked_frequencies* RPC request: data
+    about the fraction of masked samples, by frequency, for a given
+    beam, FPGAcounts time range, and place in the RFI chain.
+    '''
     @staticmethod
     def parse(msgpack):
         # List, one element per beam
@@ -191,6 +217,9 @@ class SummedMaskedFrequencies(object):
 
 
 class PacketRate(object):
+    '''
+    The return type for the *get_packet_rate* RPC call.
+    '''
     def __init__(self, msgpack):
         self.start = msgpack[0]
         self.period = msgpack[1]
@@ -200,13 +229,34 @@ class PacketRate(object):
         return 'PacketRate: start %g, period %g, packets: ' % (self.start, self.period) + str(self.packets)
 
 class InjectData(object):
+    '''
+    Input datatype for the *inject_data* RPC call.
+    '''
     # matching rf_pipelines_inventory :: inject_data + ch_frb_l1 :: rpc.hpp
     def __init__(self, beam, mode, fpga0, sample_offsets, data):
         '''
+        *beam*: integer.
         *mode*: 0 = ADD to stream.
-        *data*: list of numpy arrays, one per frequency.
-        *sample_offsets*: int, numpy array, one per frequency.
+        *fpga0*: FPGAcounts of the reference time when these data should be injected.
+          The sample times in *sample_offsets* are relative to this FPGAcounts time.
+        *sample_offsets*: numpy array of ints, one per frequency.  The intensity sample
+          offset (ie, time offset in ~ milliseconds) when data for this frequency should
+          be injected.
+        *data*: list of numpy arrays, one per frequency; the data to be injected.
+
+        This is a hybrid sparse representation:
+        - every frequency is assumed to be represented
+        - each frequency can have a different number of samples (including zero),
+          and starts at a different time offset.
+
+        Frequency index *f* will get a set of samples injected
+        starting at time sample *s0 + sample_offset[f]*, where *s0* is
+        *fpga0* converted to a sample number.  The data in *data[f]*
+        will be injected.
         '''
+        # CHIME/FRB values:
+        assert(len(sample_offsets) == 16384)
+        assert(len(data) == 16384)
         self.beam = beam
         self.mode = mode
         self.fpga0 = fpga0
@@ -345,7 +395,9 @@ class RpcClient(object):
     def inject_data(self, inj,
                     servers=None, wait=True, timeout=-1):
         '''
-        inj: InjectData object
+        Sends data to be injected.  The beam number, time, and data
+        are in the *inj* data structure.  Please see the *InjectData*
+        class for a detailed explanation of that data structure.
         '''
         if servers is None:
             servers = self.servers.keys()
@@ -364,9 +416,10 @@ class RpcClient(object):
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
 
-    def inject_single_pulse(self, beam, nfreq, sp, fpga0, **kwargs):
+    def inject_single_pulse(self, beam, sp, fpga0, nfreq=16384, **kwargs):
         '''
-        sp: simpulse.single_pulse object.
+        Injects a *simpulse* simulated pulse *sp* into the given *beam*, starting
+        at the reference time *fpga0* in FPGAcounts units.
         '''
         # NOTE, some approximations here
         t0,t1 = sp.get_endpoints()
@@ -623,6 +676,12 @@ class RpcClient(object):
             self.sockets[k].send(hdr + req)
 
     def get_masked_frequencies(self, servers=None, wait=True, timeout=-1):
+        '''
+        Deprecated; prefer get_summed_masked_frequencies.
+
+        Returns the most recent mask stats for all beams and places in
+        the RFI chain.
+        '''
         if servers is None:
             servers = self.servers.keys()
         tokens = []
@@ -643,6 +702,20 @@ class RpcClient(object):
     def get_summed_masked_frequencies(self, fpgamin, fpgamax,
                                       beam=-1, where='after_rfi',
                                       servers=None, wait=True, timeout=-1):
+        '''
+        Returns summed statistics for the given range of times (in
+        FPGAcounts units) from *fpgamin* to *fpgamax*.
+
+        If *beam* is specified, returns only that beam; otherwise, all
+        beams.
+
+        *where*: where in the RFI pipeline to retrieve stats from.  In
+         production, we typically have only "before_rfi" and
+         "after_rfi" available.  This is before and after the L1 RFI
+         chain.
+
+        The return value is a list of *SummedMaskedFrequencies* objects.
+        '''
         fpgamin = int(fpgamin)
         fpgamax = int(fpgamax)
         if servers is None:
@@ -664,6 +737,8 @@ class RpcClient(object):
 
     def get_max_fpga_counts(self, servers=None, wait=True, timeout=-1):
         '''
+        Returns the largest (ie, last) FPGAcounts values seen at a
+        variety of places in the processing pipeline.
         '''
         if servers is None:
             servers = self.servers.keys()
