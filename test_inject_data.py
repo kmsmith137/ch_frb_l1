@@ -39,7 +39,73 @@ def main():
     l1 = subprocess.Popen(l1cmd, shell=True)
     # wait until L1 is ready to receive
     sleep(5)
+
+    success = True
+    try:
+        run_main(l0, client)
+    except:
+        import traceback
+        traceback.print_exc()
+        success = False
+    print('Killing L1 process...')
+    l1.terminate()
+    sleep(1)
+    if l1.poll() is None:
+        l1.kill()
+    if not success:
+        return
+
+    # Check contents of msgpack files.
+    fns = glob('chunk-injected-000000*.msgpack')
+    fns.sort()
+
+    nchunks = ichunk - chunk0
+    print('Keeping only', nchunks, 'chunks that we sent data for')
+    fns = fns[:nchunks]
+
+    binned = []
+    B = 16
+    bsample0 = 0
+
+    for i,fn in enumerate(fns):
+        print('Reading', fn)
+        chunk = read_msgpack_file(fn)
+        print('Chunk: ', chunk)
     
+        sample0 = chunk.fpga0 / chunk.fpga_counts_per_sample
+        I,W = chunk.decode()
+        nf,nt = I.shape
+
+        b = bin_image(I, B)
+        binned.append(b)
+        if i == 0:
+            bsample0 = sample0
+
+        plt.clf()
+        plt.imshow(I, interpolation='nearest', origin='lower',
+                   #vmin=0, vmax=1, cmap='gray',
+                   extent=[sample0, sample0+nt * chunk.binning, 0, nf], aspect='auto')
+        plt.xlabel('sample number (~ms)')
+        plt.ylabel('frequency bin')
+        plt.title('Intensity')
+        fn = 'injected-%02i.png' % i
+        plt.savefig(fn)
+        print('Wrote', fn)
+
+    binned = np.hstack(binned)
+    bh,bw = binned.shape
+    plt.clf()
+    plt.imshow(binned, interpolation='nearest', origin='lower',
+               extent=[bsample0, bsample0+bw*B, 0, bh*B], aspect='auto')
+    plt.xlabel('sample number (~ms)')
+    plt.ylabel('frequency bin')
+    plt.title('Injected')
+    fn = 'injected.png'
+    plt.savefig(fn)
+    print('Wrote', fn)
+
+        
+def run_main(l0, client):
     beam_id = 0
     fpga_counts_per_sample = 384
     nt = 1024
@@ -76,8 +142,9 @@ def main():
     R = client.inject_data(inj, wait=True)
     print('Results:', R)
     R = R[0]
+    ### ?? should this error out?
     # Error message!
-    assert(len(R) > 0)
+    #assert(len(R) > 0)
 
     if True:
         # Send a first chunk to set the initial FPGA counts!
@@ -161,57 +228,6 @@ def main():
     l0.end_streams()
     sleep(5)
     
-    print('Terminating L1.');
-    l1.terminate()
-    
-    # Check contents of msgpack files.
-    fns = glob('chunk-injected-000000*.msgpack')
-    fns.sort()
-
-    nchunks = ichunk - chunk0
-    print('Keeping only', nchunks, 'chunks that we sent data for')
-    fns = fns[:nchunks]
-
-    binned = []
-    B = 16
-    bsample0 = 0
-
-    for i,fn in enumerate(fns):
-        print('Reading', fn)
-        chunk = read_msgpack_file(fn)
-        print('Chunk: ', chunk)
-    
-        sample0 = chunk.fpga0 / chunk.fpga_counts_per_sample
-        I,W = chunk.decode()
-        nf,nt = I.shape
-
-        b = bin_image(I, B)
-        binned.append(b)
-        if i == 0:
-            bsample0 = sample0
-
-        plt.clf()
-        plt.imshow(I, interpolation='nearest', origin='lower',
-                   #vmin=0, vmax=1, cmap='gray',
-                   extent=[sample0, sample0+nt * chunk.binning, 0, nf], aspect='auto')
-        plt.xlabel('sample number (~ms)')
-        plt.ylabel('frequency bin')
-        plt.title('Intensity')
-        fn = 'injected-%02i.png' % i
-        plt.savefig(fn)
-        print('Wrote', fn)
-
-    binned = np.hstack(binned)
-    bh,bw = binned.shape
-    plt.clf()
-    plt.imshow(binned, interpolation='nearest', origin='lower',
-               extent=[bsample0, bsample0+bw*B, 0, bh*B], aspect='auto')
-    plt.xlabel('sample number (~ms)')
-    plt.ylabel('frequency bin')
-    plt.title('Injected')
-    fn = 'injected.png'
-    plt.savefig(fn)
-    print('Wrote', fn)
 
 if __name__ == '__main__':
     main()

@@ -140,8 +140,9 @@ def read_msgpack_file(fn):
     ''' Reads the given *fn* msgpack-formatted CHIME/FRB intensity
     data ("assembled chunk").
     '''
-    f = open(fn, 'rb') m =
-    msgpack.unpackb(f.read()) return AssembledChunk(m)
+    f = open(fn, 'rb')
+    m = msgpack.unpackb(f.read())
+    return AssembledChunk(m)
 
 class WriteChunkReply(object):
     '''
