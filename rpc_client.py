@@ -89,8 +89,8 @@ class AssembledChunk(object):
         if self.has_rfi_mask:
             h,w = self.rfi_mask.shape
             masked = np.sum(self.rfi_mask == 0)
-            rfistr = ('yes, %i freqs, %i%% masked' %
-                      (self.nrfifreq, int(100. * masked / (h*w))))
+            rfistr = ('yes, %i freqs, %.2f%% masked' %
+                      (self.nrfifreq, (100. * masked) / float(h*w)))
         else:
             rfistr = 'no'
         return ('AssembledChunk: beam %i, nt %i, fpga0 %i, rfi %s' %
@@ -256,8 +256,12 @@ class InjectData(object):
         will be injected.
         '''
         # CHIME/FRB values:
-        assert(len(sample_offsets) == 16384)
-        assert(len(data) == 16384)
+        if len(sample_offsets) != 16384:
+            print('Warning: expect sample_offsets to have length 16384, got', len(sample_offsets))
+        if len(data) != 16384:
+            print('Warning: expect *data* list to have length 16384, got', len(data))
+        #assert(len(sample_offsets) == 16384)
+        #assert(len(data) == 16384)
         self.beam = beam
         self.mode = mode
         self.fpga0 = fpga0
@@ -424,6 +428,7 @@ class RpcClient(object):
         '''
         # NOTE, some approximations here
         t0,t1 = sp.get_endpoints()
+        ####### FIXME don't hard-code these values!
         nt = int((t1 - t0) / (384 * 2.56e-6))
         nsparse = sp.get_n_sparse(t0, t1, nt)
         print('Pulse time range:', t0, t1, 'NT', nt, 'N sparse:', nsparse)
@@ -437,7 +442,8 @@ class RpcClient(object):
         for n in sparse_n:
             data.append(sparse_data[ntotal:ntotal+n])
             ntotal += n
-        injdata = InjectData(beam, 0, fpga0, sparse_i0, data)
+        fpga_offset = int(fpga0 + (t0 / 2.56e-6))
+        injdata = InjectData(beam, 0, fpga_offset, sparse_i0, data)
         return self.inject_data(injdata, **kwargs)
         
     ## the acq_beams should perhaps be a list of lists of beam ids,
@@ -515,7 +521,7 @@ class RpcClient(object):
         '''
         Asks the RPC servers to write a set of chunks to disk.
 
-        *beams*: list of integer beams to writet to disk
+        *beams*: list of integer beams to write to disk
         *min_fgpa*, *max_fpga*: range of FPGA-counts to write
         *filename_pattern*: printf filename pattern
         *priority*: of writes.
