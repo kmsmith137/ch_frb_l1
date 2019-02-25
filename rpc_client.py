@@ -254,6 +254,9 @@ class InjectData(object):
         starting at time sample *s0 + sample_offset[f]*, where *s0* is
         *fpga0* converted to a sample number.  The data in *data[f]*
         will be injected.
+
+        Note that this class doesn't care whether data are ordered with the lowest
+        frequency first or last in the array.
         '''
         # CHIME/FRB values:
         if len(sample_offsets) != 16384:
@@ -268,14 +271,22 @@ class InjectData(object):
         self.sample_offsets = sample_offsets
         self.data = data
 
-    def pack(self):
-        ndata = np.array([len(d) for d in self.data]).astype(np.uint16)
-        alldata = np.hstack(self.data).astype(np.float32)
+    def pack(self, freq_low_to_high):
+        # The wire format assumes frequencies are ordered high to low.
+        data = self.data
+        offsets = self.sample_offsets
+        if freq_low_to_high:
+            # Flip!!
+            data = list(reversed(data))
+            offsets = offsets[::-1]
+
+        ndata = np.array([len(d) for d in data]).astype(np.uint16)
+        alldata = np.hstack(data).astype(np.float32)
         # msgpack_binary_vector: version 1 packing.
         v = 1
         msg = [self.beam, self.mode, self.fpga0,
-               [v, len(self.sample_offsets),
-                bytes(self.sample_offsets.astype(np.int32).data)],
+               [v, len(offsets),
+                bytes(offsets.astype(np.int32).data)],
                 [v, len(ndata),
                  bytes(ndata.data)],
                 [v, len(alldata),
@@ -397,12 +408,17 @@ class RpcClient(object):
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
 
-    def inject_data(self, inj,
+    def inject_data(self, inj, freq_low_to_high,
                     servers=None, wait=True, timeout=-1):
         '''
         Sends data to be injected.  The beam number, time, and data
         are in the *inj* data structure.  Please see the *InjectData*
         class for a detailed explanation of that data structure.
+
+        *freq_low_to_high*: boolean, required.  If True, frequencies in *inj*
+        are assumed to be ordered from lowest frequency to highest frequency.
+        This is the order returned by simpulse by default.
+
         '''
         if servers is None:
             servers = self.servers.keys()
@@ -410,7 +426,7 @@ class RpcClient(object):
         for k in servers:
             self.token += 1
             req = msgpack.packb(['inject_data', self.token])
-            args = inj.pack()
+            args = inj.pack(freq_low_to_high)
             print('inject_data argument:', len(args), 'bytes')
             tokens.append(self.token)
             self.sockets[k].send(req + args)
@@ -421,30 +437,35 @@ class RpcClient(object):
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
 
-    def inject_single_pulse(self, beam, sp, fpga0, nfreq=16384, **kwargs):
+    def inject_single_pulse(self, beam, sp, fpga0, nfreq=16384,
+                            fpga_counts_per_sample=384, fpga_period=2.56e-6,
+                            **kwargs):
         '''
         Injects a *simpulse* simulated pulse *sp* into the given *beam*, starting
         at the reference time *fpga0* in FPGAcounts units.
         '''
         # NOTE, some approximations here
         t0,t1 = sp.get_endpoints()
-        ####### FIXME don't hard-code these values!
-        nt = int((t1 - t0) / (384 * 2.56e-6))
-        nsparse = sp.get_n_sparse(t0, t1, nt)
-        print('Pulse time range:', t0, t1, 'NT', nt, 'N sparse:', nsparse)
+        sample_period = fpga_counts_per_sample * fpga_period
+        nt = int(np.ceil((t1 - t0) / sample_period))
+        t1x = t0 + nt*sample_period
+        nsparse = sp.get_n_sparse(t0, t1x, nt)
+        print('Pulse time range:', t0, t1x, 'NT', nt, 'N sparse:', nsparse)
         sparse_data = np.zeros(nsparse, np.float32)
         sparse_i0 = np.zeros(nfreq, np.int32)
         sparse_n = np.zeros(nfreq, np.int32)
-        sp.add_to_timestream_sparse(sparse_data, sparse_i0, sparse_n, t0, t1, nt, 1.)
+        sp.add_to_timestream_sparse(sparse_data, sparse_i0, sparse_n, t0, t1x, nt, 1.)
         # convert sparse_data into a list of numpy arrays (one per freq)
         data = []
         ntotal = 0
         for n in sparse_n:
             data.append(sparse_data[ntotal:ntotal+n])
             ntotal += n
-        fpga_offset = int(fpga0 + (t0 / 2.56e-6))
+        fpga_offset = int(fpga0 + (t0 / fpga_period))
         injdata = InjectData(beam, 0, fpga_offset, sparse_i0, data)
-        return self.inject_data(injdata, **kwargs)
+        # Simpulse orders frequencies low to high.
+        freq_low_to_high = True
+        return self.inject_data(injdata, freq_low_to_high, **kwargs)
         
     ## the acq_beams should perhaps be a list of lists of beam ids,
     ## one list per L1 server.
@@ -957,6 +978,8 @@ if __name__ == '__main__':
                         help='Request rate history for the list of L0 nodes')
     parser.add_argument('--inject', action='store_true', default=False,
                         help='Inject some data')
+    parser.add_argument('--inject-pulse', action='store_true', default=False,
+                        help='Inject a simpulse pulse')
     parser.add_argument('--masked-freqs', action='store_true', default=False,
                         help='Send request for masked frequencies history')
     parser.add_argument('ports', nargs='*',
@@ -1221,7 +1244,29 @@ if __name__ == '__main__':
             data.append(100. * np.ones(1000, np.float32))
         print('Injecting data spanning', np.min(sample_offsets), 'to', np.max(sample_offsets), ' samples')
         inj = InjectData(beam, 0, fpga0, sample_offsets, data)
-        R = client.inject_data(inj, wait=True)
+        freq_low_to_high = True
+        R = client.inject_data(inj, freq_low_to_high, wait=True)
+        print('Results:', R)
+        
+        doexit = True
+
+    if opt.inject_pulse:
+        import simpulse
+
+        pulse_nt = 1024
+        nfreq = 16384
+        freq_lo = 400.
+        freq_hi = 800.
+        dm = 50.
+        sm = 1.
+        width = 0.003
+        fluence = 0.1
+        spectral_index = -1.
+        undispersed_t = 5.
+        sp = simpulse.single_pulse(pulse_nt, nfreq, freq_lo, freq_hi, dm, sm, width, fluence, spectral_index, undispersed_t)
+        beam = 0
+        fpga0 = 0
+        R = client.inject_single_pulse(beam, sp, fpga0, wait=True, nfreq=nfreq)
         print('Results:', R)
         
         doexit = True

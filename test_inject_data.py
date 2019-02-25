@@ -26,61 +26,6 @@ def bin_image(data, Sy, Sx):
     return newdata
 
 def main():
-    # chunk0 = 50
-    # fpga0 = (chunk0 + 2) * 1024 * 384
-    # #fpga0 = 0
-    # beam = 0
-    # fpga_counts_per_sample = 384
-    # 
-    # nt = 1024
-    # nf = 16384
-    # nfreq = nf
-    # freq_lo = 400.
-    # freq_hi = 800.
-    # width = 0.003 # s
-    # fluence = 10.
-    # spectral_index = -1.
-    # 
-    # dm = 50.
-    # sm = 1. # ms
-    # undispersed_t = 12.
-    # sp = simpulse.single_pulse(nt, nfreq, freq_lo, freq_hi, dm, sm, width, fluence, spectral_index, undispersed_t)
-    # # Reverse frequency ordering!
-    # t0,t1 = sp.get_endpoints()
-    # dt = 384 * 2.56e-6
-    # ntp = int((t1 - t0) / dt)
-    # nsparse = sp.get_n_sparse(t0, t1, ntp)
-    # print('Pulse time range:', t0, t1, 'NT', ntp, 'N sparse:', nsparse)
-    # sparse_data = np.zeros(nsparse, np.float32)
-    # sparse_i0 = np.zeros(nfreq, np.int32)
-    # sparse_n = np.zeros(nfreq, np.int32)
-    # t1x = t0 + ntp * dt
-    # print('Using t range', t0, t1x, 'N', ntp)
-    # sp.add_to_timestream_sparse(sparse_data, sparse_i0, sparse_n, t0, t1x, ntp, 1.)
-    # # convert sparse_data into a list of numpy arrays (one per freq)
-    # data = []
-    # ntotal = 0
-    # for n in sparse_n:
-    #     data.append(sparse_data[ntotal:ntotal+n])
-    #     ntotal += n
-    # del sparse_n
-    # del sparse_data
-    # # HACK -- reverse frequencies!!
-    # sparse_i0 = sparse_i0[::-1]
-    # data = list(reversed(data))
-    # print('Sparse_i0 range:', sparse_i0.min(), sparse_i0.max())
-    # 
-    # for j,(i,d) in enumerate(zip(sparse_i0, data)):
-    #     print(j, 'i0', i, 'data length', len(d))
-    # 
-    # #print('Sending fpga0:', fpga0)
-    # fpga_offset = int(fpga0 + (t0 / 2.56e-6))
-    # print('FPGA_offset:', fpga_offset)
-    # injdata = InjectData(beam, 0, fpga_offset, sparse_i0, data)
-    # #R2 = client.inject_data(injdata, wait=True)
-    # #print('Results:', R2)
-
-
     print('Deleting existing msgpack files...')
     fns = glob('chunk-injected-*.msgpack')
     for fn in fns:
@@ -91,7 +36,6 @@ def main():
     client = RpcClient({'a':'tcp://127.0.0.1:5566'})
 
     l1cmd = './ch-frb-l1 -fv l1_configs/l1_test_inject.yml rfi_configs/rfi_testing_inject.json bonsai_configs/bonsai_test_inject.hdf5 xxx'
-    #need_rfi = False
     need_rfi = True
 
     l1 = subprocess.Popen(l1cmd, shell=True)
@@ -106,13 +50,13 @@ def main():
         traceback.print_exc()
         success = False
 
-    # print('Killing L1 process...')
-    # l1.terminate()
-    # sleep(1)
-    # if l1.poll() is None:
-    #     l1.kill()
-    # if not success:
-    #     return
+    print('Killing L1 process...')
+    l1.terminate()
+    sleep(1)
+    if l1.poll() is None:
+        l1.kill()
+    if not success:
+        return
 
     # Check contents of msgpack files.
     fns = glob('chunk-injected-000000*.msgpack')
@@ -138,21 +82,23 @@ def main():
         if i == 0:
             bsample0 = sample0
 
-        print('Has RFI mask:', chunk.has_rfi_mask)
-        if chunk.has_rfi_mask:
-            print('Chunk shape:', I.shape, 'RFI mask shape', chunk.rfi_mask.shape)
-            binf = bin_image(I, 16, 1)
-            print('binf:', binf.shape)
-
-            plt.clf()
-            plt.subplot(1,2,1)
-            plt.imshow(binf, interpolation='nearest', origin='lower')
-            plt.colorbar()
-            plt.subplot(1,2,2)
-            plt.imshow(chunk.rfi_mask, interpolation='nearest', origin='lower')
-            plt.colorbar()
-            fn = 'mask-%02i.png' % i
-            plt.savefig(fn)
+        # Because we wrote out chunks *using a debugging
+        # rf_pipelines plugin*, we don't get RFI masks.
+        # print('Has RFI mask:', chunk.has_rfi_mask)
+        # if chunk.has_rfi_mask:
+        #     print('Chunk shape:', I.shape, 'RFI mask shape', chunk.rfi_mask.shape)
+        #     binf = bin_image(I, 16, 1)
+        #     print('binf:', binf.shape)
+        # 
+        #     plt.clf()
+        #     plt.subplot(1,2,1)
+        #     plt.imshow(binf, interpolation='nearest', origin='lower')
+        #     plt.colorbar()
+        #     plt.subplot(1,2,2)
+        #     plt.imshow(chunk.rfi_mask, interpolation='nearest', origin='lower')
+        #     plt.colorbar()
+        #     fn = 'mask-%02i.png' % i
+        #     plt.savefig(fn)
 
         plt.clf()
         plt.imshow(I, interpolation='nearest', origin='lower',
@@ -181,6 +127,8 @@ def main():
 def run_main(l0, client):
     beam_id = 0
     fpga_counts_per_sample = 384
+    fpga_period = 2.56e-6
+    sample_period = fpga_period * fpga_counts_per_sample
     nt = 1024
     nf = 16384
     nrfi = 1024
@@ -197,14 +145,14 @@ def run_main(l0, client):
     offset[:,:] = -64.
     scale[:,:] = 1.
     
-    # Create data to be injected.
+    # Create data to be injected -- a diagonal strip lasting ~ 1 sec.
     beam = beam_id
     nfreq = nf
     sample_offsets = np.zeros(nfreq, np.int32)
     data = []
     for f in range(nfreq):
-        sample_offsets[f] = int(0.2 * f)
-        data.append(200. * np.ones(200, np.float32))
+        sample_offsets[f] = int(0.06 * f)
+        data.append(10. * np.ones(10, np.float32))
     print('Injecting data spanning', np.min(sample_offsets), 'to', np.max(sample_offsets), ' samples')
 
     # try injecting data before the L1 node has received its first packet
@@ -212,7 +160,8 @@ def run_main(l0, client):
 
     inj = InjectData(beam, 0, fpga0, sample_offsets, data)
     print('Inject_data (before first packet)')
-    R = client.inject_data(inj, wait=True)
+    freq_low_to_high = True
+    R = client.inject_data(inj, freq_low_to_high, wait=True)
     print('Results:', R)
     R = R[0]
     ### ?? should this error out?
@@ -235,19 +184,19 @@ def run_main(l0, client):
     # try injecting data too late
     inj = InjectData(beam, 0, fpga0, sample_offsets, data)
     print('Inject_data (too late)')
-    R = client.inject_data(inj, wait=True)
+    R = client.inject_data(inj, freq_low_to_high, wait=True)
     print('Results:', R)
     R = R[0]
     # Error message!
     assert(len(R) > 0)
 
-    fpga0 = (chunk0 + 2) * 1024 * 384
+    fpga0 = (chunk0 + 2) * 1024 * fpga_counts_per_sample
 
     # Try injecting data for wrong beam
     badbeam = 100
     inj = InjectData(badbeam, 0, fpga0, sample_offsets, data)
     print('Inject_data (bad beam)')
-    R = client.inject_data(inj, wait=True)
+    R = client.inject_data(inj, freq_low_to_high, wait=True)
     print('Results:', R)
     R = R[0]
     # Error message!
@@ -256,107 +205,58 @@ def run_main(l0, client):
     # Try injecting data with wrong number of frequency bins
     inj = InjectData(beam, 0, fpga0, sample_offsets[:-1], data)
     print('Inject_data (bad freqs)')
-    R = client.inject_data(inj, wait=True)
+    R = client.inject_data(inj, freq_low_to_high, wait=True)
     print('Results:', R)
     R = R[0]
     # Error message!
     assert(len(R) > 0)
 
     # # This injection should work!
-    # inj = InjectData(beam, 0, fpga0, sample_offsets, data)
-    # print('Inject_data')
-    # R = client.inject_data(inj, wait=True)
-    # print('Results:', R)
-    # R = R[0]
-    # # Error message!
-    # assert(len(R) == 0)
+    inj = InjectData(beam, 0, fpga0, sample_offsets, data)
+    print('Inject_data')
+    R = client.inject_data(inj, freq_low_to_high, wait=True)
+    print('Results:', R)
+    R = R[0]
+    # Error message!
+    assert(len(R) == 0)
 
-    #print('Requesting streaming...')
-    #client.stream('dstntest', acq_dev='nfs')
+    # Try with opposite frequency ordering
+    inj = InjectData(beam, 0, fpga0 + 1024 * fpga_counts_per_sample,
+                     sample_offsets, data)
+    print('Inject_data')
+    R = client.inject_data(inj, not(freq_low_to_high), wait=True)
+    print('Results:', R)
+    R = R[0]
+    # Error message!
+    assert(len(R) == 0)
 
-    nt = 1024
+    pulse_nt = 1024
     nfreq = nf
     freq_lo = 400.
     freq_hi = 800.
-    #dm = 500.
-    dm = 200.
-    sm = 3. # ms
-    #width = 0.05 # s
-    width = 0.003 # s
-    fluence = 10.
-    spectral_index = -1.
-    undispersed_t = 0.
-    #sp = simpulse.single_pulse(nt, nfreq, freq_lo, freq_hi, dm, sm, width, fluence, spectral_index, undispersed_t)
-    #R2 = client.inject_single_pulse(beam, sp, fpga0, wait=True, nfreq=nfreq)
-    #print('Results:', R2)
-
 
     dm = 50.
-    sm = 1.
+    sm = 1. # ms
     fluence = 0.1
-    undispersed_t = 8.
-    sp = simpulse.single_pulse(nt, nfreq, freq_lo, freq_hi, dm, sm, width, fluence, spectral_index, undispersed_t)
-    # R2 = client.inject_single_pulse(beam, sp, fpga0, wait=True, nfreq=nfreq)
-    # print('Results:', R2)
-
-    #undispersed_t = 12.
+    width = 0.003 # s
+    spectral_index = -1.
     undispersed_t = 0.
-    sp = simpulse.single_pulse(nt, nfreq, freq_lo, freq_hi, dm, sm, width, fluence, spectral_index, undispersed_t)
-    # Reverse frequency ordering!
-    t0,t1 = sp.get_endpoints()
-    dt = 384 * 2.56e-6
-    ntp = int((t1 - t0) / dt)
-    t1x = t0 + ntp * dt
-    print('Using t range', t0, t1x, 'N', ntp)
-    nsparse = sp.get_n_sparse(t0, t1x, ntp)
-    print('Pulse time range:', t0, t1x, 'NT', ntp, 'N sparse:', nsparse)
-    sparse_data = np.zeros(nsparse, np.float32)
-    sparse_i0 = np.zeros(nfreq, np.int32)
-    sparse_n = np.zeros(nfreq, np.int32)
-    sp.add_to_timestream_sparse(sparse_data, sparse_i0, sparse_n, t0, t1x, ntp, 1.)
-    # convert sparse_data into a list of numpy arrays (one per freq)
-    data = []
-    ntotal = 0
-    print('Max data value:', sparse_data.max())
-    for n in sparse_n:
-        data.append(sparse_data[ntotal:ntotal+n])
-        ntotal += n
-    del sparse_n
-    del sparse_data
 
-    forward_i0 = sparse_i0
-    forward_data = data
-
-    # HACK -- reverse frequencies!!
-    sparse_i0 = sparse_i0[::-1]
-    data = list(reversed(data))
-    print('Sparse_i0 range:', sparse_i0.min(), sparse_i0.max())
-    #print('Sending fpga0:', fpga0)
-    fpga_offset = int(fpga0 + (t0 / 2.56e-6))
-    print('FPGA_offset:', fpga_offset)
-    #injdata = InjectData(beam, 0, fpga_offset, sparse_i0, data)
-    #R2 = client.inject_data(injdata, wait=True)
-    #print('Results:', R2)
+    print('Injecting pulse...')
+    sp = simpulse.single_pulse(pulse_nt, nfreq, freq_lo, freq_hi, dm, sm, width, fluence, spectral_index, undispersed_t)
 
     # THIS produces detections in L1b!
-    for i in range(30):
-        print('Injecting again...')
-        fpga_offset = int(fpga0 + ((t0 + (i*2)) / 2.56e-6))
+    for i in range(15):
+        print('Injecting...')
+        fpga_offset = fpga0 + i * 1024*fpga_counts_per_sample
         print('Injecting with FPGA_offset:', fpga_offset)
-        injdata = InjectData(beam, 0, fpga_offset, sparse_i0, data)
-        R2 = client.inject_data(injdata, wait=True)
+        R2 = client.inject_single_pulse(beam, sp, fpga_offset,
+                                        fpga_counts_per_sample=fpga_counts_per_sample,
+                                        fpga_period=fpga_period,
+                                        nfreq=nfreq,
+                                        wait=True)
         print('Results:', R2)
 
-    # for i in range(30):
-    #     print('Injecting again (forward)...')
-    #     fpga_offset = int(fpga0 + ((t0 + (i*2+1)) / 2.56e-6))
-    #     print('Injecting with FPGA_offset:', fpga_offset)
-    #     injdata = InjectData(beam, 0, fpga_offset, forward_i0, forward_data)
-    #     R2 = client.inject_data(injdata, wait=True)
-    #     print('Results:', R2)
-        
-    #for i in range(15):
-    #for i in range(30):
     for i in range(10):
 
         # # Write 2-ago?
@@ -366,7 +266,6 @@ def run_main(l0, client):
         # r = client.write_chunks([beam], min_fpga, max_fpga, fnpat, need_rfi=True,
         #                         waitAll=False)
         # print('r:', r)
-
 
         data = np.clip(128. + 20. * np.random.normal(size=(nf, nt)), 1, 254).astype(np.uint8)
         ch = simulate_l0.assembled_chunk(beam_id, fpga_counts_per_sample, ichunk,
