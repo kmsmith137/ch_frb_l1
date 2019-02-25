@@ -21,7 +21,11 @@ class AssembledChunk(object):
     data read from a msgpack-format file.
 
     You probably want to use *read_msgpack_file* to create one of
-    these.
+    these, and then use *decode* to produce arrays of Intensity and Weights.
+
+    Note that rf_pipelines and bonsai assume a frequency ordering of
+    high-to-low, so *intensities*[0,0] is the intensity for the first time
+    sample and highest frequency (800 MHz).
     '''
     def __init__(self, msgpacked_chunk):
         c = msgpacked_chunk
@@ -418,6 +422,9 @@ class RpcClient(object):
         *freq_low_to_high*: boolean, required.  If True, frequencies in *inj*
         are assumed to be ordered from lowest frequency to highest frequency.
         This is the order returned by simpulse by default.
+
+        (Note that rf_pipelines and bonsai assume high-to-low frequency
+        ordering.)
 
         '''
         if servers is None:
