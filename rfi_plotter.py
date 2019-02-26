@@ -27,7 +27,8 @@ def main():
     #conn = sqlite3.connect('file:'+dbfn + '?mode=ro', uri=True)
     #dbfn = '/data/frb-archiver/dstn/rfi-monitor-2019-01-26T15-51-40.db'
     conn = sqlite3.connect(dbfn)
-    
+    conn.text_factory = str
+
     db = conn.cursor()
     
     # Frequency vs Time

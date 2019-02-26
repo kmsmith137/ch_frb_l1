@@ -444,7 +444,7 @@ class RpcClient(object):
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
 
-    def inject_single_pulse(self, beam, sp, fpga0, nfreq=16384,
+    def inject_single_pulse(self, beam, sp, fpga0, scaling=1., nfreq=16384,
                             fpga_counts_per_sample=384, fpga_period=2.56e-6,
                             **kwargs):
         '''
@@ -462,6 +462,8 @@ class RpcClient(object):
         sparse_i0 = np.zeros(nfreq, np.int32)
         sparse_n = np.zeros(nfreq, np.int32)
         sp.add_to_timestream_sparse(sparse_data, sparse_i0, sparse_n, t0, t1x, nt, 1.)
+        if scaling != 1.0:
+            sparse_data *= scaling
         # convert sparse_data into a list of numpy arrays (one per freq)
         data = []
         ntotal = 0
@@ -473,7 +475,7 @@ class RpcClient(object):
         # Simpulse orders frequencies low to high.
         freq_low_to_high = True
         return self.inject_data(injdata, freq_low_to_high, **kwargs)
-        
+
     ## the acq_beams should perhaps be a list of lists of beam ids,
     ## one list per L1 server.
     def stream(self, acq_name, acq_dev='', acq_meta='', acq_beams=[],
