@@ -9,13 +9,139 @@ import datetime
 import sqlite3
 from rpc_client import SummedMaskedFrequencies
 
+def beam_ns(beam):
+    return beam % 1000
+
+def beam_ew(beam):
+    return beam // 1000
+
+def beam_freq_movie(db, args, nb, nf, beamnum_map, beam_lo, beam_hi, f_lo, f_hi,
+                    make_map=False, where=None):
+    '''
+    nb: number of beams
+    nf: number of frequencies
+    beamnum_map: dict from beam number to, eg, N/S position
+    where: where in the RFI chain to plot
+    '''
+    print('Beam vs freq movie...')
+    dates = []
+
+    whereclause = ''
+    #andwhereclause = ''
+    if where is not None:
+        whereclause = " WHERE where_rfi='%s'" % where
+        #andwhereclause = " AND where_rfi='%s'" % where
+
+    #for row in db.execute('SELECT DISTINCT date FROM rfi_meta'):
+    print('Query:', 'SELECT DISTINCT date FROM rfi_sum' + whereclause)
+    for row in db.execute('SELECT DISTINCT date FROM rfi_sum' + whereclause):
+        (date,) = row
+        dates.append(date)
+    dates.sort()
+    print('Found', len(dates), 'distinct dates')
+
+    nbeams = 1 + beam_hi - beam_lo
+
+    bf_sum = np.zeros((nbeams, nf), np.float32)
+    bf_n   = np.zeros(nbeams)
+
+    beams = beamnum_map.keys()
+    bx = [beam_ew(b) for b in beams]
+    by = [beam_ns(b) for b in beams]
+    xlo,xhi = min(bx), max(bx)
+    ylo,yhi = min(by), max(by)
+    beam_map = np.zeros((1+yhi-ylo, 1+xhi-xlo))
+
+    for idate,date in enumerate(dates):
+        bf_sum[:,:] = 0
+        bf_n[:] = 0
+        beam_map[:,:] = 0
+
+        print('Beam-freq movie frame', idate+1, 'of', len(dates), date)
+
+        #sel = '*'
+        sel = 'beam, nsamples, nsamples_masked, nt, freqs'
+        if where is not None:
+            q = 'SELECT ' + sel + ' FROM rfi WHERE date=? AND where_rfi=?'
+            qargs = (date, where)
+        else:
+            q = 'SELECT ' + sel + ' FROM rfi WHERE date=?'
+            qargs = (date,)
+        print('Query:', q, qargs)
+        nrows = 0
+        for row in db.execute(q, qargs):
+            nrows += 1
+            (beam, nsamples, nsamples_masked, nt, blob) = row
+            #(d, beam, frame0nano, fpga_start, fpga_end, sample_start, nt, nsamples,
+            #nsamples_masked, blob) = row
+
+            if args.column is not None:
+                ew = beam_ew(beam)
+                if ew != args.column:
+                    # skip it!
+                    continue
+
+            # NOTE, these frequencies are not flipped (they're in 400..800 order)
+            freqs = np.frombuffer(blob, dtype='<i4')
+
+            beamnum = beamnum_map[beam]
+            ibeam = beamnum - beam_lo
+            bf_sum[ibeam,:] += freqs
+            bf_n  [ibeam] += nt
+
+            bx = beam_ew(beam)
+            by = beam_ns(beam)
+            beam_map[by-ylo, bx-xlo] = float(nsamples_masked) / float(nsamples)
+
+        print('Rows:', nrows)
+        from collections import Counter
+        print('bf_n values:', Counter(bf_n))
+        bf = bf_sum / np.maximum(bf_n[:,np.newaxis], 1)
+
+        plt.clf()
+        plt.imshow(bf, interpolation='nearest', origin='lower',
+                   extent=[f_lo,f_hi,beam_lo,beam_hi], cmap='hot', aspect='auto')
+        plt.xlim(f_lo, f_hi)
+        plt.xlabel('Frequency (MHz)')
+        if args.avg:
+            plt.ylabel('N-S Beam')
+        elif args.column is not None:
+            plt.ylabel('Beam number')
+        else:
+            plt.ylabel('Beam')
+        wherestr = ''
+        if where is not None:
+            wherestr = ' ' + where
+        tt = 'Fraction masked%s, by beam x freq: %s' % (wherestr, date)
+        plt.suptitle(tt)
+        plt.colorbar()
+        plt.savefig(args.beamfreq_prefix + '-%04i.png' % idate)
+
+        if make_map:
+            plt.clf()
+            plt.imshow(beam_map, interpolation='nearest', origin='lower',
+                       extent=[xlo-0.5, xhi+0.5, ylo-0.5, yhi+0.5],
+                       cmap='hot', aspect='auto', vmin=0.3, vmax=0.7)
+            plt.xticks(np.arange(1+xhi-xlo))
+            plt.xlabel('E-W Beam')
+            plt.ylabel('N-S Beam')
+            plt.suptitle('Fraction masked, by beam: %s' % date)
+            plt.savefig('beammap-%04i.png' % idate)
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('rfi_db', nargs=1,
                         help='rfi database filename')
     parser.add_argument('--avg', action='store_true', default=False,
-                        help='Average over E-W rows?')
+                        help='Average over rows of E-W beams?')
+    parser.add_argument('--column', type=int, default=None,
+                        help='Select a single E-W column of beams')
+    parser.add_argument('--beamfreq-prefix', default='beamfreq',
+                        help='Filename prefix for beam-frequency plots')
+    parser.add_argument('--where', default='after_rfi',
+                        help='Where in the RFI chain to plot ("before_rfi", "after_rfi", "none")')
     args = parser.parse_args()
     
     f_lo, f_hi = 400, 800
@@ -26,10 +152,45 @@ def main():
     #dbfn = '/data/frb-archiver/dstn/rfi-monitor.db'
     #conn = sqlite3.connect('file:'+dbfn + '?mode=ro', uri=True)
     #dbfn = '/data/frb-archiver/dstn/rfi-monitor-2019-01-26T15-51-40.db'
-    conn = sqlite3.connect(dbfn)
-    conn.text_factory = str
+    #sqlite3.connect('file:path/to/database?mode=ro', uri=True)
 
+    timeout = 60
+
+    uri = 'file:' + dbfn + '?mode=ro'
+    conn = sqlite3.connect(uri, timeout, uri=True)
+    conn.text_factory = str
+    #conn = sqlite3.connect(dbfn)
+    
     db = conn.cursor()
+
+    where = args.where
+    if where.lower() == 'none':
+        where = None
+
+    # HACK --
+    nb = 1024
+    nf = 1024
+    allbeams = (list(range(256)) +
+                list(range(1000, 1256)) + 
+                list(range(2000, 2256)) + 
+                list(range(3000, 3256)))
+    if args.avg:
+        beamnum_map = dict([(b, beam_ns(b)) for b in allbeams])
+    elif args.column is not None:
+        beamnum_map = dict([(b, b) for b in allbeams
+                            if beam_ew(b) == args.column])
+    else:
+        # Place them in order
+        beamnum_map = dict([(v, i) for i,v in enumerate(allbeams)])
+        #beamnum_map = dict([(b, b) for b in allbeams])
+    beam_lo = min(beamnum_map.values())
+    beam_hi = max(beamnum_map.values())
+    print('Beams:', len(beamnum_map.keys()), 'from', beam_lo, 'to', beam_hi)
+    
+    beam_freq_movie(db, args, nb, nf, beamnum_map, beam_lo, beam_hi, f_lo, f_hi,
+                    make_map=False, where=where)
+    return
+
     
     # Frequency vs Time
     
@@ -78,10 +239,21 @@ def main():
     beamfrac = None
     dates = []
     beamdates = []
-    
-    for row in db.execute('SELECT date, beam, 100.*nsamples_masked/nsamples FROM rfi_meta '
+
+    nrows = 0
+    for row in db.execute('SELECT date, beam, 100.*nsamples_masked/nsamples '
+                          'FROM rfi_meta '
                           'ORDER BY date, beam'):
+        nrows += 1
+        if nrows % 1000 == 0:
+            print('Row', nrows)
+
         (date, beam, fmasked) = row
+        if args.column is not None:
+            ew = beam_ew(beam)
+            if ew != args.column:
+                # skip it!
+                continue
         if date != lastdate:
             if beamfrac is not None:
                 beamdates.append(beamfrac)
@@ -97,11 +269,6 @@ def main():
         allbeams.update(beamfrac.keys())
     print('Got', len(dates), 'dates x', len(allbeams), 'total beams')
     print('All beams:', allbeams)
-    
-    def beam_ns(beam):
-        return beam % 1000
-    def beam_ew(beam):
-        return beam // 1000
     
     if args.avg:
         beamnum_map = dict([(b, beam_ns(b)) for b in allbeams])
@@ -219,67 +386,6 @@ def main():
 
     if not args.avg:
         return
-    print('Beam vs freq movie...')
-    dates = []
-    for row in db.execute('SELECT DISTINCT date FROM rfi_meta'):
-        (date,) = row
-        dates.append(date)
-    dates.sort()
-    print('Found', len(dates), 'distinct dates')
-
-    nb,nf = beamfreqs.shape
-    bf_sum = np.zeros((nbeams, nf), np.float32)
-    bf_n   = np.zeros(nbeams)
-
-    beams = beamnum_map.keys()
-    bx = [beam_ew(b) for b in beams]
-    by = [beam_ns(b) for b in beams]
-    xlo,xhi = min(bx), max(bx)
-    ylo,yhi = min(by), max(by)
-    beam_map = np.zeros((1+yhi-ylo, 1+xhi-xlo))
-
-    for idate,date in enumerate(dates):
-        bf_sum[:,:] = 0
-        bf_n[:] = 0
-        beam_map[:,:] = 0
-
-        print('Beam-freq movie frame', idate+1, 'of', len(dates), date)
-
-        for row in db.execute("SELECT * FROM rfi WHERE date=?", (date,)):
-            (d, beam, frame0nano, fpga_start, fpga_end, sample_start, nt, nsamples,
-             nsamples_masked, blob) = row
-            # NOTE, these frequencies are not flipped (they're in 400..800 order)
-            freqs = np.frombuffer(blob, dtype='<i4')
-
-            beamnum = beamnum_map[beam]
-            ibeam = beamnum - beam_lo
-            bf_sum[ibeam,:] += freqs
-            bf_n  [ibeam] += 1
-
-            bx = beam_ew(beam)
-            by = beam_ns(beam)
-            beam_map[by-ylo, bx-xlo] = float(nsamples_masked) / float(nsamples)
-
-        bf = bf_sum / np.maximum(bf_n[:,np.newaxis], 1)
-
-        plt.clf()
-        plt.imshow(bf, interpolation='nearest', origin='lower',
-                   extent=[f_lo,f_hi,beam_lo,beam_hi], cmap='hot', aspect='auto')
-        plt.xlim(f_lo, f_hi)
-        plt.xlabel('Frequency (MHz)')
-        plt.ylabel('N-S Beam')
-        plt.suptitle('Fraction masked, by beam x frequency: %s' % date)
-        plt.savefig('beamfreq-%04i.png' % idate)
-
-        plt.clf()
-        plt.imshow(beam_map, interpolation='nearest', origin='lower',
-                   extent=[xlo-0.5, xhi+0.5, ylo-0.5, yhi+0.5],
-                   cmap='hot', aspect='auto', vmin=0.3, vmax=0.7)
-        plt.xticks(np.arange(1+xhi-xlo))
-        plt.xlabel('E-W Beam')
-        plt.ylabel('N-S Beam')
-        plt.suptitle('Fraction masked, by beam: %s' % date)
-        plt.savefig('beammap-%04i.png' % idate)
 
 if __name__ == '__main__':
     main()
