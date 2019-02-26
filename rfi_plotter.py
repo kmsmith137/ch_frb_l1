@@ -197,10 +197,18 @@ def main():
     
     freqtime = []
     dates = []
-    for row in db.execute('SELECT date, freqs, nt_total FROM rfi_sum ORDER BY date'):
+
+    if where is not None:
+        q = 'SELECT date, freqs, nt_total FROM rfi_sum WHERE where_rfi=? ORDER BY date'
+        qargs = (where,)
+    else:
+        q = 'SELECT date, freqs, nt_total FROM rfi_sum ORDER BY date'
+        qargs = ()
+    for row in db.execute(q, qargs):
         (date,blob,nt) = row
         freqs = np.frombuffer(blob, dtype='<i8')
         freqtime.append(100. * freqs / nt)
+        date = date.decode()
         dates.append(datetime.datetime.strptime(date, '%Y-%m-%dT%H:%M:%S'))
     freqtime = np.vstack(freqtime).T
     print('Freqtime shape', freqtime.shape)
@@ -290,8 +298,8 @@ def main():
             beam_times[ibeam, idate] += f
             beam_times_n[ibeam, idate] += 1
     beam_times /= np.maximum(1, beam_times_n)
-    
-    dateobjs = [datetime.datetime.strptime(iso, '%Y-%m-%dT%H:%M:%S')
+
+    dateobjs = [datetime.datetime.strptime(iso.decode(), '%Y-%m-%dT%H:%M:%S')
                 for iso in dates]
     # matplotlib numerical dates
     ndates = [mdates.date2num(d) for d in dateobjs]
@@ -318,12 +326,24 @@ def main():
     db.execute('SELECT max(date) from rfi_meta')
     latest = db.fetchone()
     print('Got latest date:', latest)
-    
+    (latest,) = latest
+    #latest = (latest.decode(),)
+
     allbeams = []
-    for row in db.execute("SELECT * FROM rfi WHERE date=?", latest):
+
+    sel = '*'
+    if where is not None:
+        q = 'SELECT ' + sel + ' FROM rfi WHERE date=? AND where_rfi=?'
+        qargs = (latest.decode(), where)
+    else:
+        q = 'SELECT ' + sel + ' FROM rfi WHERE date=?'
+        qargs = (latest.decode(),)
+
+    #for row in db.execute("SELECT * FROM rfi WHERE date=?", latest):
+    for row in db.execute(q, qargs):
     
         (date, beam, frame0nano, fpga_start, fpga_end, sample_start, nt, nsamples,
-         nsamples_masked, blob) = row
+         nsamples_masked, blob, where_rfi) = row
     
         # NOTE, these frequencies are not flipped (they're in 400..800 order)
         freqs = np.frombuffer(blob, dtype='<i4')
