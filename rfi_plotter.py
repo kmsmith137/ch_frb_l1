@@ -152,14 +152,13 @@ def main():
     #dbfn = '/data/frb-archiver/dstn/rfi-monitor.db'
     #conn = sqlite3.connect('file:'+dbfn + '?mode=ro', uri=True)
     #dbfn = '/data/frb-archiver/dstn/rfi-monitor-2019-01-26T15-51-40.db'
-
     #sqlite3.connect('file:path/to/database?mode=ro', uri=True)
 
     timeout = 60
 
     uri = 'file:' + dbfn + '?mode=ro'
     conn = sqlite3.connect(uri, timeout, uri=True)
-
+    conn.text_factory = str
     #conn = sqlite3.connect(dbfn)
     
     db = conn.cursor()
