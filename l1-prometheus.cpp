@@ -287,9 +287,17 @@ public:
     virtual ~L1PrometheusServer() {}
 };
 
+static int civet_log_message(const struct mg_connection*, const char* message) {
+    chlog("civet: " << message);
+    return 0;
+}
+
 shared_ptr<L1PrometheusServer> start_prometheus_server(string ipaddr_port,
                                                        shared_ptr<intensity_network_stream> stream,
                                                        shared_ptr<const mask_stats_map> ms) {
+    struct CivetCallbacks callbacks;
+    memset(&callbacks, 0, sizeof(callbacks));
+    callbacks.log_message = civet_log_message;
     //"document_root", DOCUMENT_ROOT, "listening_ports", PORT, 0};
     std::vector<std::string> options;
     // listening_ports = [ipaddr:]port
@@ -300,7 +308,7 @@ shared_ptr<L1PrometheusServer> start_prometheus_server(string ipaddr_port,
     options.push_back(std::to_string(8));
     shared_ptr<L1PrometheusServer> server;
     try {
-        server = make_shared<L1PrometheusServer>(options);
+        server = make_shared<L1PrometheusServer>(options, &callbacks);
     } catch (CivetException &e) {
         cout << "Failed to start web server on address " << ipaddr_port << ": "
              << e.what() << endl;
