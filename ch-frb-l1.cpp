@@ -1206,12 +1206,11 @@ void l1_server::spawn_l1b_subprocesses()
     }
 
     for (int ibeam = 0; ibeam < config.nbeams; ibeam++) {
-	// L1b command line is: <l1_executable> <l1b_config> <beam_id> <worker_id>
+	// L1b command line is: <l1_executable> <l1b_config> <beam_id>
 	vector<string> l1b_command_line = {
 	    config.l1b_executable_filename,
 	    config.l1b_config_filename,
-	    std::to_string(config.beam_ids[ibeam]),
-      std::to_string(ibeam)
+	    std::to_string(config.beam_ids[ibeam])
 	};
 	
 	bonsai::trigger_pipe::initializer l1b_initializer;
