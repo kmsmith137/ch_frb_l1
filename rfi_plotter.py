@@ -143,7 +143,7 @@ def main():
     parser.add_argument('--where', default='after_rfi',
                         help='Where in the RFI chain to plot ("before_rfi", "after_rfi", "none")')
     args = parser.parse_args()
-    
+
     f_lo, f_hi = 400, 800
     
     dbfn = args.rfi_db[0]
@@ -191,6 +191,8 @@ def main():
     if False:
         beam_freq_movie(db, args, nb, nf, beamnum_map, beam_lo, beam_hi, f_lo, f_hi,
                         make_map=False, where=where)
+
+    plt.figure(figsize=(10,8))
     
     # Frequency vs Time
     
@@ -232,19 +234,6 @@ def main():
     plt.savefig(fn)
     print('Saved', fn)
     
-    # plt.clim(0, 25)
-    # plt.ylim(550, 570)
-    # plt.savefig('freq-time-zoom1.png')
-    # plt.ylim(650, 670)
-    # plt.savefig('freq-time-zoom2.png')
-    # t1 = mdates.date2num(datetime.datetime(2019,1,27,18,0,0))
-    # t2 = mdates.date2num(datetime.datetime(2019,1,28,0,0,0))
-    # plt.xlim(t1, t2)
-    # plt.ylim(550, 570)
-    # plt.savefig('freq-time-zoom3.png')
-    # plt.xlim(t1, t2)
-    # plt.ylim(650, 670)
-    # plt.savefig('freq-time-zoom4.png')
     
     # Beam vs Time
     
@@ -290,7 +279,7 @@ def main():
     print('Got', len(dates), 'dates x', len(allbeams), 'total beams')
     print('All beams:', allbeams)
     
-    for avg,tag in [(True, 'avg'), (False, 'all')]:
+    for avg,tag in [(False, 'all'), (True, 'avg')]:
         #if args.avg:
         if avg:
             beamnum_map = dict([(b, beam_ns(b)) for b in allbeams])
@@ -300,7 +289,8 @@ def main():
             # 1000-1255
             # 2000-2255
             # 3000-3255
-            beamnum_map = dict([(b, beam_ns(b) + 256*beam_ew(b)) for b in allbeams])
+            #beamnum_map = dict([(b, beam_ns(b) + 256*beam_ew(b)) for b in allbeams])
+            beamnum_map = dict([(v, i) for i,v in enumerate(allbeams)])
 
         beam_lo = min(beamnum_map.values())
         beam_hi = max(beamnum_map.values())
@@ -339,6 +329,80 @@ def main():
         fn = 'beam-time-%s.png' % tag
         plt.savefig(fn)
         print('Saved', fn)
+
+    
+    # Beam vs Freq, averaged over whole day
+
+    dates = []
+
+    q = 'SELECT DISTINCT date FROM rfi_sum WHERE date > ?'
+    qargs = [dayago]
+    if where is not None:
+        q += ' AND where_rfi=?'
+        qargs.append(where)
+    print('Query:', q, qargs)
+    for row in db.execute(q, qargs):
+        (date,) = row
+        dates.append(date)
+    dates.sort()
+    print('Found', len(dates), 'distinct dates')
+
+    # re-use the row-averaged values from above
+    nbeams = 1 + beam_hi - beam_lo
+    bf_sum = np.zeros((nbeams, nf), np.float32)
+    bf_n   = np.zeros(nbeams, np.int64)
+    #beams = beamnum_map.keys()
+    #bx = [beam_ew(b) for b in beams]
+    #by = [beam_ns(b) for b in beams]
+    #xlo,xhi = min(bx), max(bx)
+    #ylo,yhi = min(by), max(by)
+    #beam_map = np.zeros((1+yhi-ylo, 1+xhi-xlo))
+
+    for idate,date in enumerate(dates):
+        #bf_sum[:,:] = 0
+        #bf_n[:] = 0
+        #beam_map[:,:] = 0
+        print('Beam-freq for sample', idate+1, 'of', len(dates))
+        sel = 'beam, nsamples, nsamples_masked, nt, freqs'
+        if where is not None:
+            q = 'SELECT ' + sel + ' FROM rfi WHERE date=? AND where_rfi=?'
+            qargs = (date, where)
+        else:
+            q = 'SELECT ' + sel + ' FROM rfi WHERE date=?'
+            qargs = (date,)
+        print('Query:', q, qargs)
+        nrows = 0
+        for row in db.execute(q, qargs):
+            nrows += 1
+            (beam, nsamples, nsamples_masked, nt, blob) = row
+            # NOTE, these frequencies are not flipped (they're in 400..800 order)
+            freqs = np.frombuffer(blob, dtype='<i4')
+            beamnum = beamnum_map[beam]
+            ibeam = beamnum - beam_lo
+            bf_sum[ibeam,:] += freqs
+            bf_n  [ibeam] += nt
+            #bx = beam_ew(beam)
+            #by = beam_ns(beam)
+            #beam_map[by-ylo, bx-xlo] = float(nsamples_masked) / float(nsamples)
+
+    print('Max bf_n:', np.max(bf_n))
+    bf = bf_sum / np.maximum(bf_n[:,np.newaxis], 1)
+
+    plt.clf()
+    plt.imshow(bf, interpolation='nearest', origin='lower',
+               extent=[f_lo,f_hi,beam_lo,beam_hi], cmap='hot', aspect='auto')
+    plt.xlim(f_lo, f_hi)
+    plt.xlabel('Frequency (MHz)')
+    plt.ylabel('N-S Beam')
+    wherestr = ''
+    if where is not None:
+        wherestr = ' ' + where
+    tt = 'Fraction masked%s, by beam x freq: %s' % (wherestr, date)
+    plt.suptitle(tt)
+    plt.colorbar()
+    fn = 'beam-freq-avg.png'
+    plt.savefig(fn)
+    print('Saved', fn)
 
     return
     
