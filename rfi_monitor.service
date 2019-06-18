@@ -1,0 +1,13 @@
+# systemd config file L1 rfi monitoring -- copy to /etc/systemd/system/rfi_monitor.service
+
+[Unit]
+Description=L1 RFI monitoring
+After=network.target
+
+[Service]
+Type=simple
+
+User=dstn
+WorkingDirectory=/data/frb-archiver/dstn/rfi_monitor
+ExecStart=/data/frb-archiver/dstn/rfi_monitor/rfi_monitor.sh
+Restart=on-abnormal
