@@ -188,16 +188,26 @@ def main():
     beam_hi = max(beamnum_map.values())
     print('Beams:', len(beamnum_map.keys()), 'from', beam_lo, 'to', beam_hi)
     
-    beam_freq_movie(db, args, nb, nf, beamnum_map, beam_lo, beam_hi, f_lo, f_hi,
-                    make_map=False, where=where)
-    return
-
+    if False:
+        beam_freq_movie(db, args, nb, nf, beamnum_map, beam_lo, beam_hi, f_lo, f_hi,
+                        make_map=False, where=where)
     
     # Frequency vs Time
     
     freqtime = []
     dates = []
-    for row in db.execute('SELECT date, freqs, nt_total FROM rfi_sum ORDER BY date'):
+
+    dayago = (datetime.datetime.utcnow() - datetime.timedelta(1)).isoformat()[:19]
+    if where is not None:
+        q = ('SELECT date, freqs, nt_total FROM rfi_sum '
+             'WHERE where_rfi=? AND date > ? ORDER BY date')
+        qargs = [where, dayago]
+    else:
+        q = ('SELECT date, freqs, nt_total FROM rfi_sum '
+             'WHERE date > ? ORDER BY date')
+        qargs = [dayago]
+
+    for row in db.execute(q, qargs):
         (date,blob,nt) = row
         freqs = np.frombuffer(blob, dtype='<i8')
         freqtime.append(100. * freqs / nt)
@@ -218,7 +228,9 @@ def main():
     fig.autofmt_xdate()
     plt.ylabel('Frequency (MHz)')
     plt.title('RFI masked percentage: Frequency vs Time')
-    plt.savefig('freq-time.png')
+    fn = 'freq-time.png'
+    plt.savefig(fn)
+    print('Saved', fn)
     
     # plt.clim(0, 25)
     # plt.ylim(550, 570)
@@ -241,10 +253,17 @@ def main():
     dates = []
     beamdates = []
 
+    if where is not None:
+        q = ('SELECT date, beam, 100.*nsamples_masked/nsamples FROM rfi_meta '
+             'WHERE where_rfi=? AND date > ? ORDER BY date,beam')
+        qargs = [where, dayago]
+    else:
+        q = ('SELECT date, beam, 100.*nsamples_masked/nsamples FROM rfi_meta '
+             'WHERE date > ? ORDER BY date,beam')
+        qargs = [dayago]
+
     nrows = 0
-    for row in db.execute('SELECT date, beam, 100.*nsamples_masked/nsamples '
-                          'FROM rfi_meta '
-                          'ORDER BY date, beam'):
+    for row in db.execute(q, qargs):
         nrows += 1
         if nrows % 1000 == 0:
             print('Row', nrows)
@@ -271,47 +290,57 @@ def main():
     print('Got', len(dates), 'dates x', len(allbeams), 'total beams')
     print('All beams:', allbeams)
     
-    if args.avg:
-        beamnum_map = dict([(b, beam_ns(b)) for b in allbeams])
-    else:
-        beamnum_map = dict([(b, b) for b in allbeams])
+    for avg,tag in [(True, 'avg'), (False, 'all')]:
+        #if args.avg:
+        if avg:
+            beamnum_map = dict([(b, beam_ns(b)) for b in allbeams])
+        else:
+            #beamnum_map = dict([(b, b) for b in allbeams])
+            # 0-255
+            # 1000-1255
+            # 2000-2255
+            # 3000-3255
+            beamnum_map = dict([(b, beam_ns(b) + 256*beam_ew(b)) for b in allbeams])
+
+        beam_lo = min(beamnum_map.values())
+        beam_hi = max(beamnum_map.values())
+        nbeams = 1 + beam_hi - beam_lo
     
-    beam_lo = min(beamnum_map.values())
-    beam_hi = max(beamnum_map.values())
+        beam_times = np.zeros((nbeams, len(beamdates)))
+        beam_times_n = np.zeros((nbeams, len(beamdates)), np.uint8)
+        for idate,beamfrac in enumerate(beamdates):
+            for beam,f in beamfrac.items():
+                beamnum = beamnum_map[beam]
+                ibeam = beamnum - beam_lo
+                beam_times[ibeam, idate] += f
+                beam_times_n[ibeam, idate] += 1
+        beam_times /= np.maximum(1, beam_times_n)
+        
+        dateobjs = [datetime.datetime.strptime(iso, '%Y-%m-%dT%H:%M:%S')
+                    for iso in dates]
+        # matplotlib numerical dates
+        ndates = [mdates.date2num(d) for d in dateobjs]
     
-    nbeams = 1 + beam_hi - beam_lo
-    
-    beam_times = np.zeros((nbeams, len(beamdates)))
-    beam_times_n = np.zeros((nbeams, len(beamdates)), np.uint8)
-    for idate,beamfrac in enumerate(beamdates):
-        for beam,f in beamfrac.items():
-            beamnum = beamnum_map[beam]
-            ibeam = beamnum - beam_lo
-            beam_times[ibeam, idate] += f
-            beam_times_n[ibeam, idate] += 1
-    beam_times /= np.maximum(1, beam_times_n)
-    
-    dateobjs = [datetime.datetime.strptime(iso, '%Y-%m-%dT%H:%M:%S')
-                for iso in dates]
-    # matplotlib numerical dates
-    ndates = [mdates.date2num(d) for d in dateobjs]
-    
-    plt.clf()
-    plt.imshow(beam_times, interpolation='nearest', origin='lower', cmap='hot', aspect='auto',
-               extent=[ndates[0], ndates[-1], beam_lo, beam_hi])
-    plt.colorbar()
-    ax = plt.gca()
-    ax.xaxis_date()
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
-    fig = plt.gcf()
-    fig.autofmt_xdate()
-    plt.xlabel('Date (UTC)')
-    if args.avg:
-        plt.ylabel('N-S Beam')
-    else:
-        plt.ylabel('Beam number')
-    plt.title('RFI masked percentage, by beam')
-    plt.savefig('beam-time.png')
+        plt.clf()
+        plt.imshow(beam_times, interpolation='nearest', origin='lower', cmap='hot', aspect='auto',
+                   extent=[ndates[0], ndates[-1], beam_lo, beam_hi])
+        plt.colorbar()
+        ax = plt.gca()
+        ax.xaxis_date()
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
+        fig = plt.gcf()
+        fig.autofmt_xdate()
+        plt.xlabel('Date (UTC)')
+        if avg:
+            plt.ylabel('N-S Beam')
+        else:
+            plt.ylabel('Beam number')
+        plt.title('RFI masked percentage, by beam')
+        fn = 'beam-time-%s.png' % tag
+        plt.savefig(fn)
+        print('Saved', fn)
+
+    return
     
     # Latest sample: beam vs freq
     
