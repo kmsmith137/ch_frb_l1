@@ -128,6 +128,99 @@ def beam_freq_movie(db, args, nb, nf, beamnum_map, beam_lo, beam_hi, f_lo, f_hi,
             plt.suptitle('Fraction masked, by beam: %s' % date)
             plt.savefig('beammap-%04i.png' % idate)
 
+def parse_datestring(d):
+    return datetime.datetime.strptime(d, '%Y-%m-%dT%H:%M:%S')
+
+def mjdtodate(mjd):
+    jd = mjdtojd(mjd)
+    return jdtodate(jd)
+
+def jdtodate(jd):
+    unixtime = (jd - 2440587.5) * 86400. # in seconds
+    return datetime.datetime.utcfromtimestamp(unixtime)
+
+def mjdtojd(mjd):
+    return mjd + 2400000.5
+
+def jdtomjd(jd):
+    return jd - 2400000.5
+
+def datetomjd(d):
+    d0 = datetime.datetime(1858, 11, 17, 0, 0, 0)
+    dt = d - d0
+    # dt is a timedelta object.
+    return timedeltatodays(dt)
+
+def datetojd(d):
+    return mjdtojd(datetomjd(d))
+
+def timedeltatodays(dt):
+    return dt.days + (dt.seconds + dt.microseconds/1e6)/86400.
+
+def freq_vs_time(db, where, date_start, date_end, fn, f_lo, f_hi,
+                 period=60.):
+    freqtime = []
+    dates = []
+    datestrings = []
+
+    q = ('SELECT date, freqs, nt_total FROM rfi_sum '
+         'WHERE date BETWEEN ? AND ?')
+    qargs = [date_start, date_end]
+    if where is not None:
+        q += ' AND where_rfi=?'
+        qargs.append(where)
+    q += ' ORDER BY date'
+
+    date_lo, date_hi = [mdates.date2num(parse_datestring(d))
+                        for d in [date_start, date_end]]
+    print('Date range', date_lo, date_hi)
+
+    timebins = int((date_hi - date_lo) * 86400 / period)
+    print(timebins, 'time bins of period', period, 'seconds')
+
+    for row in db.execute(q, qargs):
+        (date,blob,nt) = row
+        freqs = np.frombuffer(blob, dtype='<i8')
+        freqtime.append(100. * freqs / nt)
+        dates.append(parse_datestring(date))
+        datestrings.append(date)
+
+    print('Got', len(dates), 'rows')
+
+    import fitsio
+    F = fitsio.FITS('freq-time.fits', 'rw', clobber=True)
+    F.write([np.array([datetomjd(d) for d in dates]),
+             np.array(datestrings), np.vstack(freqtime), ],
+            names=['mjd', 'datestring', 'freq_masked'])
+    F.close()
+
+    nfreq = len(freqtime[0])
+    freqs = np.zeros((nfreq, timebins), np.float32)
+    nadded = np.zeros(timebins, int)
+
+    for date,freq in zip(dates, freqtime):
+        bin = int((mdates.date2num(date) - date_lo) * 86400 / period)
+        if bin < 0 or bin >= timebins:
+            continue
+        freqs[:, bin] += freq
+        nadded[bin] += 1
+    freqs /= np.maximum(nadded, 1)[np.newaxis, :]
+    
+    plt.clf()
+    plt.imshow(freqs, interpolation='nearest', origin='lower', aspect='auto',
+               cmap='hot', extent=[date_lo, date_hi, f_lo, f_hi])
+    plt.colorbar()
+    ax = plt.gca()
+    ax.xaxis_date()
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
+    fig = plt.gcf()
+    fig.autofmt_xdate()
+    plt.ylabel('Frequency (MHz)')
+    plt.title('RFI masked percentage: Frequency vs Time')
+    fn = 'freq-time.png'
+    plt.savefig(fn)
+    print('Saved', fn)
+
 
 def main():
     import argparse
@@ -152,87 +245,49 @@ def main():
     #dbfn = '/data/frb-archiver/dstn/rfi-monitor.db'
     #conn = sqlite3.connect('file:'+dbfn + '?mode=ro', uri=True)
     #dbfn = '/data/frb-archiver/dstn/rfi-monitor-2019-01-26T15-51-40.db'
-
-    #sqlite3.connect('file:path/to/database?mode=ro', uri=True)
+    #conn = sqlite3.connect(dbfn)
 
     timeout = 60
 
     uri = 'file:' + dbfn + '?mode=ro'
     conn = sqlite3.connect(uri, timeout, uri=True)
-
-    #conn = sqlite3.connect(dbfn)
-    
     db = conn.cursor()
 
     where = args.where
     if where.lower() == 'none':
         where = None
 
-    # HACK --
+    # HACK -- hard-coded number of beams and frequencies, and beam numbering scheme.
     nb = 1024
     nf = 1024
     allbeams = (list(range(256)) +
                 list(range(1000, 1256)) + 
                 list(range(2000, 2256)) + 
                 list(range(3000, 3256)))
-    if args.avg:
-        beamnum_map = dict([(b, beam_ns(b)) for b in allbeams])
-    elif args.column is not None:
-        beamnum_map = dict([(b, b) for b in allbeams
-                            if beam_ew(b) == args.column])
-    else:
-        # Place them in order
-        beamnum_map = dict([(v, i) for i,v in enumerate(allbeams)])
-        #beamnum_map = dict([(b, b) for b in allbeams])
-    beam_lo = min(beamnum_map.values())
-    beam_hi = max(beamnum_map.values())
-    print('Beams:', len(beamnum_map.keys()), 'from', beam_lo, 'to', beam_hi)
     
     if False:
+        if args.avg:
+            beamnum_map = dict([(b, beam_ns(b)) for b in allbeams])
+        elif args.column is not None:
+            beamnum_map = dict([(b, b) for b in allbeams
+                                if beam_ew(b) == args.column])
+        else:
+            # Place them in order
+            beamnum_map = dict([(v, i) for i,v in enumerate(allbeams)])
+        beam_lo = min(beamnum_map.values())
+        beam_hi = max(beamnum_map.values())
+        print('Beams:', len(beamnum_map.keys()), 'from', beam_lo, 'to', beam_hi)
         beam_freq_movie(db, args, nb, nf, beamnum_map, beam_lo, beam_hi, f_lo, f_hi,
                         make_map=False, where=where)
 
     plt.figure(figsize=(10,8))
+
+    now    =  datetime.datetime.utcnow()                         .isoformat()[:19]
+    dayago = (datetime.datetime.utcnow() - datetime.timedelta(1)).isoformat()[:19]
     
     # Frequency vs Time
-    
-    freqtime = []
-    dates = []
-
-    dayago = (datetime.datetime.utcnow() - datetime.timedelta(1)).isoformat()[:19]
-    if where is not None:
-        q = ('SELECT date, freqs, nt_total FROM rfi_sum '
-             'WHERE where_rfi=? AND date > ? ORDER BY date')
-        qargs = [where, dayago]
-    else:
-        q = ('SELECT date, freqs, nt_total FROM rfi_sum '
-             'WHERE date > ? ORDER BY date')
-        qargs = [dayago]
-
-    for row in db.execute(q, qargs):
-        (date,blob,nt) = row
-        freqs = np.frombuffer(blob, dtype='<i8')
-        freqtime.append(100. * freqs / nt)
-        dates.append(datetime.datetime.strptime(date, '%Y-%m-%dT%H:%M:%S'))
-    freqtime = np.vstack(freqtime).T
-    print('Freqtime shape', freqtime.shape)
-    
-    date_lo, date_hi = [mdates.date2num(d) for d in [dates[0],dates[-1]]]
-    
-    plt.clf()
-    plt.imshow(freqtime, interpolation='nearest', origin='lower', aspect='auto',
-               cmap='hot', extent=[date_lo, date_hi, f_lo, f_hi])
-    plt.colorbar()
-    ax = plt.gca()
-    ax.xaxis_date()
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
-    fig = plt.gcf()
-    fig.autofmt_xdate()
-    plt.ylabel('Frequency (MHz)')
-    plt.title('RFI masked percentage: Frequency vs Time')
-    fn = 'freq-time.png'
-    plt.savefig(fn)
-    print('Saved', fn)
+    freq_vs_time(db, where, dayago, now, 'freq-time.png', f_lo, f_hi)
+    return
     
     
     # Beam vs Time
