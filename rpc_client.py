@@ -412,15 +412,20 @@ class RpcClient(object):
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
 
-    def start_fork(self, beam_offset, ipaddr, port,
+    def start_fork(self, beam_offset, ipaddr, port, beam=0,
                    servers=None, wait=True, timeout=-1):
+        '''
+        beam=0 means send all beams handled by this node.
+
+        If beam != 0, then beam_offset is the destination beam number (not offset)
+        '''
         if servers is None:
             servers = self.servers.keys()
         tokens = []
         for k in servers:
             self.token += 1
             req = msgpack.packb(['start_fork', self.token])
-            args = msgpack.packb([0, beam_offset, ipaddr, port])
+            args = msgpack.packb([beam, beam_offset, ipaddr, port])
             tokens.append(self.token)
             self.sockets[k].send(req + args)
         if not wait:
@@ -430,7 +435,7 @@ class RpcClient(object):
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
 
-    def stop_fork(self, beam_offset, ipaddr, port,
+    def stop_fork(self, beam_offset, ipaddr, port, beam=0,
                    servers=None, wait=True, timeout=-1):
         if servers is None:
             servers = self.servers.keys()
@@ -438,7 +443,7 @@ class RpcClient(object):
         for k in servers:
             self.token += 1
             req = msgpack.packb(['stop_fork', self.token])
-            args = msgpack.packb([0, beam_offset, ipaddr, port])
+            args = msgpack.packb([beam, beam_offset, ipaddr, port])
             tokens.append(self.token)
             self.sockets[k].send(req + args)
         if not wait:
@@ -992,7 +997,8 @@ if __name__ == '__main__':
                         help='Send shutdown RPC message?')
     parser.add_argument('--log', action='store_true',
                         help='Start up chlog server?')
-    parser.add_argument('--fork', nargs=3, metavar='<beam offset> <dest ip> <dest port>', help='Start forking data to the given IP:port with given beam offset', action='append', default=[])
+    parser.add_argument('--fork', nargs=4, metavar=('<beam>','<beam offset>','<dest ip>','<dest port>'),
+                        help='Start forking data to the given IP:port with given beam offset.  beam=0 means all beams', action='append', default=[])
     parser.add_argument('--write', '-w', nargs=4, metavar='x',#['<comma-separated beams>', '<minfpga>', '<maxfpga>', '<filename-pattern>'],
                         help='Send write_chunks command: <comma-separated beams> <minfpga> <maxfpga> <filename-pattern>', action='append',
                         default=[])
@@ -1192,10 +1198,11 @@ if __name__ == '__main__':
         doexit = True
 
     if len(opt.fork):
-        for beam_offset, ipaddr, port in opt.fork:
+        for beam, beam_offset, ipaddr, port in opt.fork:
+            beam = int(beam)
             beam_offset = int(beam_offset)
             port = int(port)
-            client.start_fork(beam_offset, ipaddr, port)
+            client.start_fork(beam_offset, ipaddr, port, beam=beam)
         doexit = True
 
     if opt.stream:
