@@ -39,6 +39,7 @@ struct l0_params {
     int nthreads_tot = 0;
     int nfreq_fine = 0;
     int nt_per_packet = 0;
+    int beam_offset;
 
     // The 'ipaddr' and 'port' vectors have the same length 'nstreams'
     // nstreams evenly divides nthreads.
