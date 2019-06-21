@@ -290,6 +290,7 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
     _backend_queue(make_shared<l1_backend_queue>()),
     _output_devices(stream->ini_params.output_devices),
     _chunk_status(make_shared<chunk_status_map>()),
+    _n_chunks_writing(0),
     _shutdown(false),
     _stream(stream),
     _injectors(injectors),
@@ -342,6 +343,7 @@ void L1RpcServer::enqueue_write_request(std::shared_ptr<ch_frb_io::assembled_chu
 	// Request failed to queue.  In testing/debugging, it makes most sense to throw an exception.
 	throw runtime_error("L1RpcServer::enqueue_write_request: filename '" + filename + "' failed to queue");
     }
+    _update_n_chunks_waiting(true);
 }
 
 // Main thread for L1 RPC server.
@@ -1013,6 +1015,9 @@ int L1RpcServer::_handle_write_chunks(zmq::message_t* client, string funcname, u
         // Returns false if request failed to queue.  
         bool success = _output_devices.enqueue_write_request(w);
 
+        if (success)
+            _update_n_chunks_waiting(true);
+
         // Record the status for this filename.
         // (status will be set via a status_changed() call during
         // enqueue_write_request.)
@@ -1097,7 +1102,6 @@ string L1RpcServer::_handle_fork(bool start, const char* req_data, size_t req_si
         _stream->stop_forking_packets(beam, dest_beam, dest);
     return "";
 }
-
 
 string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t req_offset) {
     if (!_heavy || (_injectors.size() == 0))
@@ -1339,18 +1343,14 @@ void L1RpcServer::_check_backend_queue()
 	if (!w)
 	    return;
 
-	// We received a WriteChunks_Reply from the I/O thread pool!
-	// We need to do two things: update the writechunk_status hash, and
-	// forward the reply to the client (if the 'client' pointer is non-null).
+        // Waiting for one fewer chunk!
+        _update_n_chunks_waiting(false);
 
+	// We received a WriteChunks_Reply from the I/O thread pool!
+	// Forward the reply to the client, if requested.
 	const WriteChunks_Reply &rep = w->reply;
 	
-	// Set writechunk_status.
-	//const char *status = rep.success ? "SUCCEEDED" : "FAILED";
-        //_chunk_status->set(rep.filename, status, rep.error_message);
-
 	zmq::message_t *client = w->client;
-        //cout << "Write request finished: " << rep.filename << " " << status << endl;
 	if (!client)
 	    continue;
 
@@ -1367,7 +1367,6 @@ void L1RpcServer::_check_backend_queue()
 	delete token_msg;
     }
 }
-
 
 int L1RpcServer::_send_frontend_message(zmq::message_t& clientmsg,
                                         zmq::message_t& tokenmsg,
@@ -1400,3 +1399,20 @@ void L1RpcServer::_get_chunks(const vector<int> &beams,
         }
     }
 }
+
+void L1RpcServer::_update_n_chunks_waiting(bool inc) {
+    if (inc) {
+        if (_n_chunks_writing == 0) {
+            cout << "Writing chunks.  Pausing packet forking." << endl;
+            _stream->pause_forking_packets();
+        }
+        _n_chunks_writing++;
+    } else {
+        _n_chunks_writing--;
+        if (_n_chunks_writing == 0) {
+            cout << "Finished writing chunks.  Resuming packet forking." << endl;
+            _stream->resume_forking_packets();
+        }
+    }
+}
+

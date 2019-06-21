@@ -1,4 +1,12 @@
 
+# Testing:
+#
+# ./ch-frb-l1 -fv l1_configs/l1_test_fork_1.yml rfi_configs/rfi_testing_inject.json bonsai_configs/bonsai_test_inject.hdf5 xxx
+# python rpc_client.py --fork 100 10100 127.0.0.1 6690 tcp://127.0.0.1:556
+# ./ch-frb-l1 -fv l1_configs/l1_test_fork_2.yml rfi_configs/rfi_testing_inject.json bonsai_configs/bonsai_test_inject.hdf5 xxx
+# ./ch-frb-simulate-l0 l0_configs/l0_test_fork.yml 10
+#
+
 # nt_per_packet=16 is important here, since the 'fast' kernels are hardcoded to
 # use nt_per_packet=16.  See MANUAL.md for more dicussion!
 

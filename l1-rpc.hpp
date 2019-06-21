@@ -119,6 +119,8 @@ protected:
                                zmq::message_t& tokenmsg,
                                zmq::message_t& contentmsg);
 
+    void _update_n_chunks_waiting(bool inc);
+
 private:
     // The command line that launched this L1 process
     std::string _command_line;
@@ -147,6 +149,9 @@ private:
     std::string _port;
 
     std::shared_ptr<chunk_status_map> _chunk_status;
+
+    // How many chunks are we currently waiting for?
+    int _n_chunks_writing;
 
     // Only protects _shutdown!
     std::mutex _q_mutex;
