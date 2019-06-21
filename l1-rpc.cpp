@@ -546,6 +546,15 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         zmq::message_t* reply = sbuffer_to_message(buffer);
         rtnval = _send_frontend_message(*client, *token_to_message(token), *reply);
 
+    } else if ((funcname == "start_fork") || (funcname == "stop_fork")) {
+        bool start = (funcname == "start_fork");
+        string errstring = _handle_fork(start, req_data, request->size(), offset);
+        msgpack::sbuffer buffer;
+        msgpack::pack(buffer, errstring);
+        //  Send reply back to client.
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(*client, *token_to_message(token), *reply);
+        
     } else if (funcname == "inject_data") {
 
         string errstring = _handle_inject(req_data, request->size(), offset);
@@ -1063,6 +1072,32 @@ int L1RpcServer::_handle_masked_freqs(zmq::message_t* client, string funcname, u
     zmq::message_t* reply = sbuffer_to_message(buffer);
     return _send_frontend_message(*client, *token_to_message(token), *reply);
 }
+
+string L1RpcServer::_handle_fork(bool start, const char* req_data, size_t req_size, size_t req_offset) {
+
+    msgpack::object_handle oh = msgpack::unpack(req_data, req_size, req_offset);
+    if (oh.get().via.array.size != 4) {
+        chlog("fork_beam RPC: failed to parse input arguments");
+        return "Failed to parse inputs (need 4)";
+    }
+    int beam = oh.get().via.array.ptr[0].as<int>();
+    int dest_beam = oh.get().via.array.ptr[1].as<int>();
+    string dest_ip = oh.get().via.array.ptr[2].as<string>();
+    int dest_port = oh.get().via.array.ptr[3].as<int>();
+    
+    cout << "Forking: beam " << beam << " to dest " << dest_beam << ", dest IP " << dest_ip << " port " << dest_port << endl;
+    struct sockaddr_in dest;
+    dest.sin_family = AF_INET;
+    if (!inet_aton(dest_ip.c_str(), &(dest.sin_addr)))
+        return "Failed to parse fork destination " + dest_ip;
+    dest.sin_port = htons(dest_port);
+    if (start)
+        _stream->start_forking_packets(beam, dest_beam, dest);
+    else 
+        _stream->stop_forking_packets(beam, dest_beam, dest);
+    return "";
+}
+
 
 string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t req_offset) {
     if (!_heavy || (_injectors.size() == 0))

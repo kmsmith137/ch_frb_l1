@@ -105,6 +105,8 @@ protected:
     
     std::string _handle_inject(const char* req_data, size_t req_size, size_t req_offset);
 
+    std::string _handle_fork(bool start, const char* req_data, size_t req_size, size_t req_offset);
+
     void _check_backend_queue();
 
     // retrieves assembled_chunks overlapping the given range of

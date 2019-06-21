@@ -253,5 +253,4 @@ struct inject_data_request {
     void swap(rf_pipelines::intensity_injector::inject_args& dest);
 };
 
-
 #endif
