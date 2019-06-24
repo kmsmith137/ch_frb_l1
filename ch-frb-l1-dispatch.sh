@@ -26,19 +26,43 @@
 node=$(hostname | cut -c 5)
 rack=$(hostname | cut -c 3)
 
-#if [ $rack == 1 ]; then
-#if [ $(hostname) == cf1n0 ]; then
+L1B_CONFIG=L1b_config_site.yaml
+
 #if true; then
-if false; then
+#if false; then
+#if [ $(hostname) == cf1n0 ]; then
+#if [ $rack == 1 ]; then
+#if [ $rack -le 6 ]; then
+if [ $(hostname) == cf1n1 ]; then
+    #echo "I am $(hostname) aka rack $rack node $node .  Running DEV2 version"
+    #export VERSION=dev2
+
+    # Dustin 2019-06-24 -- beam duplication testing
+    echo "I am $(hostname) aka rack $rack node $node .  Running DEV3 version"
+    VERSION=dev3
+
+    RFI_CONFIG=18-11-15-low-latency-uniform-v1-noplot.json
+    BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
+
+elif [ $(hostname) == cf5n2 ]; then
+    # Dustin 2019-06-24 -- beam duplication testing
+    echo "I am $(hostname) aka rack $rack node $node .  Running DEV3 version (special)"
+    VERSION=dev3
+
+    L1B_CONFIG=L1b_config_fake.yaml
+    RFI_CONFIG=18-11-15-low-latency-uniform-v1-noplot.json
+    BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
+
+elif true; then
     echo "I am $(hostname) aka rack $rack node $node .  Running DEV version"
-    export VERSION=dev
-    export RFI_CONFIG=18-11-15-low-latency-uniform-v1-noplot.json
-    export BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
+    VERSION=dev
+    RFI_CONFIG=19-03-01-low-latency-uniform-nobadchannel-mask-noplot.json
+    BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
 else
     echo "I am $(hostname) aka rack $rack node $node .  Running PRODUCTION version"
-    export VERSION=production
-    export RFI_CONFIG=18-11-15-low-latency-uniform-v1-noplot.json
-    export BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
+    VERSION=production
+    RFI_CONFIG=18-11-15-low-latency-uniform-v1-noplot.json
+    BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
 fi
 
 export LD_LIBRARY_PATH=/home/l1operator/${VERSION}/lib:/usr/local/lib
