@@ -999,6 +999,8 @@ if __name__ == '__main__':
                         help='Start up chlog server?')
     parser.add_argument('--fork', nargs=4, metavar=('<beam>','<beam offset>','<dest ip>','<dest port>'),
                         help='Start forking data to the given IP:port with given beam offset.  beam=0 means all beams', action='append', default=[])
+    parser.add_argument('--stop-fork', nargs=4, metavar=('<beam>','<beam offset>','<dest ip>','<dest port>'),
+                        help='Stop forking data to the given IP:port with given beam offset.  beam=-1 and destbeam=-1 means stop all forks', action='append', default=[])
     parser.add_argument('--write', '-w', nargs=4, metavar='x',#['<comma-separated beams>', '<minfpga>', '<maxfpga>', '<filename-pattern>'],
                         help='Send write_chunks command: <comma-separated beams> <minfpga> <maxfpga> <filename-pattern>', action='append',
                         default=[])
@@ -1203,6 +1205,14 @@ if __name__ == '__main__':
             beam_offset = int(beam_offset)
             port = int(port)
             client.start_fork(beam_offset, ipaddr, port, beam=beam)
+        doexit = True
+
+    if len(opt.stop_fork):
+        for beam, beam_offset, ipaddr, port in opt.fork:
+            beam = int(beam)
+            beam_offset = int(beam_offset)
+            port = int(port)
+            client.stop_fork(beam_offset, ipaddr, port, beam=beam)
         doexit = True
 
     if opt.stream:
