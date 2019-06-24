@@ -1208,7 +1208,7 @@ if __name__ == '__main__':
         doexit = True
 
     if len(opt.stop_fork):
-        for beam, beam_offset, ipaddr, port in opt.fork:
+        for beam, beam_offset, ipaddr, port in opt.stop_fork:
             beam = int(beam)
             beam_offset = int(beam_offset)
             port = int(port)
