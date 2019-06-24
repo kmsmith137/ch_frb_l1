@@ -26,6 +26,7 @@
 node=$(hostname | cut -c 5)
 rack=$(hostname | cut -c 3)
 
+L1_ARGS=
 L1_CONFIG=l1_configs/l1_production_8beam_rack${rack}_node${node}.yaml 
 L1B_CONFIG=L1b_config_site.yaml
 
@@ -35,12 +36,12 @@ L1B_CONFIG=L1b_config_site.yaml
 #if [ $rack == 1 ]; then
 #if [ $rack -le 6 ]; then
 if [ $(hostname) == cf1n1 ]; then
-    #echo "I am $(hostname) aka rack $rack node $node .  Running DEV2 version"
-    #export VERSION=dev2
+    echo "I am $(hostname) aka rack $rack node $node .  Running DEV2 version"
+    export VERSION=dev2
 
     # Dustin 2019-06-24 -- beam duplication testing
-    echo "I am $(hostname) aka rack $rack node $node .  Running DEV3 version"
-    VERSION=dev3
+    #echo "I am $(hostname) aka rack $rack node $node .  Running DEV3 version"
+    #VERSION=dev3
 
     RFI_CONFIG=18-11-15-low-latency-uniform-v1-noplot.json
     BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
@@ -50,6 +51,8 @@ elif [ $(hostname) == cfcn1 ]; then
     echo "I am $(hostname) aka rack $rack node $node .  Running DEV3 version (special)"
     VERSION=dev3
 
+    L1_ARGS=-f
+    L1_CONFIG=l1-dup-cfcn1.yaml
     L1B_CONFIG=L1b_config_fake.yaml
     RFI_CONFIG=18-11-15-low-latency-uniform-v1-noplot.json
     BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
@@ -72,4 +75,4 @@ export PATH=/usr/local/bin:/usr/bin:/bin:/home/l1operator/${VERSION}/bin
 
 cd /home/l1operator/${VERSION}/ch_frb_l1
 
-./ch-frb-l1 ${L1_CONFIG} ../ch_frb_rfi/json_files/rfi_16k/${RFI_CONFIG} /data/bonsai_configs/${BONSAI_CONFIG} ${L1B_CONFIG}
+./ch-frb-l1 ${L1_ARGS} ${L1_CONFIG} ../ch_frb_rfi/json_files/rfi_16k/${RFI_CONFIG} /data/bonsai_configs/${BONSAI_CONFIG} ${L1B_CONFIG}
