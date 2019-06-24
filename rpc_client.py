@@ -1301,9 +1301,10 @@ if __name__ == '__main__':
         doexit = True
 
     if opt.inject:
-        beam = 0
+        beam = 10008
         #fpga0 = 52 * 1024 * 384
-        fpga0 = 5 * 1024 * 384
+        #fpga0 = 5 * 1024 * 384
+        #fpga0 = 6820000000
         nfreq = 16384
         sample_offsets = np.zeros(nfreq, np.int32)
         data = []
@@ -1315,7 +1316,7 @@ if __name__ == '__main__':
         freq_low_to_high = True
         R = client.inject_data(inj, freq_low_to_high, wait=True)
         print('Results:', R)
-        
+
         doexit = True
 
     if opt.inject_pulse:
@@ -1325,15 +1326,19 @@ if __name__ == '__main__':
         nfreq = 16384
         freq_lo = 400.
         freq_hi = 800.
-        dm = 50.
+        #dm = 50.
+        dm = 666.
         sm = 1.
         width = 0.003
         fluence = 0.1
         spectral_index = -1.
         undispersed_t = 5.
         sp = simpulse.single_pulse(pulse_nt, nfreq, freq_lo, freq_hi, dm, sm, width, fluence, spectral_index, undispersed_t)
-        beam = 0
-        fpga0 = 0
+        #fpga0 = 6780000000
+        fpga0 = 17730 * 1024 * 384
+        beam = 10008
+        #beam = 0
+        #fpga0 = 0
         R = client.inject_single_pulse(beam, sp, fpga0, wait=True, nfreq=nfreq)
         print('Results:', R)
         
