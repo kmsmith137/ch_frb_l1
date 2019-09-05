@@ -565,7 +565,40 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         //  Send reply back to client.
         zmq::message_t* reply = sbuffer_to_message(buffer);
         return _send_frontend_message(*client, *token_to_message(token), *reply);
+
+    } else if (funcname == "get_bonsai_variances") {
+
+        // Grab arg: list of beam numbers
+        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
+        vector<int> beams = oh.get().as<vector<int> >();
         
+        vector<pair<int, vector<float> > > result;
+
+        vector<int> ibeams;
+        if (beams.size() == 0)
+            // grab all beams!
+            for (size_t i=0; i<_stream->ini_params.beam_ids.size(); i++)
+                ibeams.push_back(i);
+        else
+            for (int b : beams)
+                for (size_t i=0; i<_stream->ini_params.beam_ids.size(); i++)
+                    if (_stream->ini_params.beam_ids[i] == b)
+                        ibeams.push_back(i);
+
+        for (int ib : ibeams) {
+            if (!_bonsais[ib])
+                continue;
+            vector<float> variances(ch_frb_io::constants::nfreq_coarse_tot);
+            _bonsais[ib]->get_input_variance_estimate(&variances[0]);
+            int beam = _stream->ini_params.beam_ids[ib];
+            result.push_back(pair<int,vector<float> >(beam, variances));
+        }
+        msgpack::sbuffer buffer;
+        msgpack::pack(buffer, result);
+        //  Send reply back to client.
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(*client, *token_to_message(token), *reply);
+
     } else if (funcname == "get_masked_frequencies") {
 
         rtnval = _handle_masked_freqs(client, funcname, token, req_data, request->size(), offset);
