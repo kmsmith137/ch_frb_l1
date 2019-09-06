@@ -1240,13 +1240,16 @@ if __name__ == '__main__':
         matplotlib.use('Agg')
         import pylab as plt
 
-        variances = client.get_bonsai_variances()
-        print('Got variances: type', type(variances))
-        print('Got', len(variances), 'variances')
+        results = client.get_bonsai_variances()
+        print('Got results: type', type(results))
+        print('Got', len(results), 'variances')
         plt.clf()
-        for b,v in variances:
-            print('Beam', b, ':', len(v), 'variances, mean', np.mean(v))
-            plt.plot(v, '.', label='Beam %i' % b)
+        # one per server
+        for variances in results:
+            for b,v in variances:
+                print('Beam', b, ':', len(v), 'variances, mean', np.mean(v))
+                print('First variances:', v[:16])
+                plt.plot(v, '-', label='Beam %i' % int(b))
         plt.ylabel('Variances')
         plt.legend()
         plt.savefig('bonsai-variances.png')
