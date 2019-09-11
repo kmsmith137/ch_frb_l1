@@ -1259,7 +1259,7 @@ if __name__ == '__main__':
         # one per server
         for variances in results:
             for b,w,v in variances:
-                plt.plot(w, '-', label='Beam %i' % int(b))
+                plt.plot(w, '.', label='Beam %i' % int(b))
         plt.ylabel('Weights')
         plt.legend()
         plt.savefig('bonsai-weights.png')
