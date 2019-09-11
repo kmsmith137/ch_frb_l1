@@ -573,7 +573,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         vector<int> beams = oh.get().as<vector<int> >();
         chlog("Requested beams: " << beams.size());
 
-        vector<pair<int, vector<float> > > result;
+        vector<tuple<int, vector<float>, vector<float> > > result;
 
         vector<int> ibeams;
         if (beams.size() == 0)
@@ -591,11 +591,12 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 	    chlog("No bonsai object for beam index " << ib);
                 continue;
 	  }
-	  int nv = _bonsais[ib]->config.variance_nfreq_bins;
-	  vector<float> variances(nv);
-	  _bonsais[ib]->get_input_variance_estimate(&variances[0]);
+	  int nf = _bonsais[ib]->config.nfreq;
+	  vector<float> weights(nf);
+	  vector<float> variances(nf);
+	  _bonsais[ib]->get_weights_and_variances(&weights, &variances);
 	  int beam = _stream->ini_params.beam_ids[ib];
-	  result.push_back(pair<int,vector<float> >(beam, variances));
+	  result.push_back(tuple<int,vector<float>,vector<float> >(beam, weights, variances));
         }
 	chlog("Sending variances for " << result.size() << " beams");
         msgpack::sbuffer buffer;

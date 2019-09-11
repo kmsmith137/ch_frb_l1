@@ -1242,17 +1242,28 @@ if __name__ == '__main__':
 
         results = client.get_bonsai_variances()
         print('Got results: type', type(results))
-        print('Got', len(results), 'variances')
+        print('Got', len(results), 'weights and variances')
         plt.clf()
         # one per server
         for variances in results:
-            for b,v in variances:
-                print('Beam', b, ':', len(v), 'variances, mean', np.mean(v))
+            for b,w,v in variances:
+                print('Beam', b, ':', len(w), 'weights, mean', np.mean(w), 'and', len(v), 'variances, mean', np.mean(v))
+                print('First weights:', w[:16])
                 print('First variances:', v[:16])
                 plt.plot(v, '-', label='Beam %i' % int(b))
         plt.ylabel('Variances')
         plt.legend()
         plt.savefig('bonsai-variances.png')
+
+        plt.clf()
+        # one per server
+        for variances in results:
+            for b,w,v in variances:
+                plt.plot(w, '-', label='Beam %i' % int(b))
+        plt.ylabel('Weights')
+        plt.legend()
+        plt.savefig('bonsai-weights.png')
+
         doexit = True
 
     if opt.stream:
