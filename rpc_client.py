@@ -607,11 +607,15 @@ class RpcClient(object):
                                         timeout=timeout)
 
     def wait_for_all_writes(self, chunklists, tokens, timeout=-1):
-        ## Wait for notification that all writes from a write_chunks
-        ## call have completed.
+        '''
+        Wait for notification that all writes from a write_chunks
+        call have completed.
+
+        *timeout* is in milliseconds.
+        '''
         results = []
         if timeout > 0:
-            t0 = time.time()
+            t0 = 1000. * time.time()
         for token,chunklist in zip(tokens, chunklists):
             if chunklist is None:
                 # Did not receive a reply from this server.
@@ -623,7 +627,7 @@ class RpcClient(object):
                                                get_sockets=True)
                 # adjust timeout
                 if timeout > 0:
-                    tnow = time.time()
+                    tnow = 1000. * time.time()
                     timeout = max(0, t0 + timeout - tnow)
                     t0 = tnow
                 if p is None:
@@ -869,6 +873,8 @@ class RpcClient(object):
         servers to reply.
 
         Returns a list of result messages, one for each *token*.
+
+        *timeout* is in milliseconds.
         '''
 
         self.debug('Waiting for tokens (timeout', timeout, '):', tokens)
@@ -878,7 +884,8 @@ class RpcClient(object):
             sockets = {}
         todo = [token for token in tokens]
         if timeout > 0:
-            t0 = time.time()
+            # note: time.time() is in seconds.
+            t0 = 1000. * time.time()
         while len(todo):
             self.debug('Still waiting for tokens:', todo)
             done = []
@@ -902,7 +909,7 @@ class RpcClient(object):
                     break
                 # adjust timeout
                 if timeout > 0:
-                    tnow = time.time()
+                    tnow = 1000. * time.time()
                     timeout = max(0, t0 + timeout - tnow)
                     t0 = tnow
         self.debug('Results:', results)
@@ -989,6 +996,8 @@ if __name__ == '__main__':
                         help='Inject a simpulse pulse')
     parser.add_argument('--masked-freqs', action='store_true', default=False,
                         help='Send request for masked frequencies history')
+    parser.add_argument('--timeout', default=10000, type=float,
+                        help='Set timeout (in milliseconds) for all RPCs.  -1 to wait forever.')
     parser.add_argument('ports', nargs='*',
                         help='Addresses or port numbers of RPC servers to contact')
     opt = parser.parse_args()
@@ -1019,8 +1028,10 @@ if __name__ == '__main__':
 
     doexit = False
 
+    kwa = dict(timeout=opt.timeout)
+
     if opt.list:
-        chunks = client.list_chunks()
+        chunks = client.list_chunks(**kwa)
         print('Received chunk list:', len(chunks))
         for chunklist in chunks:
             for beam,f0,f1,where in chunklist:
@@ -1028,7 +1039,7 @@ if __name__ == '__main__':
         doexit = True
 
     if opt.stats:
-        stats = client.get_statistics(timeout=10)
+        stats = client.get_statistics(**kwa)
         for s,server in zip(stats, servers.values()):
             print('', server)
             if s is None:
@@ -1044,7 +1055,7 @@ if __name__ == '__main__':
         doexit = True
 
     if opt.max_fpga:
-        fpgas = client.get_max_fpga_counts(timeout=10)
+        fpgas = client.get_max_fpga_counts(**kwa)
         for f,server in zip(fpgas, servers.values()):
             print('', server)
             if f is None:
@@ -1071,7 +1082,7 @@ if __name__ == '__main__':
             t1 = time.time()
             if t1 - t0 > opt.max_fpga_plot:
                 break
-            fpgas = client.get_max_fpga_counts(wait=True, timeout=3.)
+            fpgas = client.get_max_fpga_counts(wait=True, **kwa)
             for f,server in zip(fpgas, servers.values()):
                 print('', server)
                 if f is None:
@@ -1161,12 +1172,12 @@ if __name__ == '__main__':
             words = b.split(',')
             for w in words:
                 beams.append(int(w))
-        patterns = client.stream(opt.stream, opt.stream_base, opt.stream_meta, beams)
+        patterns = client.stream(opt.stream, opt.stream_base, opt.stream_meta, beams, **kwa)
         print('Streaming to:', patterns)
         doexit = True
 
     if opt.rate:
-        rates = client.get_packet_rate()
+        rates = client.get_packet_rate(**kwa)
         print('Received packet rates:')
         for r in rates:
             print('Got rate:', r)
@@ -1177,7 +1188,7 @@ if __name__ == '__main__':
         matplotlib.use('Agg')
         import pylab as plt
 
-        freqs = client.get_masked_frequencies()
+        freqs = client.get_masked_frequencies(**kwa)
         print('Received masked frequencies:')
         for f in freqs:
             print('  ', f)
@@ -1211,7 +1222,7 @@ if __name__ == '__main__':
             beams = [int(b,10) for b in beams]
             f0 = int(f0, 10)
             f1 = int(f1, 10)
-            kwargs = {}
+            kwargs = kwa.copy()
             if opt.need_rfi:
                 kwargs.update(need_rfi = True)
             R = client.write_chunks(beams, f0, f1, fnpat, **kwargs)
@@ -1252,7 +1263,7 @@ if __name__ == '__main__':
         print('Injecting data spanning', np.min(sample_offsets), 'to', np.max(sample_offsets), ' samples')
         inj = InjectData(beam, 0, fpga0, sample_offsets, data)
         freq_low_to_high = True
-        R = client.inject_data(inj, freq_low_to_high, wait=True)
+        R = client.inject_data(inj, freq_low_to_high, wait=True, **kwa)
         print('Results:', R)
         
         doexit = True
@@ -1273,7 +1284,7 @@ if __name__ == '__main__':
         sp = simpulse.single_pulse(pulse_nt, nfreq, freq_lo, freq_hi, dm, sm, width, fluence, spectral_index, undispersed_t)
         beam = 0
         fpga0 = 0
-        R = client.inject_single_pulse(beam, sp, fpga0, wait=True, nfreq=nfreq)
+        R = client.inject_single_pulse(beam, sp, fpga0, wait=True, nfreq=nfreq, **kwa)
         print('Results:', R)
         
         doexit = True
@@ -1282,11 +1293,11 @@ if __name__ == '__main__':
         sys.exit(0)
     
     print('get_statistics()...')
-    stats = client.get_statistics(timeout=3000)
+    stats = client.get_statistics(**kwa)
     print('Got stats:', stats)
 
     print('list_chunks()...')
-    stats = client.list_chunks(timeout=3000)
+    stats = client.list_chunks(**kwa)
     print('Got chunks:', stats)
     
     print()
@@ -1296,26 +1307,26 @@ if __name__ == '__main__':
     #maxfpga = 38600000
     maxfpga = 48600000
 
-    R = client.write_chunks([77,78], minfpga, maxfpga, 'chunk-beam(BEAM)-chunk(CHUNK)+(NCHUNK).msgpack', timeout=3000)
+    R = client.write_chunks([77,78], minfpga, maxfpga, 'chunk-beam(BEAM)-chunk(CHUNK)+(NCHUNK).msgpack', **kwa)
     print('Got:', R)
 
     for r in R:
         servers = [r.server]
         print('Received', r, 'from server:', r.server)
-        X = client.get_writechunk_status(r.filename, servers=servers)
+        X = client.get_writechunk_status(r.filename, servers=servers, **kwa)
         X = X[0]
         print('Result:', X)
 
-    print('Bogus result:', client.get_writechunk_status('nonesuch'))
+    print('Bogus result:', client.get_writechunk_status('nonesuch', **kwa))
 
-    chunks,tokens = client.write_chunks([77,78], minfpga, maxfpga, 'chunk2-beam(BEAM)-chunk(CHUNK)+(NCHUNK).msgpack', waitAll=False)
+    chunks,tokens = client.write_chunks([77,78], minfpga, maxfpga, 'chunk2-beam(BEAM)-chunk(CHUNK)+(NCHUNK).msgpack', waitAll=False, **kwa)
     print('Got chunks:', chunks)
     for chlist in chunks:
         if chlist is None:
             continue
         for chunk in chlist:
             print('Chunk:', chunk)
-            [R] = client.get_writechunk_status(chunk.filename, servers=[chunk.server])
+            [R] = client.get_writechunk_status(chunk.filename, servers=[chunk.server], **kwa)
             print('Status:', R)
     time.sleep(1)
     for chlist in chunks:
@@ -1323,7 +1334,7 @@ if __name__ == '__main__':
             continue
         for chunk in chlist:
             print('Chunk:', chunk)
-            [R] = client.get_writechunk_status(chunk.filename, servers=[chunk.server])
+            [R] = client.get_writechunk_status(chunk.filename, servers=[chunk.server], **kwa)
             print('Status:', R)
 
     if opt.log:
