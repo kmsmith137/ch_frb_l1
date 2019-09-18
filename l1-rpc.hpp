@@ -105,6 +105,8 @@ protected:
     
     std::string _handle_inject(const char* req_data, size_t req_size, size_t req_offset);
 
+    std::string _handle_fork(bool start, const char* req_data, size_t req_size, size_t req_offset);
+
     void _check_backend_queue();
 
     // retrieves assembled_chunks overlapping the given range of
@@ -116,6 +118,8 @@ protected:
     int _send_frontend_message(zmq::message_t& clientmsg,
                                zmq::message_t& tokenmsg,
                                zmq::message_t& contentmsg);
+
+    void _update_n_chunks_waiting(bool inc);
 
 private:
     // The command line that launched this L1 process
@@ -145,6 +149,9 @@ private:
     std::string _port;
 
     std::shared_ptr<chunk_status_map> _chunk_status;
+
+    // How many chunks are we currently waiting for?
+    int _n_chunks_writing;
 
     // Only protects _shutdown!
     std::mutex _q_mutex;

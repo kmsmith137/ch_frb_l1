@@ -412,6 +412,47 @@ class RpcClient(object):
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
 
+    def start_fork(self, beam_offset, ipaddr, port, beam=0,
+                   servers=None, wait=True, timeout=-1):
+        '''
+        beam=0 means send all beams handled by this node.
+
+        If beam != 0, then beam_offset is the destination beam number (not offset)
+        '''
+        if servers is None:
+            servers = self.servers.keys()
+        tokens = []
+        for k in servers:
+            self.token += 1
+            req = msgpack.packb(['start_fork', self.token])
+            args = msgpack.packb([beam, beam_offset, ipaddr, port])
+            tokens.append(self.token)
+            self.sockets[k].send(req + args)
+        if not wait:
+            return tokens
+        parts = self.wait_for_tokens(tokens, timeout=timeout)
+        # We expect one message part for each token.
+        return [msgpack.unpackb(p[0]) if p is not None else None
+                for p in parts]
+
+    def stop_fork(self, beam_offset, ipaddr, port, beam=0,
+                   servers=None, wait=True, timeout=-1):
+        if servers is None:
+            servers = self.servers.keys()
+        tokens = []
+        for k in servers:
+            self.token += 1
+            req = msgpack.packb(['stop_fork', self.token])
+            args = msgpack.packb([beam, beam_offset, ipaddr, port])
+            tokens.append(self.token)
+            self.sockets[k].send(req + args)
+        if not wait:
+            return tokens
+        parts = self.wait_for_tokens(tokens, timeout=timeout)
+        # We expect one message part for each token.
+        return [msgpack.unpackb(p[0]) if p is not None else None
+                for p in parts]
+    
     def inject_data(self, inj, freq_low_to_high,
                     servers=None, wait=True, timeout=-1):
         '''
@@ -956,6 +997,10 @@ if __name__ == '__main__':
                         help='Send shutdown RPC message?')
     parser.add_argument('--log', action='store_true',
                         help='Start up chlog server?')
+    parser.add_argument('--fork', nargs=4, metavar=('<beam>','<beam offset>','<dest ip>','<dest port>'),
+                        help='Start forking data to the given IP:port with given beam offset.  beam=0 means all beams', action='append', default=[])
+    parser.add_argument('--stop-fork', nargs=4, metavar=('<beam>','<beam offset>','<dest ip>','<dest port>'),
+                        help='Stop forking data to the given IP:port with given beam offset.  beam=-1 and destbeam=-1 means stop all forks', action='append', default=[])
     parser.add_argument('--write', '-w', nargs=4, metavar='x',#['<comma-separated beams>', '<minfpga>', '<maxfpga>', '<filename-pattern>'],
                         help='Send write_chunks command: <comma-separated beams> <minfpga> <maxfpga> <filename-pattern>', action='append',
                         default=[])
@@ -1154,6 +1199,22 @@ if __name__ == '__main__':
 
         doexit = True
 
+    if len(opt.fork):
+        for beam, beam_offset, ipaddr, port in opt.fork:
+            beam = int(beam)
+            beam_offset = int(beam_offset)
+            port = int(port)
+            client.start_fork(beam_offset, ipaddr, port, beam=beam)
+        doexit = True
+
+    if len(opt.stop_fork):
+        for beam, beam_offset, ipaddr, port in opt.stop_fork:
+            beam = int(beam)
+            beam_offset = int(beam_offset)
+            port = int(port)
+            client.stop_fork(beam_offset, ipaddr, port, beam=beam)
+        doexit = True
+
     if opt.stream:
         beams = []
         for b in opt.stream_beams:
@@ -1204,7 +1265,7 @@ if __name__ == '__main__':
         print('Received packet rate history:')
         print(rates)
         doexit = True
-        
+
     if len(opt.write):
         for beams, f0, f1, fnpat in opt.write:
             beams = beams.split(',')
@@ -1240,9 +1301,10 @@ if __name__ == '__main__':
         doexit = True
 
     if opt.inject:
-        beam = 0
+        beam = 10008
         #fpga0 = 52 * 1024 * 384
-        fpga0 = 5 * 1024 * 384
+        #fpga0 = 5 * 1024 * 384
+        #fpga0 = 6820000000
         nfreq = 16384
         sample_offsets = np.zeros(nfreq, np.int32)
         data = []
@@ -1254,7 +1316,7 @@ if __name__ == '__main__':
         freq_low_to_high = True
         R = client.inject_data(inj, freq_low_to_high, wait=True)
         print('Results:', R)
-        
+
         doexit = True
 
     if opt.inject_pulse:
@@ -1264,15 +1326,19 @@ if __name__ == '__main__':
         nfreq = 16384
         freq_lo = 400.
         freq_hi = 800.
-        dm = 50.
+        #dm = 50.
+        dm = 666.
         sm = 1.
         width = 0.003
         fluence = 0.1
         spectral_index = -1.
         undispersed_t = 5.
         sp = simpulse.single_pulse(pulse_nt, nfreq, freq_lo, freq_hi, dm, sm, width, fluence, spectral_index, undispersed_t)
-        beam = 0
-        fpga0 = 0
+        #fpga0 = 6780000000
+        fpga0 = 17730 * 1024 * 384
+        beam = 10008
+        #beam = 0
+        #fpga0 = 0
         R = client.inject_single_pulse(beam, sp, fpga0, wait=True, nfreq=nfreq)
         print('Results:', R)
         
