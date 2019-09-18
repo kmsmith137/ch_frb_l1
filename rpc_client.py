@@ -1215,6 +1215,56 @@ if __name__ == '__main__':
             client.stop_fork(beam_offset, ipaddr, port, beam=beam)
         doexit = True
 
+    if opt.variances:
+        import matplotlib
+        matplotlib.use('Agg')
+        import pylab as plt
+
+        results = client.get_bonsai_variances()
+        print('Got results: type', type(results))
+        print('Got', len(results), 'weights and variances')
+
+        freqs = np.linspace(400, 800, 16384)
+
+        plt.clf()
+        # one per server
+        minvar = 1e3
+        for variances in results:
+            for b,w,v in variances:
+                print('Beam', b, ':', len(w), 'weights, mean', np.mean(w), 'and', len(v), 'variances, mean', np.mean(v))
+                print('First weights:', w[:16])
+                print('First variances:', v[:16])
+                v = np.array(list(reversed(v)))
+                nz, = np.nonzero(v>0)
+                print('v', len(v), 'freqs', len(freqs))
+                plt.plot(freqs, v, '.', label='Beam %i' % int(b))
+                if len(nz):
+                    minvar = min(minvar, min(v[nz]))
+        plt.yscale('symlog', linthreshy=minvar)
+        yl,yh = plt.ylim()
+        plt.ylim(-0.1*minvar, yh)
+        plt.xlabel('Frequency (MHz)')
+        plt.ylabel('Variances')
+        plt.legend()
+        plt.title('Bonsai running variance estimates')
+        plt.savefig('bonsai-variances.png')
+
+        plt.clf()
+        # one per server
+        for variances in results:
+            for b,w,v in variances:
+                w = np.array(list(reversed(w)))
+                print('w', len(w), 'freqs', len(freqs))
+                plt.plot(freqs, w, '.', label='Beam %i' % int(b))
+        plt.ylim(-0.1, 1.5)
+        plt.ylabel('Weights')
+        plt.xlabel('Frequency (MHz)')
+        plt.legend()
+        plt.title('Bonsai running weight estimates (unmasked fraction)')
+        plt.savefig('bonsai-weights.png')
+
+        doexit = True
+
     if opt.stream:
         beams = []
         for b in opt.stream_beams:
