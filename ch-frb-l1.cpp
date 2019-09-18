@@ -1051,23 +1051,6 @@ void l1_server::make_input_streams()
         bool need_rfi = (config.nrfifreq > 0);
 	input_streams[istream]->stream_to_files(config.stream_filename_pattern, sf_beam_ids, 0, need_rfi);   // (pattern, priority)
     }
-
-    /*
-    cout << "Forking..." << endl;
-    struct sockaddr_in dest;
-    dest.sin_family = AF_INET;
-    string dest_ip = "127.0.0.1";
-    if (!inet_aton(dest_ip.c_str(), &(dest.sin_addr))) {
-        cout << "Failed to parse fork destination " << dest_ip << endl;
-        exit(-1);
-    }
-    //dest.sin_port = htons(6666);
-    dest.sin_port = htons(config.port[0] + 2);
-    cout << "Forking to port " << config.port[0] + 2 << endl;
-    input_streams[0]->start_forking_packets(0, 10000, dest);
-    cout << "Forked." << endl;
-     */
-    
 }
 
 
