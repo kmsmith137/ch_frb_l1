@@ -76,18 +76,27 @@ static string convert_zmq_address(const string& addr, const unordered_map<string
     return addr.substr(0, proto+2) + val->second + addr.substr(port);
 }
 
-static string convert_ip_address(const string& addr, const unordered_map<string, string>& interfaces) {
+static string convert_ip_address(const string& orig_addr, const unordered_map<string, string>& interfaces) {
+    // Grab the port off the end, if it exists
+    string addr(orig_addr);
+    size_t port = addr.rfind(":");
+    string portstring;
+    if (port != std::string::npos) {
+        portstring = addr.substr(port);
+	addr = addr.substr(0, port);
+	//cout << "Pulled off port string: '" << portstring << "', cut addr string to '" << addr << "'" << endl;
+    }
     // Try to parse as dotted-decimal IP address
     struct in_addr inaddr;
     if (inet_aton(addr.c_str(), &inaddr) == 1)
         // Correctly parsed as dotted-decimal IP address.
-        return addr;
+        return addr + portstring;
     // If doesn't parse as dotted-decimal, lookup in interfaces mapping.
     auto val = interfaces.find(addr);
     if (val == interfaces.end())
-        throw runtime_error("Config file ipaddr entry \"" + addr + "\" was not dotted IP address and was not one of the known network interfaces");
+        throw runtime_error("Config file ipaddr entry \"" + orig_addr + "\" -> \"" + addr + "\" was not dotted IP address and was not one of the known network interfaces");
     //chlog("Mapped IP addr " << ipaddr[i] << " to " << val->second);
-    return val->second;
+    return val->second + portstring;
 }
 
 
@@ -250,7 +259,7 @@ l1_config::l1_config(int argc, const char **argv)
     
     // Convert network interface names in "prometheus_address" entries.
     for (size_t i=0; i<prometheus_address.size(); i++)
-        prometheus_address[i] = convert_zmq_address(prometheus_address[i], interfaces);
+        prometheus_address[i] = convert_ip_address(prometheus_address[i], interfaces);
 
     // Lots of sanity checks.
     // First check that we have a consistent 'nstreams'.
