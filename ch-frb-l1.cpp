@@ -573,17 +573,79 @@ void dedispersion_thread_context::_init_mask_counters(const shared_ptr<rf_pipeli
     chlog("Setting up " << mask_counters.size() << " mask counters");
 
     for (unsigned int i = 0; i < mask_counters.size(); i++) {
-	rf_pipelines::mask_counter_transform::runtime_attrs attrs;
-	attrs.ringbuf_nhistory = config.rfi_mask_meas_history;
-	attrs.chime_beam_id = beam_id;
-
+        mask_counters[i]->set_ringbuffer(config.rfi_mask_meas_history);
 	// If RFI masks are requested, then the last mask_counter in the chain fills assembled_chunks.
 	if ((config.nrfifreq > 0) && ((i+1) == mask_counters.size()))
-	    attrs.chime_stream = this->sp;
+            mask_counters[i]->set_chime_stream(this->sp, beam_id);
 
-	mask_counters[i]->set_runtime_attrs(attrs);
 	this->ms_map->put(beam_id, mask_counters[i]->where, mask_counters[i]->ringbuf);
     }
+
+    // This lambda-function is passed to
+    // rf_pipelines::visit_pipeline(), to find the spline_detrender
+    // and polynomial_detrender at the end of the pipeline, so that we
+    // can tell them to ring-buffer their results for RPC retrieval,
+    // and save their results in the assembled_chunks.
+
+    shared_ptr<rf_pipelines::spline_detrender> spline_det;
+    shared_ptr<rf_pipelines::polynomial_detrender> poly_det;
+
+    auto find_detrenders = [&spline_det, &poly_det]
+	(const shared_ptr<rf_pipelines::pipeline_object> &p, int depth)
+    {
+        // HACK -- we only want the ones at the end of the full-resolution pipeline!
+        chlog("finding detrenders: depth=" << depth << ", pipeline obj type " << p->class_name);
+        if (depth != 1)
+            return;
+        if (p->class_name == "spline_detrender") {
+            auto det = dynamic_pointer_cast<rf_pipelines::spline_detrender>(p);
+            if (!det) {
+                chlog("Failed to cast a spline_detrender!");
+                return;
+            }
+            spline_det = det;
+            return;
+        }
+        if (p->class_name == "polynomial_detrender") {
+            /*
+             auto det = dynamic_pointer_cast<rf_pipelines::polynomial_detrender>(p);
+             if (!det) {
+             chlog("Failed to cast a polynomial_detrender!");
+             return;
+             }
+             poly_det = det;
+             */
+            return;
+        }
+    };
+
+    rf_pipelines::visit_pipeline(find_detrenders, pipeline);
+
+    if (!spline_det) {
+        chlog("Failed to find spline_detrender in pipeline!");
+    } else {
+        // FIXME make config entry
+        //spline_det->enable_ring_buffer(300);
+        //spline_det->set_chime_stream(this->sp, beam_id);
+
+        // FIXME make config entry
+        spline_det->set_ringbuffer_size(10 * 1024);
+        /*
+         rf_pipelines::spline_detrender::runtime_attrs attrs;
+         attrs.ringbuf_nhistory = 300;
+         attrs.chime_beam_id = beam_id;
+         attrs.chime_stream = this->sp;
+         spline_det->set_runtime_attrs(attrs);
+         */
+        // FIXME -- fetch ringbuf and put it where the RPC thread can see it.
+	//this->ms_map->put(beam_id, mask_counters[i]->where, mask_counters[i]->ringbuf);
+    }
+    if (!poly_det) {
+        chlog("Failed to find polynomial_detrender in pipeline!");
+    } else {
+        // FIXME
+    }
+    
 }
 
 
