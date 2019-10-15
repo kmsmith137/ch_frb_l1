@@ -515,7 +515,9 @@ struct dedispersion_thread_context {
     shared_ptr<mask_stats_map> ms_map;
     std::function<void(int, shared_ptr<const bonsai::dedisperser>,
                        shared_ptr<const rf_pipelines::pipeline_object> latency_pre,
-                       shared_ptr<const rf_pipelines::pipeline_object> latency_post
+                       shared_ptr<const rf_pipelines::pipeline_object> latency_post,
+                       shared_ptr<const rf_pipelines::spline_detrender> spline_det,
+                       shared_ptr<const rf_pipelines::polynomial_detrender> poly_det
                        )> set_bonsai;
     shared_ptr<bonsai::trigger_pipe> l1b_subprocess;   // warning: can be empty pointer!
     shared_ptr<rf_pipelines::intensity_injector> injector_transform;
@@ -580,72 +582,6 @@ void dedispersion_thread_context::_init_mask_counters(const shared_ptr<rf_pipeli
 
 	this->ms_map->put(beam_id, mask_counters[i]->where, mask_counters[i]->ringbuf);
     }
-
-    // This lambda-function is passed to
-    // rf_pipelines::visit_pipeline(), to find the spline_detrender
-    // and polynomial_detrender at the end of the pipeline, so that we
-    // can tell them to ring-buffer their results for RPC retrieval,
-    // and save their results in the assembled_chunks.
-
-    shared_ptr<rf_pipelines::spline_detrender> spline_det;
-    shared_ptr<rf_pipelines::polynomial_detrender> poly_det;
-
-    auto find_detrenders = [&spline_det, &poly_det]
-	(const shared_ptr<rf_pipelines::pipeline_object> &p, int depth)
-    {
-        // HACK -- we only want the ones at the end of the full-resolution pipeline!
-        chlog("finding detrenders: depth=" << depth << ", pipeline obj type " << p->class_name);
-        if (depth != 1)
-            return;
-        if (p->class_name == "spline_detrender") {
-            auto det = dynamic_pointer_cast<rf_pipelines::spline_detrender>(p);
-            if (!det) {
-                chlog("Failed to cast a spline_detrender!");
-                return;
-            }
-            spline_det = det;
-            return;
-        }
-        if (p->class_name == "polynomial_detrender") {
-            /*
-             auto det = dynamic_pointer_cast<rf_pipelines::polynomial_detrender>(p);
-             if (!det) {
-             chlog("Failed to cast a polynomial_detrender!");
-             return;
-             }
-             poly_det = det;
-             */
-            return;
-        }
-    };
-
-    rf_pipelines::visit_pipeline(find_detrenders, pipeline);
-
-    if (!spline_det) {
-        chlog("Failed to find spline_detrender in pipeline!");
-    } else {
-        // FIXME make config entry
-        //spline_det->enable_ring_buffer(300);
-        //spline_det->set_chime_stream(this->sp, beam_id);
-
-        // FIXME make config entry
-        spline_det->set_ringbuffer_size(10 * 1024);
-        /*
-         rf_pipelines::spline_detrender::runtime_attrs attrs;
-         attrs.ringbuf_nhistory = 300;
-         attrs.chime_beam_id = beam_id;
-         attrs.chime_stream = this->sp;
-         spline_det->set_runtime_attrs(attrs);
-         */
-        // FIXME -- fetch ringbuf and put it where the RPC thread can see it.
-	//this->ms_map->put(beam_id, mask_counters[i]->where, mask_counters[i]->ringbuf);
-    }
-    if (!poly_det) {
-        chlog("Failed to find polynomial_detrender in pipeline!");
-    } else {
-        // FIXME
-    }
-    
 }
 
 
@@ -708,7 +644,76 @@ void dedispersion_thread_context::_thread_main() const
     }
 
     _init_mask_counters(rfi_chain, beam_id);
-        
+
+    // ***********************************************************************
+    
+    // This lambda-function is passed to
+    // rf_pipelines::visit_pipeline(), to find the spline_detrender
+    // and polynomial_detrender at the end of the pipeline, so that we
+    // can tell them to ring-buffer their results for RPC retrieval,
+    // and save their results in the assembled_chunks.
+
+    shared_ptr<rf_pipelines::spline_detrender> spline_det;
+    shared_ptr<rf_pipelines::polynomial_detrender> poly_det;
+
+    auto find_detrenders = [&spline_det, &poly_det]
+	(const shared_ptr<rf_pipelines::pipeline_object> &p, int depth)
+    {
+        // HACK -- we only want the ones at the end of the full-resolution pipeline!
+        //chlog("finding detrenders: depth=" << depth << ", pipeline obj type " << p->class_name);
+        if (depth != 1)
+            return;
+        if (p->class_name == "spline_detrender") {
+            auto det = dynamic_pointer_cast<rf_pipelines::spline_detrender>(p);
+            if (!det) {
+                chlog("Failed to cast a spline_detrender!");
+                return;
+            }
+            spline_det = det;
+            return;
+        }
+        if (p->class_name == "polynomial_detrender") {
+            /*
+             auto det = dynamic_pointer_cast<rf_pipelines::polynomial_detrender>(p);
+             if (!det) {
+             chlog("Failed to cast a polynomial_detrender!");
+             return;
+             }
+             poly_det = det;
+             */
+            return;
+        }
+    };
+
+    rf_pipelines::visit_pipeline(find_detrenders, rfi_chain);
+
+    if (!spline_det) {
+        chlog("Failed to find spline_detrender in pipeline!");
+    } else {
+        // FIXME make config entry
+        //spline_det->enable_ring_buffer(300);
+        //spline_det->set_chime_stream(this->sp, beam_id);
+
+        // FIXME make config entry
+        spline_det->set_ringbuffer_size(10 * 1024);
+        /*
+         rf_pipelines::spline_detrender::runtime_attrs attrs;
+         attrs.ringbuf_nhistory = 300;
+         attrs.chime_beam_id = beam_id;
+         attrs.chime_stream = this->sp;
+         spline_det->set_runtime_attrs(attrs);
+         */
+        // FIXME -- fetch ringbuf and put it where the RPC thread can see it.
+	//this->ms_map->put(beam_id, mask_counters[i]->where, mask_counters[i]->ringbuf);
+    }
+    if (!poly_det) {
+        chlog("Failed to find polynomial_detrender in pipeline!");
+    } else {
+        // FIXME
+    }
+    
+    // ***********************************************************************
+    
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);
     pipeline->add(injector_transform);
@@ -725,7 +730,10 @@ void dedispersion_thread_context::_thread_main() const
         latency2 = p;
     };
     rf_pipelines::visit_pipeline(find_last_transform, rfi_chain);
-    set_bonsai(ibeam, dedisperser, latency1, latency2);
+
+    chlog("Dedispersion thread: calling set_bonsai...");
+    set_bonsai(ibeam, dedisperser, latency1, latency2, spline_det, poly_det);
+    chlog("set_bonsai finished.");
 
     rf_pipelines::run_params rparams;
     rparams.outdir = "";  // disables
@@ -1229,9 +1237,11 @@ void l1_server::spawn_dedispersion_threads()
     
     std::function<void(int, shared_ptr<const bonsai::dedisperser>,
                        shared_ptr<const rf_pipelines::pipeline_object>,
-                       shared_ptr<const rf_pipelines::pipeline_object>)> set_bonsai =
+                       shared_ptr<const rf_pipelines::pipeline_object>,
+                       shared_ptr<const rf_pipelines::spline_detrender>,
+                       shared_ptr<const rf_pipelines::polynomial_detrender>)> set_bonsai =
         std::bind(&l1_server::set_bonsai, this, std::placeholders::_1, std::placeholders::_2,
-                  std::placeholders::_3, std::placeholders::_4);
+                  std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6);
 
     for (int ibeam = 0; ibeam < config.nbeams; ibeam++) {
 	int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
@@ -1262,7 +1272,9 @@ void l1_server::spawn_dedispersion_threads()
 void l1_server::set_bonsai(int ibeam,
                            shared_ptr<const bonsai::dedisperser> bonsai,
                            shared_ptr<const rf_pipelines::pipeline_object> latency_pre,
-                           shared_ptr<const rf_pipelines::pipeline_object> latency_post) {
+                           shared_ptr<const rf_pipelines::pipeline_object> latency_post,
+                           shared_ptr<const rf_pipelines::spline_detrender> spline_det,
+                           shared_ptr<const rf_pipelines::polynomial_detrender> poly_det) {
     chlog("set_bonsai(" << ibeam << ")");
     ulock u(bonsai_dedisp_mutex);
     bonsai_dedispersers[ibeam] = bonsai;

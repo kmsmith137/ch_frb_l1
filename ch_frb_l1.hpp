@@ -240,7 +240,10 @@ struct l1_server {
     // Called-back by dedispersion thread
     void set_bonsai(int ibeam, std::shared_ptr<const bonsai::dedisperser>,
                     std::shared_ptr<const rf_pipelines::pipeline_object> latency_pre,
-                    std::shared_ptr<const rf_pipelines::pipeline_object> latency_post);
+                    std::shared_ptr<const rf_pipelines::pipeline_object> latency_post,
+                    std::shared_ptr<const rf_pipelines::spline_detrender> spline_det,
+                    std::shared_ptr<const rf_pipelines::polynomial_detrender> poly_det);
+
 };
 
 
