@@ -13,7 +13,7 @@
                     {
                         "Df": 1, 
                         "class_name": "std_dev_clipper", 
-                        "nt_chunk": 1024, 
+                        "nt_chunk": 4096, 
                         "Dt": 1, 
                         "sigma": 3, 
                         "two_pass": true, 
@@ -22,7 +22,7 @@
                     {
                         "Df": 1, 
                         "class_name": "std_dev_clipper", 
-                        "nt_chunk": 6144, 
+                        "nt_chunk": 4096, 
                         "Dt": 1, 
                         "sigma": 3, 
                         "two_pass": true, 
@@ -31,10 +31,19 @@
                     {
                         "Df": 1, 
                         "class_name": "std_dev_clipper", 
-                        "nt_chunk": 6144, 
+                        "nt_chunk": 4096, 
                         "Dt": 1, 
                         "sigma": 3, 
-                        "two_pass": false, 
+                        "two_pass": true, 
+                        "axis": "AXIS_TIME"
+                    }, 
+                    {
+                        "Df": 1, 
+                        "class_name": "std_dev_clipper", 
+                        "nt_chunk": 4096, 
+                        "Dt": 1, 
+                        "sigma": 3, 
+                        "two_pass": true, 
                         "axis": "AXIS_FREQ"
                     }, 
                     {
@@ -52,9 +61,16 @@
             "Dt": 0
         },
         {
+            "class_name": "polynomial_detrender", 
+            "epsilon": 0.01, 
+            "polydeg": 4, 
+            "nt_chunk": 1024, 
+            "axis": "AXIS_TIME"
+        }, 
+        {
             "class_name": "spline_detrender", 
             "epsilon": 0.0003, 
-            "nt_chunk": 0, 
+            "nt_chunk": 1024,
             "nbins": 6, 
             "axis": "AXIS_FREQ"
         }
