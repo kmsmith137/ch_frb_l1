@@ -12,7 +12,7 @@ using namespace std;
 using namespace ch_frb_io;
 using namespace ch_frb_l1;
 
-l0_params::l0_params(const string &filename, double gbps)
+l0_params::l0_params(const string &filename, double gbps, bool send_end_of_stream)
 {
     yaml_paramfile p(filename);
 
@@ -123,14 +123,14 @@ l0_params::l0_params(const string &filename, double gbps)
 
     streams = std::vector<std::shared_ptr<ch_frb_io::intensity_network_ostream> >(nthreads_tot);
     for (int ithread = 0; ithread < nthreads_tot; ithread++) {
-	streams[ithread] = make_ostream(ithread, gbps);
+	streams[ithread] = make_ostream(ithread, gbps, send_end_of_stream);
 	streams[ithread]->print_status();
     }
 
 }
 
 
-shared_ptr<ch_frb_io::intensity_network_ostream> l0_params::make_ostream(int ithread, double gbps) const
+shared_ptr<ch_frb_io::intensity_network_ostream> l0_params::make_ostream(int ithread, double gbps, bool send_end_of_stream) const
 {
     assert(ithread >= 0 && ithread < nthreads_tot);
 
@@ -151,7 +151,7 @@ shared_ptr<ch_frb_io::intensity_network_ostream> l0_params::make_ostream(int ith
     ini_params.target_gbps = gbps;
     
     // only one distinguished thread will send end-of-stream packets
-    ini_params.send_end_of_stream_packets = (jthread == nthreads_per_stream-1);
+    ini_params.send_end_of_stream_packets = send_end_of_stream && (jthread == nthreads_per_stream-1);
 
     return ch_frb_io::intensity_network_ostream::make(ini_params);
 }

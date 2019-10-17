@@ -35,6 +35,9 @@ int main(int argc, char **argv)
     string filename = argv[1];
     double num_seconds = lexical_cast<double> (argv[2]);
     double gbps = 0.0;
+
+    // HACK
+    bool send_eos=false;
     
     vector<string> datafiles;
     for (int a=3; a<argc; a++) {
@@ -47,7 +50,7 @@ int main(int argc, char **argv)
         if (num_seconds <= 0.0)
             usage();
 
-    shared_ptr<l0_params> p = make_shared<l0_params>(filename, gbps);
+    shared_ptr<l0_params> p = make_shared<l0_params>(filename, gbps, send_eos);
     p->write(cout);
 
     int nthreads = p->nthreads_tot;

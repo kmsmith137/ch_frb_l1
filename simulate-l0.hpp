@@ -16,9 +16,9 @@ using namespace std;
 struct l0_params {
     static constexpr int nfreq_coarse = ch_frb_io::constants::nfreq_coarse_tot;
 
-    l0_params(const string &filename, double gbps=1.0);
+    l0_params(const string &filename, double gbps=1.0, bool send_end_of_stream=true);
 
-    shared_ptr<ch_frb_io::intensity_network_ostream> make_ostream(int ithread, double gbps) const;
+    shared_ptr<ch_frb_io::intensity_network_ostream> make_ostream(int ithread, double gbps, bool send_end_of_stream) const;
 
     void write(ostream &os) const;
 
