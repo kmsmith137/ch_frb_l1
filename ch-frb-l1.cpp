@@ -530,6 +530,11 @@ struct dedispersion_thread_context {
 
     // Helper function called in _thread_main(), during initialization
     void _init_mask_counters(const shared_ptr<rf_pipelines::pipeline_object> &pipeline, int beam_id) const;
+
+    // callback from chime_chunk_updater
+    void chunk_finished_rfi(std::shared_ptr<ch_frb_io::assembled_chunk> chunk,
+                            ssize_t pos,
+                            int beam_id) const;
 };
 
 
@@ -583,6 +588,38 @@ void dedispersion_thread_context::_init_mask_counters(const shared_ptr<rf_pipeli
 	this->ms_map->put(beam_id, mask_counters[i]->where, mask_counters[i]->ringbuf);
     }
 }
+
+
+void dedispersion_thread_context::chunk_finished_rfi(std::shared_ptr<ch_frb_io::assembled_chunk> chunk,
+                                                     ssize_t pos,
+                                                     int beam_id) const {
+    chlog("dedispersion_thread_context: chunk finished RFI: beam " << beam_id
+          << ", chunk " << chunk->ichunk << ", pos " << pos);
+}
+
+
+// A wi_transform that calls a specified hook function
+class chunk_updater : public rf_pipelines::chime_wi_transform {
+public:
+    const dedispersion_thread_context* dedisp_ctx;
+
+    chunk_updater(const dedispersion_thread_context* d) :
+        chime_wi_transform("chunk_updater"),
+        dedisp_ctx(d) {
+        this->nt_chunk = ch_frb_io::constants::nt_per_assembled_chunk;
+    }
+    virtual ~chunk_updater() {};
+    virtual void _process_chunk(float *intensity, ssize_t istride, float *weights, ssize_t wstride, ssize_t pos) override {
+        shared_ptr<ch_frb_io::assembled_chunk> chunk;
+        if (chime_stream) {
+            chunk = assembled_chunk_for_pos(pos);
+            if (chunk)
+                cout << "chunk_updater: found chunk for pos " << pos << " FPGA " << chunk->fpga_begin << endl;
+        }
+        dedisp_ctx->chunk_finished_rfi(chunk, pos, chime_beam_id);
+    }
+};
+
 
 
 // Note: only called if config.tflag == false.
@@ -713,11 +750,27 @@ void dedispersion_thread_context::_thread_main() const
     }
     
     // ***********************************************************************
+
+    auto chunker = make_shared<chunk_updater>(this);
+    chunker->set_chime_stream(this->sp, beam_id);
+
+    /*
+     std::function<void(std::shared_ptr<ch_frb_io::assembled_chunk> chunk,
+     ssize_t pos,
+     int beam_id)> cb = std::bind(&dedispersion_thread_context::chunk_finished_rfi, this,
+     std::placeholders::_1,
+     std::placeholders::_2,
+     std::placeholders::_3);
+     chunk_updater->cb = cb;
+     */
     
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);
     pipeline->add(injector_transform);
     pipeline->add(rfi_chain);
+
+    pipeline->add(chunker);
+    
     if (!config.rflag)
         pipeline->add(bonsai_transform);
 
@@ -1231,6 +1284,8 @@ void l1_server::spawn_dedispersion_threads()
     bonsai_dedispersers_set.resize(config.nbeams, false);
     latency_monitors_pre.resize(config.nbeams);
     latency_monitors_post.resize(config.nbeams);
+    spline_detrenders.resize(config.nbeams);
+    poly_detrenders.resize(config.nbeams);
 
     for (int ibeam = 0; ibeam < config.nbeams; ibeam++)
         this->injectors[ibeam] = rf_pipelines::make_intensity_injector(ch_frb_io::constants::nt_per_assembled_chunk);
@@ -1281,6 +1336,8 @@ void l1_server::set_bonsai(int ibeam,
     bonsai_dedispersers_set[ibeam] = true;
     latency_monitors_pre [ibeam] = latency_pre;
     latency_monitors_post[ibeam] = latency_post;
+    spline_detrenders[ibeam] = spline_det;
+    poly_detrenders[ibeam] = poly_det;
 }
 
 void l1_server::join_all_threads()
