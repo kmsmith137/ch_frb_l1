@@ -38,6 +38,7 @@ int main(int argc, char **argv)
 
     // HACK
     bool send_eos=false;
+    //bool send_eos=true;
     
     vector<string> datafiles;
     for (int a=3; a<argc; a++) {

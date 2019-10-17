@@ -36,7 +36,7 @@ class AssembledChunk(object):
             assert(len(c) == 17)
         if version == 2:
             assert((len(c) == 21)
-                   or (len(c) == 27))
+                   or (len(c) == 29))
         self.version = version
         # print('version', version)
         compressed = c[2]
@@ -94,15 +94,19 @@ class AssembledChunk(object):
         nf = self.data.shape[1]
         self.has_detrend_t = False
         self.has_detrend_f = False
+        self.detrend_t_type = None
+        self.detrend_f_type = None
         self.detrend_t = None
         self.detrend_f = None
-        if version == 2 and (len(c) >= 27):
+        if version == 2 and (len(c) >= 29):
+            self.detrend_t_type = c[21]
+            self.detrend_f_type = c[25]
             self.has_detrend_t = c[22]
-            self.has_detrend_f = c[25]
-            d = c[23]
+            self.has_detrend_f = c[26]
+            d = c[24]
             if len(d):
                 self.detrend_t = np.fromstring(d, dtype='<f4').reshape((-1, self.nt))
-            d = c[26]
+            d = c[28]
             if len(d):
                 self.detrend_f = np.fromstring(d, dtype='<f4').reshape((-1, nf))
 
@@ -115,11 +119,11 @@ class AssembledChunk(object):
         else:
             rfistr = 'no'
         if self.detrend_t is not None:
-            d_t = 'yes, ' + str(self.detrend_t.shape)
+            d_t = 'yes, ' + self.detrend_t_type + ', ' + str(self.detrend_t.shape)
         else:
             d_t = 'no'
         if self.detrend_f is not None:
-            d_f = 'yes, ' + str(self.detrend_f.shape)
+            d_f = 'yes, ' + self.detrend_f_type + ', ' + str(self.detrend_f.shape)
         else:
             d_f = 'no'
             

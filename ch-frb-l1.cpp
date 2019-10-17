@@ -677,6 +677,7 @@ public:
                                sub.data + j*sub.stride,
                                nt_chunk * sizeof(float));
                     }
+                    chunk->detrend_t_type = "SPLINE";
                     chunk->has_detrend_t = true;
                     chlog("Saved time-axis detrending for chunk!");
                 }
