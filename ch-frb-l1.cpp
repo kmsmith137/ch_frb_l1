@@ -598,7 +598,8 @@ void dedispersion_thread_context::chunk_finished_rfi(std::shared_ptr<ch_frb_io::
 }
 
 
-// A wi_transform that calls a specified hook function
+// A wi_transform that calls a hook function; we add one of these after the RFI chain
+// (including detrenders) to fill in additional fields in the assembled_chunks.
 class chunk_updater : public rf_pipelines::chime_wi_transform {
 public:
     const dedispersion_thread_context* dedisp_ctx;
@@ -755,23 +756,11 @@ void dedispersion_thread_context::_thread_main() const
     auto chunker = make_shared<chunk_updater>(this);
     chunker->set_chime_stream(this->sp, beam_id);
 
-    /*
-     std::function<void(std::shared_ptr<ch_frb_io::assembled_chunk> chunk,
-     ssize_t pos,
-     int beam_id)> cb = std::bind(&dedispersion_thread_context::chunk_finished_rfi, this,
-     std::placeholders::_1,
-     std::placeholders::_2,
-     std::placeholders::_3);
-     chunk_updater->cb = cb;
-     */
-    
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);
     pipeline->add(injector_transform);
     pipeline->add(rfi_chain);
-
     pipeline->add(chunker);
-    
     if (!config.rflag)
         pipeline->add(bonsai_transform);
 
@@ -785,9 +774,8 @@ void dedispersion_thread_context::_thread_main() const
     };
     rf_pipelines::visit_pipeline(find_last_transform, rfi_chain);
 
-    chlog("Dedispersion thread: calling set_bonsai...");
+    // Pass our pipeline objects out to the main thread
     set_bonsai(ibeam, dedisperser, latency1, latency2, spline_det, poly_det);
-    chlog("set_bonsai finished.");
 
     rf_pipelines::run_params rparams;
     rparams.outdir = "";  // disables
