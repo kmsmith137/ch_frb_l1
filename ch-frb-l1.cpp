@@ -656,6 +656,7 @@ class chunk_updater : public rf_pipelines::chime_wi_transform {
 public:
     const dedispersion_thread_context* dedisp_ctx;
     shared_ptr<rf_pipelines::ring_buffer> spline_rb;
+    shared_ptr<rf_pipelines::ring_buffer> poly_rb;
     
     chunk_updater(const dedispersion_thread_context* d) :
         chime_wi_transform("chunk_updater"),
@@ -690,6 +691,10 @@ public:
         spline_rb = get_buffer(rb_dict, "SPLINE_DETRENDER");
         if (spline_rb) {
             chlog("Found SPLINE_DETRENDER ring buffer: " << spline_rb->get_info());
+        }
+        poly_rb = get_buffer(rb_dict, "POLYNOMIAL_DETRENDER");
+        if (poly_rb) {
+            chlog("Found POLYNOMIAL_DETRENDER ring buffer: " << poly_rb->get_info());
         }
     }
 };
