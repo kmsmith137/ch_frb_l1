@@ -35,7 +35,8 @@ class AssembledChunk(object):
         if version == 1:
             assert(len(c) == 17)
         if version == 2:
-            assert(len(c) == 21)
+            assert((len(c) == 21)
+                   or (len(c) == 27))
         self.version = version
         # print('version', version)
         compressed = c[2]
@@ -89,6 +90,22 @@ class AssembledChunk(object):
         self.data = np.frombuffer(data, dtype=np.uint8)
         self.data = self.data.reshape((-1, self.nt))
 
+        # version 2b: extra args
+        nf = self.data.shape[1]
+        self.has_detrend_t = False
+        self.has_detrend_f = False
+        self.detrend_t = None
+        self.detrend_f = None
+        if version == 2 and (len(c) >= 27):
+            self.has_detrend_t = c[22]
+            self.has_detrend_f = c[25]
+            d = c[23]
+            if len(d):
+                self.detrend_t = np.fromstring(d, dtype='<f4').reshape((-1, self.nt))
+            d = c[26]
+            if len(d):
+                self.detrend_f = np.fromstring(d, dtype='<f4').reshape((-1, nf))
+
     def __str__(self):
         if self.has_rfi_mask:
             h,w = self.rfi_mask.shape
@@ -97,8 +114,17 @@ class AssembledChunk(object):
                       (self.nrfifreq, (100. * masked) / float(h*w)))
         else:
             rfistr = 'no'
-        return ('AssembledChunk: beam %i, nt %i, fpga0 %i, rfi %s' %
-                (self.beam, self.nt, self.fpga0, rfistr))
+        if self.detrend_t is not None:
+            d_t = 'yes, ' + str(self.detrend_t.shape)
+        else:
+            d_t = 'no'
+        if self.detrend_f is not None:
+            d_f = 'yes, ' + str(self.detrend_f.shape)
+        else:
+            d_f = 'no'
+            
+        return ('AssembledChunk: beam %i, nt %i, fpga0 %i, rfi %s, detrending t: %s, f: %s' %
+                (self.beam, self.nt, self.fpga0, rfistr, d_t, d_f))
 
     def decode(self):
         # Returns (intensities,weights) as floating-point
@@ -1048,6 +1074,8 @@ if __name__ == '__main__':
                         help='Inject a simpulse pulse')
     parser.add_argument('--masked-freqs', action='store_true', default=False,
                         help='Send request for masked frequencies history')
+    parser.add_argument('--variances', action='store_true', default=False,
+                        help='Send request for Bonsai variances')
     parser.add_argument('--timeout', default=10000, type=float,
                         help='Set timeout (in milliseconds) for all RPCs.  -1 to wait forever.')
     parser.add_argument('ports', nargs='*',

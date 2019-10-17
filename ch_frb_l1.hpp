@@ -68,6 +68,10 @@ struct l1_config
     // Must match the number of downsampled frequencies in the RFI chain JSON file.  (probably 1024)
     int nrfifreq = 0;
 
+    // Detrenders: number of coefficients
+    int n_detrend_t = 0;
+    int n_detrend_f = 0;
+
     // If slow_kernels=false (the default), the L1 server will use fast assembly language kernels
     // for its packet processing.  If slow_kernels=true, then it will use reference kernels which
     // are much slower.

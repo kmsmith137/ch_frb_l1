@@ -28,6 +28,7 @@
 #include <ifaddrs.h>
 
 #include <curl/curl.h>
+#include <json/json.h>
 
 #include "ch_frb_l1.hpp"
 #include "chlog.hpp"
@@ -90,6 +91,43 @@ static string convert_ip_address(const string& addr, const unordered_map<string,
     return val->second;
 }
 
+// from rf_pipelines/json_utils.cpp
+static const Json::Value &get_member(const Json::Value &j, const string &k)
+{
+    if (!j.isObject())
+	throw runtime_error("rf_pipelines: json value was not an Object as expected");
+    if (!j.isMember(k))
+	throw runtime_error("rf_pipelines: json field '" + k + "' was expected but not found");
+    return j[k];
+}
+static int int_from_json(const Json::Value &j, const string &k)
+{
+    const Json::Value &v = get_member(j, k);
+    if (!v.isIntegral())
+	throw runtime_error("rf_pipelines: json field '" + k + "' was not an integer as expected");
+    return v.asInt();
+}
+
+static shared_ptr<rf_pipelines::spline_detrender>
+find_spline_detrender(const shared_ptr<rf_pipelines::pipeline_object> &p) {
+    shared_ptr<rf_pipelines::spline_detrender> spline_det;
+    auto find_detrenders = [&spline_det]
+	(const shared_ptr<rf_pipelines::pipeline_object> &p, int depth) {
+        if (depth != 1)
+            return;
+        if (p->class_name == "spline_detrender") {
+            auto det = dynamic_pointer_cast<rf_pipelines::spline_detrender>(p);
+            if (!det) {
+                chlog("Failed to cast a spline_detrender!");
+                return;
+            }
+            spline_det = det;
+            return;
+        }
+    };
+    rf_pipelines::visit_pipeline(find_detrenders, p);
+    return spline_det;
+}
 
 // FIXME: split this monster constructor into multiple functions for readability?
 l1_config::l1_config(int argc, const char **argv)
@@ -164,7 +202,21 @@ l1_config::l1_config(int argc, const char **argv)
 	// FIXME bind() here?
 	auto rfi_chain = rf_pipelines::pipeline_object::from_json(rfi_transform_chain_json);
 
-	// Pretty-print rfi_chain
+        // Find detrenders to set sizes of arrays saved in assembled_chunks!
+        shared_ptr<rf_pipelines::spline_detrender> spline_det = find_spline_detrender(rfi_chain);
+        if (spline_det) {
+            auto j = spline_det->jsonize();
+            int nbins = int_from_json(j, "nbins");
+            chlog("Spline detrender: nbins " << nbins);
+            // FIXME -- check nt_chunk and axis?
+            // save the number of detrender terms
+            // HACK -- this number of terms from number of spline bins is just
+            // hard-coded...
+            this->n_detrend_t = (nbins+1)*2;
+        }
+        
+
+        // Pretty-print rfi_chain
 	if (l1_verbosity >= 2) {
 	    cout << rfi_config_filename << ": transforms:\n";
             rf_pipelines::print_pipeline(rfi_chain);
@@ -402,7 +454,7 @@ l1_config::l1_config(int argc, const char **argv)
     //   - total_staging_chunks (derived from config param 'write_staging_area_gb')
 
     int nupfreq = xdiv(nfreq, nfreq_c);
-    this->nbytes_per_memory_slab = ch_frb_io::assembled_chunk::get_memory_slab_size(nupfreq, nt_per_packet, this->nrfifreq);
+    this->nbytes_per_memory_slab = ch_frb_io::assembled_chunk::get_memory_slab_size(nupfreq, nt_per_packet, this->nrfifreq, this->n_detrend_t, this->n_detrend_f);
 
     int live_chunks_per_beam = 2;   // "active" chunks
     live_chunks_per_beam += assembled_ringbuf_nchunks;  // assembled_ringbuf
@@ -603,7 +655,8 @@ void dedispersion_thread_context::chunk_finished_rfi(std::shared_ptr<ch_frb_io::
 class chunk_updater : public rf_pipelines::chime_wi_transform {
 public:
     const dedispersion_thread_context* dedisp_ctx;
-
+    shared_ptr<rf_pipelines::ring_buffer> spline_rb;
+    
     chunk_updater(const dedispersion_thread_context* d) :
         chime_wi_transform("chunk_updater"),
         dedisp_ctx(d) {
@@ -616,13 +669,29 @@ public:
             chunk = assembled_chunk_for_pos(pos);
             if (chunk) {
                 cout << "chunk_updater: found chunk for pos " << pos << " FPGA " << chunk->fpga_begin << endl;
+                if (spline_rb) {
+                    chlog("spline_rb valid pos region: " << spline_rb->get_first_valid_pos() << " to " << spline_rb->get_last_valid_pos());
+                    rf_pipelines::ring_buffer_subarray sub(spline_rb, pos, pos+nt_chunk, rf_pipelines::ring_buffer::ACCESS_READ);
+                    for (int j=0; j<spline_rb->csize; j++) {
+                        memcpy(chunk->detrend_params_t + j*nt_chunk,
+                               sub.data + j*sub.stride,
+                               nt_chunk * sizeof(float));
+                    }
+                    chunk->has_detrend_t = true;
+                    chlog("Saved time-axis detrending for chunk!");
+                }
                 dedisp_ctx->chunk_finished_rfi(chunk, pos, chime_beam_id);
             }
         }
     }
+    virtual void _bind_transform_rb(rf_pipelines::ring_buffer_dict &rb_dict) override {
+        chlog("chunk_updater: bind_transform_rb");
+        spline_rb = get_buffer(rb_dict, "SPLINE_DETRENDER");
+        if (spline_rb) {
+            chlog("Found SPLINE_DETRENDER ring buffer: " << spline_rb->get_info());
+        }
+    }
 };
-
-
 
 // Note: only called if config.tflag == false.
 void dedispersion_thread_context::_thread_main() const
@@ -723,9 +792,10 @@ void dedispersion_thread_context::_thread_main() const
             return;
         }
     };
-
     rf_pipelines::visit_pipeline(find_detrenders, rfi_chain);
 
+    // spline_det = find_spline_detrender(rfi_chain);
+    
     if (!spline_det) {
         chlog("Failed to find spline_detrender in pipeline!");
     } else {
@@ -1109,6 +1179,8 @@ void l1_server::make_input_streams()
 	ini_params.beam_ids = vector<int> (beam_id0, beam_id1);
 	ini_params.nupfreq = xdiv(config.nfreq, ch_frb_io::constants::nfreq_coarse_tot);
         ini_params.nrfifreq = config.nrfifreq;
+        ini_params.n_detrend_t = config.n_detrend_t;
+        ini_params.n_detrend_f = config.n_detrend_f;
 	ini_params.nt_per_packet = config.nt_per_packet;
 	ini_params.fpga_counts_per_sample = config.fpga_counts_per_sample;
 	ini_params.nt_align = config.nt_align;
