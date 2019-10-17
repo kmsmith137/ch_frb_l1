@@ -613,10 +613,11 @@ public:
         shared_ptr<ch_frb_io::assembled_chunk> chunk;
         if (chime_stream) {
             chunk = assembled_chunk_for_pos(pos);
-            if (chunk)
+            if (chunk) {
                 cout << "chunk_updater: found chunk for pos " << pos << " FPGA " << chunk->fpga_begin << endl;
+                dedisp_ctx->chunk_finished_rfi(chunk, pos, chime_beam_id);
+            }
         }
-        dedisp_ctx->chunk_finished_rfi(chunk, pos, chime_beam_id);
     }
 };
 
