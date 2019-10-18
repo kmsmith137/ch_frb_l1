@@ -33,7 +33,7 @@ else
 endif
 
 #CPP += -I. -I$(INCDIR) -I$(HDF5_INC_DIR)
-CPP_CFLAGS := -I. -I$(INCDIR) -I$(HDF5_INC_DIR) -I$(PYTHON_INCDIR) -I$(NUMPY_INCDIR)
+CPP_CFLAGS := -I. -I$(INCDIR) -I$(HDF5_INC_DIR) -I$(PYTHON_INCDIR) -I$(NUMPY_INCDIR) -DHAVE_BONSAI
 
 # Any C++ flags which should only be specified when linking 
 # Don't forget to put -L. and -L$(LIBDIR) on the command line (in this order)

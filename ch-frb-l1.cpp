@@ -758,6 +758,8 @@ void dedispersion_thread_context::_thread_main() const
     shared_ptr<bonsai::dedisperser> dedisperser;
     shared_ptr<bonsai::global_max_tracker> max_tracker;
 
+    shared_ptr<rf_pipelines::mask_filler> mask_filler;
+    
     if (!config.rflag) {
         bonsai::dedisperser::initializer ini_params;
         ini_params.fill_rfi_mask = true;                   // very important for real-time analysis!
@@ -778,7 +780,10 @@ void dedispersion_thread_context::_thread_main() const
             // seems to fix it.
         }
 
-        dedisperser = make_shared<bonsai::dedisperser> (bonsai_config, ini_params);  // not config.bonsai_config
+        mask_filler = make_shared<rf_pipelines::mask_filler>(bonsai_config);
+
+        dedisperser = make_shared<bonsai::dedisperser> (bonsai_config, ini_params,
+                                                        mask_filler);  // not config.bonsai_config
 
         // Trigger processors.
 
@@ -873,9 +878,11 @@ void dedispersion_thread_context::_thread_main() const
     pipeline->add(injector_transform);
     pipeline->add(rfi_chain);
     pipeline->add(chunker);
-    if (!config.rflag)
+    if (!config.rflag) {
+        pipeline->add(mask_filler);
         pipeline->add(bonsai_transform);
-
+    }
+    
     // Find pipeline stages to use for latency monitoring: 'stream' input, and
     // the last step in the RFI chain
     shared_ptr<rf_pipelines::pipeline_object> latency1 = stream;
