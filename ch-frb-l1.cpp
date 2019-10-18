@@ -714,7 +714,7 @@ public:
                     rf_pipelines::ring_buffer_subarray sub(poly_rb, pos, pos+nt_chunk, rf_pipelines::ring_buffer::ACCESS_READ);
                     chlog("csize: " << poly_rb->csize);
                     memcpy(chunk->detrend_params_f, sub.data, poly_rb->csize * sizeof(float));
-                    chunk->detrend_t_type = "POLYNOMIAL";
+                    chunk->detrend_f_type = "POLYNOMIAL";
                     chunk->has_detrend_f = true;
                     chlog("Saved freq-axis detrending for chunk!");
                 }

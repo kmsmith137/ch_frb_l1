@@ -91,7 +91,7 @@ class AssembledChunk(object):
         self.data = self.data.reshape((-1, self.nt))
 
         # version 2b: extra args
-        nf = self.data.shape[1]
+        nf = self.data.shape[0]
         self.has_detrend_t = False
         self.has_detrend_f = False
         self.detrend_t_type = None
