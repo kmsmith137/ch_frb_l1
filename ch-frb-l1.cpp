@@ -129,6 +129,22 @@ find_spline_detrender(const shared_ptr<rf_pipelines::pipeline_object> &p) {
     return spline_det;
 }
 
+static shared_ptr<rf_pipelines::pipeline_object>
+find_poly_detrender(const shared_ptr<rf_pipelines::pipeline_object> &p) {
+    shared_ptr<rf_pipelines::pipeline_object> poly_det;
+    auto find_detrenders = [&poly_det]
+	(const shared_ptr<rf_pipelines::pipeline_object> &p, int depth) {
+        if (depth != 1)
+            return;
+        if (p->class_name == "polynomial_detrender") {
+            poly_det = p;
+            return;
+        }
+    };
+    rf_pipelines::visit_pipeline(find_detrenders, p);
+    return poly_det;
+}
+
 // FIXME: split this monster constructor into multiple functions for readability?
 l1_config::l1_config(int argc, const char **argv)
 {
@@ -214,7 +230,18 @@ l1_config::l1_config(int argc, const char **argv)
             // hard-coded...
             this->n_detrend_t = (nbins+1)*2;
         }
-        
+
+        shared_ptr<rf_pipelines::pipeline_object> poly_det = find_poly_detrender(rfi_chain);
+        if (poly_det) {
+            auto j = poly_det->jsonize();
+            int deg = int_from_json(j, "polydeg");
+            chlog("Polynomial detrender: degree " << deg);
+            // FIXME -- check nt_chunk and axis?
+            // save the number of detrender terms
+            // HACK -- this number of terms from number of spline bins is just
+            // hard-coded...
+            this->n_detrend_f = deg+1;
+        }
 
         // Pretty-print rfi_chain
 	if (l1_verbosity >= 2) {
@@ -670,7 +697,7 @@ public:
             chunk = assembled_chunk_for_pos(pos);
             if (chunk) {
                 cout << "chunk_updater: found chunk for pos " << pos << " FPGA " << chunk->fpga_begin << endl;
-                if (spline_rb) {
+                if (spline_rb && chunk->detrend_params_t) {
                     chlog("spline_rb valid pos region: " << spline_rb->get_first_valid_pos() << " to " << spline_rb->get_last_valid_pos());
                     rf_pipelines::ring_buffer_subarray sub(spline_rb, pos, pos+nt_chunk, rf_pipelines::ring_buffer::ACCESS_READ);
                     for (int j=0; j<spline_rb->csize; j++) {
@@ -681,6 +708,15 @@ public:
                     chunk->detrend_t_type = "SPLINE";
                     chunk->has_detrend_t = true;
                     chlog("Saved time-axis detrending for chunk!");
+                }
+                if (poly_rb && chunk->detrend_params_f) {
+                    chlog("poly_rb valid pos region: " << poly_rb->get_first_valid_pos() << " to " << poly_rb->get_last_valid_pos());
+                    rf_pipelines::ring_buffer_subarray sub(poly_rb, pos, pos+nt_chunk, rf_pipelines::ring_buffer::ACCESS_READ);
+                    chlog("csize: " << poly_rb->csize);
+                    memcpy(chunk->detrend_params_f, sub.data, poly_rb->csize * sizeof(float));
+                    chunk->detrend_t_type = "POLYNOMIAL";
+                    chunk->has_detrend_f = true;
+                    chlog("Saved freq-axis detrending for chunk!");
                 }
                 dedisp_ctx->chunk_finished_rfi(chunk, pos, chime_beam_id);
             }
