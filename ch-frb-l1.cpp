@@ -684,6 +684,8 @@ public:
     const dedispersion_thread_context* dedisp_ctx;
     shared_ptr<rf_pipelines::ring_buffer> spline_rb;
     shared_ptr<rf_pipelines::ring_buffer> poly_rb;
+    shared_ptr<rf_pipelines::ring_buffer> weight_rb;
+    shared_ptr<rf_pipelines::ring_buffer> var_rb;
     
     chunk_updater(const dedispersion_thread_context* d) :
         chime_wi_transform("chunk_updater"),
@@ -718,6 +720,22 @@ public:
                     chunk->has_detrend_f = true;
                     chlog("Saved freq-axis detrending for chunk!");
                 }
+                // FIXME    && chunk->running_weights
+                if (weight_rb) {
+                    chlog("weight_rb valid pos region: " << weight_rb->get_first_valid_pos() << " to " << weight_rb->get_last_valid_pos());
+                    // FIXME -- interpolate like eval_weighted_variance does?
+                    ssize_t nds = weight_rb->nds;
+                    ssize_t wpos0 = (pos / nds) * nds;
+                    ssize_t wpos1 = wpos0 + nds;
+                    rf_pipelines::ring_buffer_subarray sub(weight_rb, wpos0, wpos1, rf_pipelines::ring_buffer::ACCESS_READ);
+                    chlog("csize: " << weight_rb->csize);
+                    //memcpy(chunk->detrend_params_f, sub.data, poly_rb->csize * sizeof(float));
+                    //chunk->has_detrend_f = true;
+                    chlog("Saved running weights for chunk!");
+                }
+                // FIXME    && chunk->running_variances
+                if (var_rb) {
+                }
                 dedisp_ctx->chunk_finished_rfi(chunk, pos, chime_beam_id);
             }
         }
@@ -731,6 +749,16 @@ public:
         poly_rb = get_buffer(rb_dict, "POLYNOMIAL_DETRENDER");
         if (poly_rb) {
             chlog("Found POLYNOMIAL_DETRENDER ring buffer: " << poly_rb->get_info());
+        }
+        weight_rb = get_buffer(rb_dict, "RUNNING_WEIGHT");
+        if (weight_rb) {
+            auto j = weight_rb->get_info();
+            chlog("Found RUNNING_WEIGHT ring buffer: " << j);
+        }
+        var_rb = get_buffer(rb_dict, "RUNNING_VARIANCE");
+        if (var_rb) {
+            auto j = var_rb->get_info();
+            chlog("Found RUNNING_VARIANCE ring buffer: " << j);
         }
     }
 };
@@ -877,11 +905,11 @@ void dedispersion_thread_context::_thread_main() const
     pipeline->add(stream);
     pipeline->add(injector_transform);
     pipeline->add(rfi_chain);
-    pipeline->add(chunker);
-    if (!config.rflag) {
+    if (!config.rflag)
         pipeline->add(mask_filler);
+    pipeline->add(chunker);
+    if (!config.rflag)
         pipeline->add(bonsai_transform);
-    }
     
     // Find pipeline stages to use for latency monitoring: 'stream' input, and
     // the last step in the RFI chain
