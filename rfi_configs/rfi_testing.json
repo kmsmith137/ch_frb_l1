@@ -68,7 +68,7 @@
             "axis": "AXIS_TIME"
         }, 
         {
-            "class_name": "spline_detrender", 
+            "class_name": "chime_spline_detrender",
             "epsilon": 0.0003, 
             "nt_chunk": 1024,
             "nbins": 6, 

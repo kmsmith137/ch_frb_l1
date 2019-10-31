@@ -108,17 +108,35 @@ static int int_from_json(const Json::Value &j, const string &k)
     return v.asInt();
 }
 
-static shared_ptr<rf_pipelines::spline_detrender>
+string string_from_json(const Json::Value &j, const string &k)
+{
+    const Json::Value &v = get_member(j, k);
+
+    if (!v.isString())
+	throw runtime_error("rf_pipelines: json field '" + k + "' was not a string as expected");
+
+    return v.asString();
+}
+rf_kernels::axis_type axis_type_from_json(const Json::Value &j, const string &k)
+{
+    string s = string_from_json(j, k);
+    return rf_kernels::axis_type_from_string(s, "json field");
+}
+
+//static shared_ptr<rf_pipelines::spline_detrender>
+static shared_ptr<rf_pipelines::chime_wi_transform>
 find_spline_detrender(const shared_ptr<rf_pipelines::pipeline_object> &p) {
-    shared_ptr<rf_pipelines::spline_detrender> spline_det;
+    //shared_ptr<rf_pipelines::spline_detrender> spline_det;
+    shared_ptr<rf_pipelines::chime_wi_transform> spline_det;
     auto find_detrenders = [&spline_det]
 	(const shared_ptr<rf_pipelines::pipeline_object> &p, int depth) {
         if (depth != 1)
             return;
-        if (p->class_name == "spline_detrender") {
-            auto det = dynamic_pointer_cast<rf_pipelines::spline_detrender>(p);
+        if (p->class_name == "chime_spline_detrender") {
+            //auto det = dynamic_pointer_cast<rf_pipelines::spline_detrender>(p);
+            auto det = dynamic_pointer_cast<rf_pipelines::chime_wi_transform>(p);
             if (!det) {
-                chlog("Failed to cast a spline_detrender!");
+                chlog("Failed to cast a chime_spline_detrender!");
                 return;
             }
             spline_det = det;
@@ -219,18 +237,23 @@ l1_config::l1_config(int argc, const char **argv)
 	auto rfi_chain = rf_pipelines::pipeline_object::from_json(rfi_transform_chain_json);
 
         // Find detrenders to set sizes of arrays saved in assembled_chunks!
-        shared_ptr<rf_pipelines::spline_detrender> spline_det = find_spline_detrender(rfi_chain);
-        if (spline_det) {
-            auto j = spline_det->jsonize();
-            int nbins = int_from_json(j, "nbins");
-            chlog("Spline detrender: nbins " << nbins);
-            // FIXME -- check nt_chunk and axis?
-            // save the number of detrender terms
-            // HACK -- this number of terms from number of spline bins is just
-            // hard-coded...
-            this->n_detrend_t = (nbins+1)*2;
-        }
+        shared_ptr<rf_pipelines::chime_wi_transform> spline_det = find_spline_detrender(rfi_chain);
+        if (!spline_det)
+            throw runtime_error("ch-frb-l1: failed to find chime_spline_detrender in pipeline");
+        if (spline_det->nt_chunk != ch_frb_io::constants::nt_per_assembled_chunk)
+            throw runtime_error("ch-frb-l1: expected chime_spline_detrender to have nt_chunk = " + to_string(ch_frb_io::constants::nt_per_assembled_chunk));
+        auto j = spline_det->jsonize();
+        //if (spline_det->axis != rf_kernels::AXIS_FREQ)
+        //int ax = int_from_json(j, "axis");
+        rf_kernels::axis_type axis = axis_type_from_json(j, "axis");
+        if (axis != rf_kernels::AXIS_FREQ)
+            throw runtime_error("ch-frb-l1: expected chime_spline_detrender to operate along FREQUENCY axis");
+        int nbins = int_from_json(j, "nbins");
+        chlog("Spline detrender: nbins " << nbins);
+        // save the number of detrender terms
+        this->n_detrend_f = (nbins+1)*2;
 
+        // FIXME
         shared_ptr<rf_pipelines::pipeline_object> poly_det = find_poly_detrender(rfi_chain);
         if (poly_det) {
             auto j = poly_det->jsonize();
@@ -240,7 +263,7 @@ l1_config::l1_config(int argc, const char **argv)
             // save the number of detrender terms
             // HACK -- this number of terms from number of spline bins is just
             // hard-coded...
-            this->n_detrend_f = deg+1;
+            this->n_detrend_t = deg+1;
         }
 
         // Pretty-print rfi_chain
@@ -594,9 +617,9 @@ struct dedispersion_thread_context {
     shared_ptr<mask_stats_map> ms_map;
     std::function<void(int, shared_ptr<const bonsai::dedisperser>,
                        shared_ptr<const rf_pipelines::pipeline_object> latency_pre,
-                       shared_ptr<const rf_pipelines::pipeline_object> latency_post,
-                       shared_ptr<const rf_pipelines::spline_detrender> spline_det,
-                       shared_ptr<const rf_pipelines::polynomial_detrender> poly_det
+                       shared_ptr<const rf_pipelines::pipeline_object> latency_post
+                       //shared_ptr<const rf_pipelines::spline_detrender> spline_det,
+                       //shared_ptr<const rf_pipelines::polynomial_detrender> poly_det
                        )> set_bonsai;
     shared_ptr<bonsai::trigger_pipe> l1b_subprocess;   // warning: can be empty pointer!
     shared_ptr<rf_pipelines::intensity_injector> injector_transform;
@@ -677,6 +700,7 @@ void dedispersion_thread_context::chunk_finished_rfi(std::shared_ptr<ch_frb_io::
 }
 
 
+/*
 // A wi_transform that calls a hook function; we add one of these after the RFI chain
 // (including detrenders) to fill in additional fields in the assembled_chunks.
 class chunk_updater : public rf_pipelines::chime_wi_transform {
@@ -763,6 +787,8 @@ public:
     }
 };
 
+ */
+
 // Note: only called if config.tflag == false.
 void dedispersion_thread_context::_thread_main() const
 {
@@ -836,60 +862,14 @@ void dedispersion_thread_context::_thread_main() const
     // can tell them to ring-buffer their results for RPC retrieval,
     // and save their results in the assembled_chunks.
 
-    shared_ptr<rf_pipelines::spline_detrender> spline_det;
-    shared_ptr<rf_pipelines::polynomial_detrender> poly_det;
+    //shared_ptr<rf_pipelines::spline_detrender> spline_det;
+    shared_ptr<rf_pipelines::chime_wi_transform> spline_det;
+    shared_ptr<rf_pipelines::chime_wi_transform> poly_det;
 
-    auto find_detrenders = [&spline_det, &poly_det]
-	(const shared_ptr<rf_pipelines::pipeline_object> &p, int depth)
-    {
-        // HACK -- we only want the ones at the end of the full-resolution pipeline!
-        //chlog("finding detrenders: depth=" << depth << ", pipeline obj type " << p->class_name);
-        if (depth != 1)
-            return;
-        if (p->class_name == "spline_detrender") {
-            auto det = dynamic_pointer_cast<rf_pipelines::spline_detrender>(p);
-            if (!det) {
-                chlog("Failed to cast a spline_detrender!");
-                return;
-            }
-            spline_det = det;
-            return;
-        }
-        if (p->class_name == "polynomial_detrender") {
-            /*
-             auto det = dynamic_pointer_cast<rf_pipelines::polynomial_detrender>(p);
-             if (!det) {
-             chlog("Failed to cast a polynomial_detrender!");
-             return;
-             }
-             poly_det = det;
-             */
-            return;
-        }
-    };
-    rf_pipelines::visit_pipeline(find_detrenders, rfi_chain);
+    spline_det = find_spline_detrender(rfi_chain);
+    // When we parsed the RFI chain on startup, we asserted that the spline detrender exists, etc.
+    spline_det->set_chime_stream(this->sp, beam_id);
 
-    // spline_det = find_spline_detrender(rfi_chain);
-    
-    if (!spline_det) {
-        chlog("Failed to find spline_detrender in pipeline!");
-    } else {
-        // FIXME make config entry
-        //spline_det->enable_ring_buffer(300);
-        //spline_det->set_chime_stream(this->sp, beam_id);
-
-        // FIXME make config entry
-        spline_det->set_ringbuffer_size(10 * 1024);
-        /*
-         rf_pipelines::spline_detrender::runtime_attrs attrs;
-         attrs.ringbuf_nhistory = 300;
-         attrs.chime_beam_id = beam_id;
-         attrs.chime_stream = this->sp;
-         spline_det->set_runtime_attrs(attrs);
-         */
-        // FIXME -- fetch ringbuf and put it where the RPC thread can see it.
-	//this->ms_map->put(beam_id, mask_counters[i]->where, mask_counters[i]->ringbuf);
-    }
     if (!poly_det) {
         chlog("Failed to find polynomial_detrender in pipeline!");
     } else {
@@ -898,16 +878,18 @@ void dedispersion_thread_context::_thread_main() const
     
     // ***********************************************************************
 
-    auto chunker = make_shared<chunk_updater>(this);
-    chunker->set_chime_stream(this->sp, beam_id);
-
+    /*
+     auto chunker = make_shared<chunk_updater>(this);
+     chunker->set_chime_stream(this->sp, beam_id);
+     */
+    
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);
     pipeline->add(injector_transform);
     pipeline->add(rfi_chain);
     if (!config.rflag)
         pipeline->add(mask_filler);
-    pipeline->add(chunker);
+    //pipeline->add(chunker);
     if (!config.rflag)
         pipeline->add(bonsai_transform);
     
@@ -922,7 +904,7 @@ void dedispersion_thread_context::_thread_main() const
     rf_pipelines::visit_pipeline(find_last_transform, rfi_chain);
 
     // Pass our pipeline objects out to the main thread
-    set_bonsai(ibeam, dedisperser, latency1, latency2, spline_det, poly_det);
+    set_bonsai(ibeam, dedisperser, latency1, latency2); //, spline_det, poly_det);
 
     rf_pipelines::run_params rparams;
     rparams.outdir = "";  // disables
@@ -1422,19 +1404,20 @@ void l1_server::spawn_dedispersion_threads()
     bonsai_dedispersers_set.resize(config.nbeams, false);
     latency_monitors_pre.resize(config.nbeams);
     latency_monitors_post.resize(config.nbeams);
-    spline_detrenders.resize(config.nbeams);
-    poly_detrenders.resize(config.nbeams);
+    //spline_detrenders.resize(config.nbeams);
+    //poly_detrenders.resize(config.nbeams);
 
     for (int ibeam = 0; ibeam < config.nbeams; ibeam++)
         this->injectors[ibeam] = rf_pipelines::make_intensity_injector(ch_frb_io::constants::nt_per_assembled_chunk);
     
     std::function<void(int, shared_ptr<const bonsai::dedisperser>,
                        shared_ptr<const rf_pipelines::pipeline_object>,
-                       shared_ptr<const rf_pipelines::pipeline_object>,
-                       shared_ptr<const rf_pipelines::spline_detrender>,
-                       shared_ptr<const rf_pipelines::polynomial_detrender>)> set_bonsai =
+                       shared_ptr<const rf_pipelines::pipeline_object>
+                       //shared_ptr<const rf_pipelines::spline_detrender>,
+                       //shared_ptr<const rf_pipelines::polynomial_detrender>
+                       )> set_bonsai =
         std::bind(&l1_server::set_bonsai, this, std::placeholders::_1, std::placeholders::_2,
-                  std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6);
+                  std::placeholders::_3, std::placeholders::_4);//, std::placeholders::_5, std::placeholders::_6);
 
     for (int ibeam = 0; ibeam < config.nbeams; ibeam++) {
 	int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
@@ -1465,17 +1448,18 @@ void l1_server::spawn_dedispersion_threads()
 void l1_server::set_bonsai(int ibeam,
                            shared_ptr<const bonsai::dedisperser> bonsai,
                            shared_ptr<const rf_pipelines::pipeline_object> latency_pre,
-                           shared_ptr<const rf_pipelines::pipeline_object> latency_post,
-                           shared_ptr<const rf_pipelines::spline_detrender> spline_det,
-                           shared_ptr<const rf_pipelines::polynomial_detrender> poly_det) {
+                           shared_ptr<const rf_pipelines::pipeline_object> latency_post
+                           //shared_ptr<const rf_pipelines::spline_detrender> spline_det,
+                           //shared_ptr<const rf_pipelines::polynomial_detrender> poly_det
+                           ) {
     chlog("set_bonsai(" << ibeam << ")");
     ulock u(bonsai_dedisp_mutex);
     bonsai_dedispersers[ibeam] = bonsai;
     bonsai_dedispersers_set[ibeam] = true;
     latency_monitors_pre [ibeam] = latency_pre;
     latency_monitors_post[ibeam] = latency_post;
-    spline_detrenders[ibeam] = spline_det;
-    poly_detrenders[ibeam] = poly_det;
+    //spline_detrenders[ibeam] = spline_det;
+    //poly_detrenders[ibeam] = poly_det;
 }
 
 void l1_server::join_all_threads()

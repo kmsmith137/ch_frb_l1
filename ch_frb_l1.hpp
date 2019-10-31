@@ -216,8 +216,8 @@ struct l1_server {
 
     std::vector<std::shared_ptr<const rf_pipelines::pipeline_object> > latency_monitors_pre;
     std::vector<std::shared_ptr<const rf_pipelines::pipeline_object> > latency_monitors_post;
-    std::vector<std::shared_ptr<const rf_pipelines::spline_detrender> > spline_detrenders;
-    std::vector<std::shared_ptr<const rf_pipelines::polynomial_detrender> > poly_detrenders;
+    //std::vector<std::shared_ptr<const rf_pipelines::spline_detrender> > spline_detrenders;
+    //std::vector<std::shared_ptr<const rf_pipelines::polynomial_detrender> > poly_detrenders;
 
     // The constructor reads the configuration files, does a lot of sanity checks,
     // but does not initialize any "heavyweight" data structures.
@@ -246,9 +246,9 @@ struct l1_server {
     // Called-back by dedispersion thread
     void set_bonsai(int ibeam, std::shared_ptr<const bonsai::dedisperser>,
                     std::shared_ptr<const rf_pipelines::pipeline_object> latency_pre,
-                    std::shared_ptr<const rf_pipelines::pipeline_object> latency_post,
-                    std::shared_ptr<const rf_pipelines::spline_detrender> spline_det,
-                    std::shared_ptr<const rf_pipelines::polynomial_detrender> poly_det);
+                    std::shared_ptr<const rf_pipelines::pipeline_object> latency_post);
+                    //std::shared_ptr<const rf_pipelines::spline_detrender> spline_det,
+                    //std::shared_ptr<const rf_pipelines::polynomial_detrender> poly_det);
 
 };
 
