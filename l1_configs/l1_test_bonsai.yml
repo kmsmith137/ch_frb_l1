@@ -28,11 +28,11 @@ output_devices: [ "" ]
 
 slow_kernels: False
 
-#assembled_ringbuf_nsamples: 16384
-#telescoping_ringbuf_nsamples: [ 16384, 4096, 4096 ]
+assembled_ringbuf_nsamples: 16384
+telescoping_ringbuf_nsamples: [ 16384, 16384, 4096 ]
 
-assembled_ringbuf_nsamples: 32768
-telescoping_ringbuf_nsamples: [ 32768, 4096, 4096 ]
+#assembled_ringbuf_nsamples: 32768
+#telescoping_ringbuf_nsamples: [ 32768, 4096, 4096 ]
 
 write_staging_area_gb: 0.1
 

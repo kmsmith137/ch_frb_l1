@@ -31,12 +31,13 @@ class AssembledChunk(object):
         c = msgpacked_chunk
         # print('header', c[0])
         version = c[1]
-        assert(version in [1, 2])
+        assert(version in [1, 2, 3])
         if version == 1:
             assert(len(c) == 17)
         if version == 2:
-            assert((len(c) == 21)
-                   or (len(c) == 29))
+            assert(len(c) == 21)
+        if version == 3:
+            assert(len(c) == 29)
         self.version = version
         # print('version', version)
         compressed = c[2]
@@ -65,7 +66,7 @@ class AssembledChunk(object):
         self.nrfifreq = 0
         self.has_rfi_mask = False
         self.rfi_mask = None
-        if self.version == 2:
+        if self.version >= 2:
             self.frame0_nano = c[17]
             self.nrfifreq = c[18]
             self.has_rfi_mask = c[19]
@@ -90,7 +91,7 @@ class AssembledChunk(object):
         self.data = np.frombuffer(data, dtype=np.uint8)
         self.data = self.data.reshape((-1, self.nt))
 
-        # version 2b: extra args
+        # version 3: extra args
         nf = self.data.shape[0]
         self.has_detrend_t = False
         self.has_detrend_f = False
@@ -98,17 +99,18 @@ class AssembledChunk(object):
         self.detrend_f_type = None
         self.detrend_t = None
         self.detrend_f = None
-        if version == 2 and (len(c) >= 29):
+        if version >= 3:
             self.detrend_t_type = c[21]
             self.detrend_f_type = c[25]
             self.has_detrend_t = c[22]
             self.has_detrend_f = c[26]
             d = c[24]
             if len(d):
-                self.detrend_t = np.fromstring(d, dtype='<f4').reshape((-1, self.nt))
+                # Note, this is detrending *along* the t axis, so has nf elements.
+                self.detrend_t = np.fromstring(d, dtype='<f4').reshape((nf, -1)).T
             d = c[28]
             if len(d):
-                self.detrend_f = np.fromstring(d, dtype='<f4').reshape((-1, nf))
+                self.detrend_f = np.fromstring(d, dtype='<f4').reshape((-1, self.nt))
 
     def __str__(self):
         if self.has_rfi_mask:

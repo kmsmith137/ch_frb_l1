@@ -737,7 +737,7 @@ void dedispersion_thread_context::_thread_main() const
     // so they can find & update assembled_chunks.
 
     // When we parsed the RFI chain on startup, we asserted that the
-    // detrender exists, are looking at the correct axes, etc.
+    // detrenders exists, are looking at the correct axes, etc.
     shared_ptr<rf_pipelines::chime_wi_transform> det;
     det = find_chime_detrender(rfi_chain, "chime_spline_detrender");
     det->set_chime_stream(this->sp, beam_id);
