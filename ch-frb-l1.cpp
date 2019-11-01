@@ -611,11 +611,6 @@ struct dedispersion_thread_context {
 
     // Helper function called in _thread_main(), during initialization
     void _init_mask_counters(const shared_ptr<rf_pipelines::pipeline_object> &pipeline, int beam_id) const;
-
-    // callback from chime_chunk_updater
-    void chunk_finished_rfi(std::shared_ptr<ch_frb_io::assembled_chunk> chunk,
-                            ssize_t pos,
-                            int beam_id) const;
 };
 
 
@@ -670,103 +665,27 @@ void dedispersion_thread_context::_init_mask_counters(const shared_ptr<rf_pipeli
     }
 }
 
-
-void dedispersion_thread_context::chunk_finished_rfi(std::shared_ptr<ch_frb_io::assembled_chunk> chunk,
-                                                     ssize_t pos,
-                                                     int beam_id) const {
-    chlog("dedispersion_thread_context: chunk finished RFI: beam " << beam_id
-          << ", chunk " << chunk->ichunk << ", pos " << pos);
-}
-
-
-/*
-// A wi_transform that calls a hook function; we add one of these after the RFI chain
-// (including detrenders) to fill in additional fields in the assembled_chunks.
+// A wi_transform that calls a hook function; we add one of these
+// after the RFI chain (including detrenders) to notify any waiting
+// output devices that the chunk is ready.
 class chunk_updater : public rf_pipelines::chime_wi_transform {
 public:
-    const dedispersion_thread_context* dedisp_ctx;
-    shared_ptr<rf_pipelines::ring_buffer> spline_rb;
-    shared_ptr<rf_pipelines::ring_buffer> poly_rb;
-    shared_ptr<rf_pipelines::ring_buffer> weight_rb;
-    shared_ptr<rf_pipelines::ring_buffer> var_rb;
-    
-    chunk_updater(const dedispersion_thread_context* d) :
-        chime_wi_transform("chunk_updater"),
-        dedisp_ctx(d) {
+    chunk_updater() :
+        wi_transform("chunk_updater") {
         this->nt_chunk = ch_frb_io::constants::nt_per_assembled_chunk;
     }
     virtual ~chunk_updater() {};
     virtual void _process_chunk(float *intensity, ssize_t istride, float *weights, ssize_t wstride, ssize_t pos) override {
-        shared_ptr<ch_frb_io::assembled_chunk> chunk;
-        if (chime_stream) {
-            chunk = assembled_chunk_for_pos(pos);
-            if (chunk) {
-                cout << "chunk_updater: found chunk for pos " << pos << " FPGA " << chunk->fpga_begin << endl;
-                if (spline_rb && chunk->detrend_params_t) {
-                    chlog("spline_rb valid pos region: " << spline_rb->get_first_valid_pos() << " to " << spline_rb->get_last_valid_pos());
-                    rf_pipelines::ring_buffer_subarray sub(spline_rb, pos, pos+nt_chunk, rf_pipelines::ring_buffer::ACCESS_READ);
-                    for (int j=0; j<spline_rb->csize; j++) {
-                        memcpy(chunk->detrend_params_t + j*nt_chunk,
-                               sub.data + j*sub.stride,
-                               nt_chunk * sizeof(float));
-                    }
-                    chunk->detrend_t_type = "SPLINE";
-                    chunk->has_detrend_t = true;
-                    chlog("Saved time-axis detrending for chunk!");
-                }
-                if (poly_rb && chunk->detrend_params_f) {
-                    chlog("poly_rb valid pos region: " << poly_rb->get_first_valid_pos() << " to " << poly_rb->get_last_valid_pos());
-                    rf_pipelines::ring_buffer_subarray sub(poly_rb, pos, pos+nt_chunk, rf_pipelines::ring_buffer::ACCESS_READ);
-                    chlog("csize: " << poly_rb->csize);
-                    memcpy(chunk->detrend_params_f, sub.data, poly_rb->csize * sizeof(float));
-                    chunk->detrend_f_type = "POLYNOMIAL";
-                    chunk->has_detrend_f = true;
-                    chlog("Saved freq-axis detrending for chunk!");
-                }
-                // FIXME    && chunk->running_weights
-                if (weight_rb) {
-                    chlog("weight_rb valid pos region: " << weight_rb->get_first_valid_pos() << " to " << weight_rb->get_last_valid_pos());
-                    // FIXME -- interpolate like eval_weighted_variance does?
-                    ssize_t nds = weight_rb->nds;
-                    ssize_t wpos0 = (pos / nds) * nds;
-                    ssize_t wpos1 = wpos0 + nds;
-                    rf_pipelines::ring_buffer_subarray sub(weight_rb, wpos0, wpos1, rf_pipelines::ring_buffer::ACCESS_READ);
-                    chlog("csize: " << weight_rb->csize);
-                    //memcpy(chunk->detrend_params_f, sub.data, poly_rb->csize * sizeof(float));
-                    //chunk->has_detrend_f = true;
-                    chlog("Saved running weights for chunk!");
-                }
-                // FIXME    && chunk->running_variances
-                if (var_rb) {
-                }
-                dedisp_ctx->chunk_finished_rfi(chunk, pos, chime_beam_id);
-            }
-        }
-    }
-    virtual void _bind_transform_rb(rf_pipelines::ring_buffer_dict &rb_dict) override {
-        chlog("chunk_updater: bind_transform_rb");
-        spline_rb = get_buffer(rb_dict, "SPLINE_DETRENDER");
-        if (spline_rb) {
-            chlog("Found SPLINE_DETRENDER ring buffer: " << spline_rb->get_info());
-        }
-        poly_rb = get_buffer(rb_dict, "POLYNOMIAL_DETRENDER");
-        if (poly_rb) {
-            chlog("Found POLYNOMIAL_DETRENDER ring buffer: " << poly_rb->get_info());
-        }
-        weight_rb = get_buffer(rb_dict, "RUNNING_WEIGHT");
-        if (weight_rb) {
-            auto j = weight_rb->get_info();
-            chlog("Found RUNNING_WEIGHT ring buffer: " << j);
-        }
-        var_rb = get_buffer(rb_dict, "RUNNING_VARIANCE");
-        if (var_rb) {
-            auto j = var_rb->get_info();
-            chlog("Found RUNNING_VARIANCE ring buffer: " << j);
-        }
+        if (!chime_stream)
+            return;
+        auto chunk = assembled_chunk_for_pos(pos);
+        if (!chunk)
+            return;
+        cout << "chunk_updater: found chunk for pos " << pos << " chunk " << chunk->ichunk << endl;
+        for (auto od : chime_stream->ini_params.output_devices)
+            od->filled_rfi_mask(chunk);
     }
 };
-
- */
 
 // Note: only called if config.tflag == false.
 void dedispersion_thread_context::_thread_main() const
@@ -835,40 +754,33 @@ void dedispersion_thread_context::_thread_main() const
 
     // ***********************************************************************
     
-    // This lambda-function is passed to
-    // rf_pipelines::visit_pipeline(), to find the spline_detrender
-    // and polynomial_detrender at the end of the pipeline, so that we
-    // can tell them to ring-buffer their results for RPC retrieval,
-    // and save their results in the assembled_chunks.
+    // We expect to find chime_{spline,polynomial}_detrenders at the end of
+    // the pipeline -- here we connect them to the intensity_network_stream
+    // so they can find & update assembled_chunks.
 
-    //shared_ptr<rf_pipelines::spline_detrender> spline_det;
-    shared_ptr<rf_pipelines::chime_wi_transform> spline_det;
-    shared_ptr<rf_pipelines::chime_wi_transform> poly_det;
-
-    spline_det = find_chime_detrender(rfi_chain, "chime_spline_detrender");
-    // When we parsed the RFI chain on startup, we asserted that the spline detrender exists, etc.
-    spline_det->set_chime_stream(this->sp, beam_id);
-
-    poly_det = find_chime_detrender(rfi_chain, "chime_polynomial_detrender");
-    poly_det->set_chime_stream(this->sp, beam_id);
+    // When we parsed the RFI chain on startup, we asserted that the
+    // detrender exists, are looking at the correct axes, etc.
+    shared_ptr<rf_pipelines::chime_wi_transform> det;
+    det = find_chime_detrender(rfi_chain, "chime_spline_detrender");
+    det->set_chime_stream(this->sp, beam_id);
+    det = find_chime_detrender(rfi_chain, "chime_polynomial_detrender");
+    det->set_chime_stream(this->sp, beam_id);
     
     // ***********************************************************************
 
-    /*
-     auto chunker = make_shared<chunk_updater>(this);
-     chunker->set_chime_stream(this->sp, beam_id);
-     */
-    
+    auto updater = make_shared<chunk_updater>();
+    updater->set_chime_stream(this->sp, beam_id);
+
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);
     pipeline->add(injector_transform);
     pipeline->add(rfi_chain);
-    if (!config.rflag)
+    pipeline->add(updater);
+    if (!config.rflag) {
         pipeline->add(mask_filler);
-    //pipeline->add(chunker);
-    if (!config.rflag)
         pipeline->add(bonsai_transform);
-    
+    }
+
     // Find pipeline stages to use for latency monitoring: 'stream' input, and
     // the last step in the RFI chain
     shared_ptr<rf_pipelines::pipeline_object> latency1 = stream;
