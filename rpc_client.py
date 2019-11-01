@@ -71,13 +71,14 @@ class AssembledChunk(object):
             self.nrfifreq = c[18]
             self.has_rfi_mask = c[19]
             mask = c[20]
-            # to numpy
-            mask = np.fromstring(mask, dtype=np.uint8)
-            mask = mask.reshape((self.nrfifreq, self.nt//8))
-            # Expand mask!
-            self.rfi_mask = np.zeros((self.nrfifreq, self.nt), bool)
-            for i in range(8):
-                self.rfi_mask[:,i::8] = (mask & (1<<i)) > 0
+            if self.has_rfi_mask:
+                # to numpy
+                mask = np.fromstring(mask, dtype=np.uint8)
+                mask = mask.reshape((self.nrfifreq, self.nt//8))
+                # Expand mask!
+                self.rfi_mask = np.zeros((self.nrfifreq, self.nt), bool)
+                for i in range(8):
+                    self.rfi_mask[:,i::8] = (mask & (1<<i)) > 0
 
         if compressed:
            import pybitshuffle
