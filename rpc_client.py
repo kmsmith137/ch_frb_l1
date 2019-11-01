@@ -153,6 +153,41 @@ class AssembledChunk(object):
 
         return intensities,weights
 
+    def get_spline_model(self):
+        spline_co = self.detrend_f
+        nco,nt_ = spline_co.shape
+        nf = self.data.shape[0]
+        nbins = (nco - 2)//2
+        bins = ((np.arange(nbins+1) / nbins * nf) + 0.5).astype(int)
+
+        spline_model = np.zeros((nf, self.nt), np.float32)
+        for ib,(b0,b1) in enumerate(zip(bins, bins[1:])):
+            i = np.arange(b0, b1)
+            x = nbins * (i + 0.5) / nf - ib
+            polys = np.vstack((
+                (1.-x) * (1.-x) * (1.+2.*x),
+                (1.-x) * (1.-x) * x,
+                x*x * (3. - 2.*x),
+                x*x * (x - 1.),
+                )).T
+            co = spline_co[ib*2: ib*2+4, :]
+            spline_model[b0:b1, :] = np.dot(polys, co)
+        return spline_model
+
+    def get_polynomial_model(self):
+        poly_co = self.detrend_t
+        nco,nf = poly_co.shape
+        z = 2. * (np.arange(self.nt) + 0.5) / self.nt - 1.;
+        legpoly = np.zeros((nco, self.nt), np.float32)
+        legpoly[0,:] = 1.0
+        legpoly[1,:] = z
+        for ell in range(2, nco):
+            a = (2.*ell-1.) / ell
+            b = -(ell-1.) / ell
+            legpoly[ell,:] = a * z * legpoly[ell-1,:] + b * legpoly[ell-2,:]
+        poly_model = np.dot(poly_co.T, legpoly)
+        return poly_model
+
     def time_start(self):
         '''
         Returns a unix-time (seconds since 1970) value for the start of this
