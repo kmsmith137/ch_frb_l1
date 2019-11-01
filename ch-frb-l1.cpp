@@ -665,28 +665,6 @@ void dedispersion_thread_context::_init_mask_counters(const shared_ptr<rf_pipeli
     }
 }
 
-// A wi_transform that calls a hook function; we add one of these
-// after the RFI chain (including detrenders) to notify any waiting
-// output devices that the chunk is ready.
-class chunk_updater : public rf_pipelines::chime_wi_transform {
-public:
-    chunk_updater() :
-        wi_transform("chunk_updater") {
-        this->nt_chunk = ch_frb_io::constants::nt_per_assembled_chunk;
-    }
-    virtual ~chunk_updater() {};
-    virtual void _process_chunk(float *intensity, ssize_t istride, float *weights, ssize_t wstride, ssize_t pos) override {
-        if (!chime_stream)
-            return;
-        auto chunk = assembled_chunk_for_pos(pos);
-        if (!chunk)
-            return;
-        cout << "chunk_updater: found chunk for pos " << pos << " chunk " << chunk->ichunk << endl;
-        for (auto od : chime_stream->ini_params.output_devices)
-            od->filled_rfi_mask(chunk);
-    }
-};
-
 // Note: only called if config.tflag == false.
 void dedispersion_thread_context::_thread_main() const
 {
@@ -768,14 +746,10 @@ void dedispersion_thread_context::_thread_main() const
     
     // ***********************************************************************
 
-    auto updater = make_shared<chunk_updater>();
-    updater->set_chime_stream(this->sp, beam_id);
-
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);
     pipeline->add(injector_transform);
     pipeline->add(rfi_chain);
-    pipeline->add(updater);
     if (!config.rflag) {
         pipeline->add(mask_filler);
         pipeline->add(bonsai_transform);
