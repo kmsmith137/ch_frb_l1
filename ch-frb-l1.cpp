@@ -599,8 +599,6 @@ struct dedispersion_thread_context {
     std::function<void(int, shared_ptr<const bonsai::dedisperser>,
                        shared_ptr<const rf_pipelines::pipeline_object> latency_pre,
                        shared_ptr<const rf_pipelines::pipeline_object> latency_post
-                       //shared_ptr<const rf_pipelines::spline_detrender> spline_det,
-                       //shared_ptr<const rf_pipelines::polynomial_detrender> poly_det
                        )> set_bonsai;
     shared_ptr<bonsai::trigger_pipe> l1b_subprocess;   // warning: can be empty pointer!
     shared_ptr<rf_pipelines::intensity_injector> injector_transform;
@@ -882,7 +880,7 @@ void dedispersion_thread_context::_thread_main() const
     rf_pipelines::visit_pipeline(find_last_transform, rfi_chain);
 
     // Pass our pipeline objects out to the main thread
-    set_bonsai(ibeam, dedisperser, latency1, latency2); //, spline_det, poly_det);
+    set_bonsai(ibeam, dedisperser, latency1, latency2);
 
     rf_pipelines::run_params rparams;
     rparams.outdir = "";  // disables
@@ -1391,11 +1389,9 @@ void l1_server::spawn_dedispersion_threads()
     std::function<void(int, shared_ptr<const bonsai::dedisperser>,
                        shared_ptr<const rf_pipelines::pipeline_object>,
                        shared_ptr<const rf_pipelines::pipeline_object>
-                       //shared_ptr<const rf_pipelines::spline_detrender>,
-                       //shared_ptr<const rf_pipelines::polynomial_detrender>
                        )> set_bonsai =
         std::bind(&l1_server::set_bonsai, this, std::placeholders::_1, std::placeholders::_2,
-                  std::placeholders::_3, std::placeholders::_4);//, std::placeholders::_5, std::placeholders::_6);
+                  std::placeholders::_3, std::placeholders::_4);
 
     for (int ibeam = 0; ibeam < config.nbeams; ibeam++) {
 	int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
@@ -1427,8 +1423,6 @@ void l1_server::set_bonsai(int ibeam,
                            shared_ptr<const bonsai::dedisperser> bonsai,
                            shared_ptr<const rf_pipelines::pipeline_object> latency_pre,
                            shared_ptr<const rf_pipelines::pipeline_object> latency_post
-                           //shared_ptr<const rf_pipelines::spline_detrender> spline_det,
-                           //shared_ptr<const rf_pipelines::polynomial_detrender> poly_det
                            ) {
     chlog("set_bonsai(" << ibeam << ")");
     ulock u(bonsai_dedisp_mutex);
@@ -1436,8 +1430,6 @@ void l1_server::set_bonsai(int ibeam,
     bonsai_dedispersers_set[ibeam] = true;
     latency_monitors_pre [ibeam] = latency_pre;
     latency_monitors_post[ibeam] = latency_post;
-    //spline_detrenders[ibeam] = spline_det;
-    //poly_detrenders[ibeam] = poly_det;
 }
 
 void l1_server::join_all_threads()
