@@ -123,44 +123,26 @@ rf_kernels::axis_type axis_type_from_json(const Json::Value &j, const string &k)
     return rf_kernels::axis_type_from_string(s, "json field");
 }
 
-//static shared_ptr<rf_pipelines::spline_detrender>
 static shared_ptr<rf_pipelines::chime_wi_transform>
-find_spline_detrender(const shared_ptr<rf_pipelines::pipeline_object> &p) {
-    //shared_ptr<rf_pipelines::spline_detrender> spline_det;
-    shared_ptr<rf_pipelines::chime_wi_transform> spline_det;
-    auto find_detrenders = [&spline_det]
+find_chime_detrender(const shared_ptr<rf_pipelines::pipeline_object> &p,
+                     const string name) {
+    shared_ptr<rf_pipelines::chime_wi_transform> the_det;
+    auto find_detrenders = [&the_det, &name]
 	(const shared_ptr<rf_pipelines::pipeline_object> &p, int depth) {
         if (depth != 1)
             return;
-        if (p->class_name == "chime_spline_detrender") {
-            //auto det = dynamic_pointer_cast<rf_pipelines::spline_detrender>(p);
+        if (p->class_name == name) {
             auto det = dynamic_pointer_cast<rf_pipelines::chime_wi_transform>(p);
             if (!det) {
-                chlog("Failed to cast a chime_spline_detrender!");
+                chlog("Failed to cast a " + name + " object to chime_wi_transform");
                 return;
             }
-            spline_det = det;
+            the_det = det;
             return;
         }
     };
     rf_pipelines::visit_pipeline(find_detrenders, p);
-    return spline_det;
-}
-
-static shared_ptr<rf_pipelines::pipeline_object>
-find_poly_detrender(const shared_ptr<rf_pipelines::pipeline_object> &p) {
-    shared_ptr<rf_pipelines::pipeline_object> poly_det;
-    auto find_detrenders = [&poly_det]
-	(const shared_ptr<rf_pipelines::pipeline_object> &p, int depth) {
-        if (depth != 1)
-            return;
-        if (p->class_name == "polynomial_detrender") {
-            poly_det = p;
-            return;
-        }
-    };
-    rf_pipelines::visit_pipeline(find_detrenders, p);
-    return poly_det;
+    return the_det;
 }
 
 // FIXME: split this monster constructor into multiple functions for readability?
@@ -237,14 +219,12 @@ l1_config::l1_config(int argc, const char **argv)
 	auto rfi_chain = rf_pipelines::pipeline_object::from_json(rfi_transform_chain_json);
 
         // Find detrenders to set sizes of arrays saved in assembled_chunks!
-        shared_ptr<rf_pipelines::chime_wi_transform> spline_det = find_spline_detrender(rfi_chain);
+        shared_ptr<rf_pipelines::chime_wi_transform> spline_det = find_chime_detrender(rfi_chain, "chime_spline_detrender");
         if (!spline_det)
             throw runtime_error("ch-frb-l1: failed to find chime_spline_detrender in pipeline");
         if (spline_det->nt_chunk != ch_frb_io::constants::nt_per_assembled_chunk)
             throw runtime_error("ch-frb-l1: expected chime_spline_detrender to have nt_chunk = " + to_string(ch_frb_io::constants::nt_per_assembled_chunk));
         auto j = spline_det->jsonize();
-        //if (spline_det->axis != rf_kernels::AXIS_FREQ)
-        //int ax = int_from_json(j, "axis");
         rf_kernels::axis_type axis = axis_type_from_json(j, "axis");
         if (axis != rf_kernels::AXIS_FREQ)
             throw runtime_error("ch-frb-l1: expected chime_spline_detrender to operate along FREQUENCY axis");
@@ -253,18 +233,19 @@ l1_config::l1_config(int argc, const char **argv)
         // save the number of detrender terms
         this->n_detrend_f = (nbins+1)*2;
 
-        // FIXME
-        shared_ptr<rf_pipelines::pipeline_object> poly_det = find_poly_detrender(rfi_chain);
-        if (poly_det) {
-            auto j = poly_det->jsonize();
-            int deg = int_from_json(j, "polydeg");
-            chlog("Polynomial detrender: degree " << deg);
-            // FIXME -- check nt_chunk and axis?
-            // save the number of detrender terms
-            // HACK -- this number of terms from number of spline bins is just
-            // hard-coded...
-            this->n_detrend_t = deg+1;
-        }
+        shared_ptr<rf_pipelines::chime_wi_transform> poly_det = find_chime_detrender(rfi_chain, "chime_polynomial_detrender");
+        if (!poly_det)
+            throw runtime_error("ch-frb-l1: failed to find chime_polynomial_detrender in pipeline");
+        if (poly_det->nt_chunk != ch_frb_io::constants::nt_per_assembled_chunk)
+            throw runtime_error("ch-frb-l1: expected chime_polynomial_detrender to have nt_chunk = " + to_string(ch_frb_io::constants::nt_per_assembled_chunk));
+        j = poly_det->jsonize();
+        axis = axis_type_from_json(j, "axis");
+        if (axis != rf_kernels::AXIS_TIME)
+            throw runtime_error("ch-frb-l1: expected chime_polynomial_detrender to operate along TIME axis");
+        int deg = int_from_json(j, "polydeg");
+        chlog("Polynomial detrender: degree " << deg);
+        // save the number of detrender terms
+        this->n_detrend_t = deg+1;
 
         // Pretty-print rfi_chain
 	if (l1_verbosity >= 2) {
@@ -866,15 +847,12 @@ void dedispersion_thread_context::_thread_main() const
     shared_ptr<rf_pipelines::chime_wi_transform> spline_det;
     shared_ptr<rf_pipelines::chime_wi_transform> poly_det;
 
-    spline_det = find_spline_detrender(rfi_chain);
+    spline_det = find_chime_detrender(rfi_chain, "chime_spline_detrender");
     // When we parsed the RFI chain on startup, we asserted that the spline detrender exists, etc.
     spline_det->set_chime_stream(this->sp, beam_id);
 
-    if (!poly_det) {
-        chlog("Failed to find polynomial_detrender in pipeline!");
-    } else {
-        // FIXME
-    }
+    poly_det = find_chime_detrender(rfi_chain, "chime_polynomial_detrender");
+    poly_det->set_chime_stream(this->sp, beam_id);
     
     // ***********************************************************************
 

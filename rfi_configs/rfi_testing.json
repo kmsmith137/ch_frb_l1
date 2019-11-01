@@ -61,7 +61,7 @@
             "Dt": 0
         },
         {
-            "class_name": "polynomial_detrender", 
+            "class_name": "chime_polynomial_detrender", 
             "epsilon": 0.01, 
             "polydeg": 4, 
             "nt_chunk": 1024, 
