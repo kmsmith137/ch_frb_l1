@@ -560,6 +560,11 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
     } else if (funcname == "inject_data") {
 
         string errstring = _handle_inject(req_data, request->size(), offset);
+        if (errstring.size())
+            chlog("inject_data: return error message " << errstring);
+        else
+            chlog("inject_data: accepted injection (token " << token <<")");
+        
         msgpack::sbuffer buffer;
         msgpack::pack(buffer, errstring);
         //  Send reply back to client.
@@ -1113,9 +1118,9 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
     // This is the struct we will send to rf_pipelines
     shared_ptr<rf_pipelines::intensity_injector::inject_args> injdata = make_shared<rf_pipelines::intensity_injector::inject_args>();
 
-    // And this is the injector
+    // And this is the injector (the rf_pipelines component where the data actually get injected)
     shared_ptr<rf_pipelines::intensity_injector> syringe;
-    
+
     msgpack::object_handle oh = msgpack::unpack(req_data, req_size, req_offset);
     msgpack::object obj = oh.get();
     obj.convert(injreq);
@@ -1157,7 +1162,7 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
     } catch (const runtime_error &e) {
         return e.what();
     }
-    cout << "Inject_data RPC: beam " << beam << ", mode " << injdata->mode << ", nfreq " << injdata->sample_offset.size() << ", sample0 " << injdata->sample0 << ", offset range " << injdata->min_offset << ", " << injdata->max_offset << endl;
+    chlog("Inject_data RPC: beam " << beam << ", mode " << injdata->mode << ", nfreq " << injdata->sample_offset.size() << ", sample0 " << injdata->sample0 << ", offset range [" << injdata->min_offset << ", " << injdata->max_offset << "], vs current stream sample " << syringe->pos_lo << " -> this injection will happen " << ((injdata->sample0 + injdata->min_offset - syringe->pos_lo)/1024) << " to " << ((injdata->sample0 + injdata->max_offset - syringe->pos_lo)/1024) << " seconds in the future.");
     return "";
 }
 
