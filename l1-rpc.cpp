@@ -1139,12 +1139,18 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
         if (_stream->ini_params.beam_ids[i] == beam) {
             assert(i < _injectors.size());
             syringe = _injectors[i];
+	    chlog("injection request matched beam " << beam << "; injector is " << syringe.get());
             break;
         }
     // Matching beam
-    if (!syringe)
-        return "inject_data: beam=" + to_string(beam) + " which is not a beam that I am handling";
-    
+    if (!syringe) {
+        string bstr = "";
+        for (size_t i=0; i<_stream->ini_params.beam_ids.size(); i++)
+	    bstr += (i>0 ? ", " : "") + to_string(_stream->ini_params.beam_ids[i]);
+        return "inject_data: beam=" + to_string(beam) + " which is not a beam that I am handling ("
+	  + bstr + ")";
+    }
+
     // rf_pipelines sample offset
     uint64_t stream_fpga0;
     try {
