@@ -23,6 +23,7 @@
 #include <thread>
 #include <fstream>
 #include <iomanip>
+#include <functional>
 
 #include <sys/types.h>
 #include <sys/socket.h>
