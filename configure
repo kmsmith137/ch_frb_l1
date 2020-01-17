@@ -1,0 +1,127 @@
+#!/usr/bin/env python
+
+
+hpp_files = [
+    'ch_frb_l1.hpp',
+    'l1-rpc.hpp',
+    'rpc.hpp'
+]
+
+cpp_l1_files = [
+    'l1-rpc.cpp',
+    'mask_stats.cpp'
+]
+
+cpp_civet_files = [
+    'l1-prometheus.cpp',
+    'civetweb/civetweb.c',
+    'civetweb/CivetServer.cpp'
+]
+
+
+####################################################################################################
+
+
+import os
+import build_helpers
+
+# If called recursively in superbuild, a global persistent ConfigureScript will be returned.
+cs = build_helpers.get_global_configure_script()
+cs.configure_install_directories(bin=True, inc=True, lib=True, py=True)
+cs.configure_cpp('-fPIC -Wall -Wno-strict-aliasing -O3 -march=native -ffast-math -funroll-loops --param inline-unit-growth=10000')
+cs.configure_python_extension_modules()
+
+# Exernal dependencies.
+# Note that libdl is needed by civetweb, but this dependence could be removed by disabling SSL.
+cs.configure_external_library(build_helpers.external_libraries.dl)
+cs.configure_external_library(build_helpers.external_libraries.png)
+cs.configure_external_library(build_helpers.external_libraries.lz4)
+cs.configure_external_library(build_helpers.external_libraries.curl)
+cs.configure_external_library(build_helpers.external_libraries.hdf5)
+cs.configure_external_library(build_helpers.external_libraries.fftw3)
+cs.configure_external_library(build_helpers.external_libraries.cppzmq)
+cs.configure_external_library(build_helpers.external_libraries.msgpack)
+cs.configure_external_library(build_helpers.external_libraries.jsoncpp)
+cs.configure_external_library(build_helpers.external_libraries.yamlcpp)
+
+# "Homegrown" dependencies (redundant in a superbuild)
+sp_hdf5 = build_helpers.ExternalLibrary('sp_hdf5', find_headers=['sp_hdf5.hpp'], req_sublibs=['hdf5'])
+rf_kernels = build_helpers.ExternalLibrary('rf_kernels', find_headers=['rf_kernels.hpp'], find_libraries=['rf_kernels'])
+simpulse = build_helpers.ExternalLibrary('simpulse', find_headers=['simpulse.hpp'], find_libraries=['simpulse'], req_sublibs=['fftw3'])
+
+ch_frb_io = build_helpers.ExternalLibrary('ch_frb_io', find_headers=['simpulse.hpp'], find_libraries=['simpulse'],
+                                          req_sublibs=['lz4','curl','hdf5','cppzmq','msgpack','jsoncpp'])
+
+bonsai = build_helpers.ExternalLibrary('bonsai', find_headers=['bonsai.hpp'], find_libraries=['bonsai'],
+                                       req_sublibs=['rf_kernels'], opt_sublibs=['hdf5','fftw3','jsoncpp','png','simpulse'])
+
+rf_pipelines = build_helpers.ExternalLibrary('rf_pipelines', find_headers=['rf_pipelines.hpp'], find_libraries=['rf_pipelines'],
+                                             opt_sublibs=['png','hdf5','simpulse','ch_frb_io','bonsai'],
+                                             req_sublibs=['jsoncpp','rf_kernels'])
+
+cs.configure_external_library(sp_hdf5, optional=True)
+cs.configure_external_library(rf_kernels, optional=False)
+cs.configure_external_library(simpulse, optional=True)
+cs.configure_external_library(ch_frb_io, optional=True)
+cs.configure_external_library(bonsai, optional=True)
+
+
+####################################################################################################
+
+
+# Install .hpp header files.
+cs.install_cpp_headers(hpp_files)
+
+# ch-frb-l1 executable
+cs.make_binary(
+    sources = ['ch-frb-l1.cpp','file_utils.cpp','yaml_paramfile.cpp'] + cpp_l1_files + cpp_civet_files,
+    libraries = ['dl','rf_pipelines', 'yamlcpp'], 
+    test = False,
+    install = True
+)
+
+# ch-frb-simulate-l0 executable
+cs.make_binary(
+    sources = ['ch-frb-simulate-l0.cpp','simulate-l0.cpp','file_utils.cpp','yaml_paramfile.cpp'],
+    libraries = ['ch_frb_io', 'yamlcpp'],
+    test = False,
+    install = True
+)
+
+# rpc-client executable (FIXME install=False here?)
+cs.make_binary(['rpc-client.cpp'], libraries=['ch_frb_io'], test=False, install=False)
+
+# Standalone python extension module 'simulate_l0.so'
+cs.make_python_extension_module(
+    dst_filename = 'simulate_l0.so',
+    sources = ['simulate_l0_py.cpp','simulate-l0.cpp','file_utils.cpp','yaml_paramfile.cpp'],
+    libraries = ['ch_frb_io', 'yamlcpp']
+)
+
+# ch-frb-test executable
+# Hmm, this appears to be an old unit test which no longer compiles?
+#cs.make_binary(
+#    sources = ['ch-frb-test.cpp'] + cpp_l1_files,
+#    libraries = ['ch_frb_io'],
+#    test = True,
+#    install = False
+#)
+
+# test-l1-rpc executable
+cs.make_binary(
+    sources = ['test-l1-rpc.cpp','file_utils.cpp'] + cpp_l1_files + cpp_civet_files,
+    libraries = ['rf_pipelines','dl'],
+    test = True,
+    install = False
+)
+
+# test-packet-rates executable
+cs.make_binary(
+    sources = ['test-packet-rates.cpp','file_utils.cpp'] + cpp_l1_files + cpp_civet_files,
+    libraries = ['rf_pipelines','dl'],
+    test = True,
+    install = False
+)
+
+# Stray script.
+cs.install_binary('ch-frb-make-acq-inventory')
