@@ -1,8 +1,10 @@
 #ifndef _CH_FRB_L1_HPP
 #define _CH_FRB_L1_HPP
 
+#include <cmath>
 #include <string>
 #include <vector>
+#include <cassert>
 #include <cstring>
 #include <stdexcept>
 #include <unordered_set>

@@ -10,7 +10,7 @@ using namespace std;
 using namespace ch_frb_io;
 using namespace ch_frb_l1;
 
-#include "CivetServer.h"
+#include "civetweb/CivetServer.h"
 
 class L1PrometheusHandler : public CivetHandler {
 public:
