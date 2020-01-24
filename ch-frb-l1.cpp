@@ -76,18 +76,27 @@ static string convert_zmq_address(const string& addr, const unordered_map<string
     return addr.substr(0, proto+2) + val->second + addr.substr(port);
 }
 
-static string convert_ip_address(const string& addr, const unordered_map<string, string>& interfaces) {
+static string convert_ip_address(const string& orig_addr, const unordered_map<string, string>& interfaces) {
+    // Grab the port off the end, if it exists
+    string addr(orig_addr);
+    size_t port = addr.rfind(":");
+    string portstring;
+    if (port != std::string::npos) {
+        portstring = addr.substr(port);
+	addr = addr.substr(0, port);
+	//cout << "Pulled off port string: '" << portstring << "', cut addr string to '" << addr << "'" << endl;
+    }
     // Try to parse as dotted-decimal IP address
     struct in_addr inaddr;
     if (inet_aton(addr.c_str(), &inaddr) == 1)
         // Correctly parsed as dotted-decimal IP address.
-        return addr;
+        return addr + portstring;
     // If doesn't parse as dotted-decimal, lookup in interfaces mapping.
     auto val = interfaces.find(addr);
     if (val == interfaces.end())
-        throw runtime_error("Config file ipaddr entry \"" + addr + "\" was not dotted IP address and was not one of the known network interfaces");
+        throw runtime_error("Config file ipaddr entry \"" + orig_addr + "\" -> \"" + addr + "\" was not dotted IP address and was not one of the known network interfaces");
     //chlog("Mapped IP addr " << ipaddr[i] << " to " << val->second);
-    return val->second;
+    return val->second + portstring;
 }
 
 
@@ -250,7 +259,7 @@ l1_config::l1_config(int argc, const char **argv)
     
     // Convert network interface names in "prometheus_address" entries.
     for (size_t i=0; i<prometheus_address.size(); i++)
-        prometheus_address[i] = convert_zmq_address(prometheus_address[i], interfaces);
+        prometheus_address[i] = convert_ip_address(prometheus_address[i], interfaces);
 
     // Lots of sanity checks.
     // First check that we have a consistent 'nstreams'.
@@ -1051,23 +1060,6 @@ void l1_server::make_input_streams()
         bool need_rfi = (config.nrfifreq > 0);
 	input_streams[istream]->stream_to_files(config.stream_filename_pattern, sf_beam_ids, 0, need_rfi);   // (pattern, priority)
     }
-
-    /*
-    cout << "Forking..." << endl;
-    struct sockaddr_in dest;
-    dest.sin_family = AF_INET;
-    string dest_ip = "127.0.0.1";
-    if (!inet_aton(dest_ip.c_str(), &(dest.sin_addr))) {
-        cout << "Failed to parse fork destination " << dest_ip << endl;
-        exit(-1);
-    }
-    //dest.sin_port = htons(6666);
-    dest.sin_port = htons(config.port[0] + 2);
-    cout << "Forking to port " << config.port[0] + 2 << endl;
-    input_streams[0]->start_forking_packets(0, 10000, dest);
-    cout << "Forked." << endl;
-     */
-    
 }
 
 
