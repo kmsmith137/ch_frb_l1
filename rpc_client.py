@@ -521,7 +521,25 @@ class RpcClient(object):
         # Simpulse orders frequencies low to high.
         freq_low_to_high = True
         return self.inject_data(injdata, freq_low_to_high, **kwargs)
-        
+
+    def get_bonsai_variances(self, beams=[],
+               servers=None, wait=True, timeout=-1):
+        if servers is None:
+            servers = self.servers.keys()
+        tokens = []
+        for k in servers:
+            self.token += 1
+            req = msgpack.packb(['get_bonsai_variances', self.token])
+            args = msgpack.packb(beams)
+            tokens.append(self.token)
+            self.sockets[k].send(req + args)
+        if not wait:
+            return tokens
+        parts = self.wait_for_tokens(tokens, timeout=timeout)
+        # We expect one message part for each token.
+        return [msgpack.unpackb(p[0]) if p is not None else None
+                for p in parts]
+
     ## the acq_beams should perhaps be a list of lists of beam ids,
     ## one list per L1 server.
     def stream(self, acq_name, acq_dev='', acq_meta='', acq_beams=[],
@@ -1046,6 +1064,8 @@ if __name__ == '__main__':
                         help='Inject some data')
     parser.add_argument('--inject-pulse', action='store_true', default=False,
                         help='Inject a simpulse pulse')
+    parser.add_argument('--variances', action='store_true', default=False,
+                        help='Request Bonsai input variance estimates')
     parser.add_argument('--masked-freqs', action='store_true', default=False,
                         help='Send request for masked frequencies history')
     parser.add_argument('--timeout', default=10000, type=float,
@@ -1242,10 +1262,10 @@ if __name__ == '__main__':
         print('Got results: type', type(results))
         print('Got', len(results), 'weights and variances')
 
+        # one per server
         freqs = np.linspace(400, 800, 16384)
 
         plt.clf()
-        # one per server
         minvar = 1e3
         for variances in results:
             for b,w,v in variances:
