@@ -1301,6 +1301,21 @@ if __name__ == '__main__':
         plt.title('Bonsai running weight estimates (unmasked fraction)')
         plt.savefig('bonsai-weights.png')
 
+        import fitsio
+        allbeams = []
+        allww = []
+        allvv = []
+        for variances in results:
+            for b,w,v in variances:
+                allbeams.append(b)
+                allww.append(w)
+                allvv.append(v)
+        allbeams = np.array(allbeams)
+        allww = np.vstack(allww)
+        allvv = np.vstack(allvv)
+        F = fitsio.FITS('bonsai-wv.fits', 'rw', clobber=True)
+        F.write(dict(beam=allbeams, weight=allww, variance=allvv))
+        F.close()
         doexit = True
 
     if opt.stream:
