@@ -79,8 +79,7 @@ int main(int argc, char** argv) {
 
     for (int i=0; i<nstreams; i++) {
         intensity_network_stream::initializer ini;
-        for (int b=0; b<nbeams; b++)
-            ini.beam_ids.push_back(1 + (i*nbeams) + b);
+        ini.nbeams = nbeams;
         ini.nupfreq = nupfreq;
         ini.nt_per_packet = nt_per;
         ini.fpga_counts_per_sample = fpga_per;

@@ -299,7 +299,7 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
     _latencies(monitors)
 {
     if ((_injectors.size() != 0) &&
-        (_injectors.size() != _stream->ini_params.beam_ids.size()))
+        (_injectors.size() != _stream->ini_params.nbeams))
         throw runtime_error("L1RpcServer: expected injectors array size to be zero or the same size as the beams array");
 
     if (port.length())
@@ -580,27 +580,20 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
         vector<tuple<int, vector<float>, vector<float> > > result;
 
-        vector<int> ibeams;
         if (beams.size() == 0)
             // grab all beams!
-            for (size_t i=0; i<_stream->ini_params.beam_ids.size(); i++)
-                ibeams.push_back(i);
-        else
-            for (int b : beams)
-                for (size_t i=0; i<_stream->ini_params.beam_ids.size(); i++)
-                    if (_stream->ini_params.beam_ids[i] == b)
-                        ibeams.push_back(i);
-	chlog("Grabbing variances for " << ibeams.size() << " beams");
-        for (int ib : ibeams) {
-	  if (!_bonsais[ib]) {
-	    chlog("No bonsai object for beam index " << ib);
+            beams = _stream->get_beam_ids();
+	chlog("Grabbing variances for " << beams.size() << " beams");
+        for (int b : beams) {
+            auto bonsai = _get_bonsai_for_beam(b);
+            if (!bonsai) {
+                chlog("No bonsai object for beam " << b);
                 continue;
-	  }
-	  vector<float> weights;
-	  vector<float> variances;
-	  _bonsais[ib]->get_weights_and_variances(&weights, &variances);
-	  int beam = _stream->ini_params.beam_ids[ib];
-	  result.push_back(tuple<int,vector<float>,vector<float> >(beam, weights, variances));
+            }
+            vector<float> weights;
+            vector<float> variances;
+            bonsai->get_weights_and_variances(&weights, &variances);
+            result.push_back(tuple<int,vector<float>,vector<float> >(b, weights, variances));
         }
 	chlog("Sending variances for " << result.size() << " beams");
         msgpack::sbuffer buffer;
@@ -635,6 +628,21 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
     return rtnval;
 }
 
+std::shared_ptr<const bonsai::dedisperser> L1RpcServer::_get_bonsai_for_beam(int beam) {
+    auto it = _beam_to_bonsai.find(beam);
+    if (it == _beam_to_bonsai.end()) {
+        return shared_ptr<bonsai::dedisperser>();
+    }
+    return it->second;
+}
+
+std::shared_ptr<rf_pipelines::intensity_injector> L1RpcServer::_get_injector_for_beam(int beam) {
+    auto it = _beam_to_injector.find(beam);
+    if (it == _beam_to_injector.end())
+        return shared_ptr<rf_pipelines::intensity_injector>();
+    return it->second;
+}
+
 int L1RpcServer::_handle_streaming_request(zmq::message_t* client, string funcname, uint32_t token,
                                            const char* req_data, size_t req_len, size_t& offset) {
 
@@ -659,7 +667,7 @@ int L1RpcServer::_handle_streaming_request(zmq::message_t* client, string funcna
         // track of which L1 server has which beams, which is a
         // pain.
         bool found = false;
-        for (int b : _stream->ini_params.beam_ids) {
+        for (int b : _stream->get_beam_ids()) {
             if (b == beam) {
                 found = true;
                 break;
@@ -681,7 +689,7 @@ int L1RpcServer::_handle_streaming_request(zmq::message_t* client, string funcna
     // none of them are owned by this node.  The beams owned by this node
     // that aren't in the specified set will have streaming turned off.)
     if (nbeams == 0)
-        beam_ids = _stream->ini_params.beam_ids;
+        beam_ids = _stream->get_beam_ids();
     // Default to acq_dev = "ssd"
     if (acq_dev.size() == 0)
         acq_dev = "ssd";
@@ -696,7 +704,7 @@ int L1RpcServer::_handle_streaming_request(zmq::message_t* client, string funcna
         result.second = pattern;
     } else {
         try {
-            pattern = ch_frb_l1::acqname_to_filename_pattern(acq_dev, acq_name, { _stream->ini_params.stream_id }, _stream->ini_params.beam_ids, acq_new);
+            pattern = ch_frb_l1::acqname_to_filename_pattern(acq_dev, acq_name, { _stream->ini_params.stream_id }, _stream->get_beam_ids(), acq_new);
             chlog("Streaming to filename pattern: " << pattern);
             if (acq_new && acq_meta.size()) {
                 // write metadata file in acquisition dir.
@@ -781,9 +789,9 @@ int L1RpcServer::_handle_stream_status(zmq::message_t* client, string funcname, 
 
     // all my beams, as a comma-separated string
     string allbeams = "";
-    for (size_t i=0; i<_stream->ini_params.beam_ids.size(); i++) {
-        if (i) allbeams += ",";
-        allbeams += std::to_string(_stream->ini_params.beam_ids[i]);
+    for (int b : _stream->get_beam_ids()) {
+        if (allbeams.size()) allbeams += ",";
+        allbeams += std::to_string(b);
     }
     dict["all_beams"] = allbeams;
     // beams being streamed
@@ -964,10 +972,8 @@ int L1RpcServer::_handle_list_chunks(zmq::message_t* client, string funcname, ui
     // Grab snapshot of all ringbufs...
     vector<tuple<uint64_t, uint64_t, uint64_t, uint64_t> > allchunks;
 
-    intensity_network_stream::initializer ini = _stream->ini_params;
-    for (auto beamit = ini.beam_ids.begin(); beamit != ini.beam_ids.end(); beamit++) {
+    for (int beam : _stream->get_beam_ids()) {
         // Retrieve one beam at a time
-        int beam = *beamit;
         vector<int> beams;
         beams.push_back(beam);
         vector<vector<pair<shared_ptr<assembled_chunk>, uint64_t> > > chunks = _stream->get_ringbuf_snapshots(beams);
@@ -1094,15 +1100,17 @@ int L1RpcServer::_handle_masked_freqs(zmq::message_t* client, string funcname, u
 
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    vector<int> beams = _stream->get_beam_ids();
     pk.pack_array(_mask_stats->size());
     for (const auto &it : _mask_stats->map) {
-        int beam_id = it.first.first;
+        int stream_ind = it.first.first;
         string where = it.first.second;
+        int beam = beams[stream_ind];
         shared_ptr<rf_pipelines::mask_measurements_ringbuf> ms = it.second;
         vector<rf_pipelines::mask_measurements> meas = ms->get_all_measurements();
-        cout << "Got " << meas.size() << " measurements from beam " << beam_id << " where " << where << endl;
+        cout << "Got " << meas.size() << " measurements from beam " << beam << " where " << where << endl;
         pk.pack_array(4);
-        pk.pack(beam_id);
+        pk.pack(beam);
         pk.pack(where);
         int nt = 0;
         if (meas.size())
@@ -1173,27 +1181,21 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
         return errstring;
 
     // find the injector for this beam
-    for (size_t i=0; i<_stream->ini_params.beam_ids.size(); i++)
-        if (_stream->ini_params.beam_ids[i] == beam) {
-            assert(i < _injectors.size());
-            syringe = _injectors[i];
-	    chlog("injection request matched beam " << beam << "; injector is " << syringe.get());
-            break;
-        }
-    // Matching beam
+    syringe = _get_injector_for_beam(beam);
     if (!syringe) {
         string bstr = "";
-        for (size_t i=0; i<_stream->ini_params.beam_ids.size(); i++)
-	    bstr += (i>0 ? ", " : "") + to_string(_stream->ini_params.beam_ids[i]);
+        for (int b : _stream->get_beam_ids())
+	    bstr += (bstr.size() ? ", " : "") + to_string(b);
         return "inject_data: beam=" + to_string(beam) + " which is not a beam that I am handling ("
 	  + bstr + ")";
     }
+    chlog("injection request matched beam " << beam << "; injector is " << syringe.get());
 
     // rf_pipelines sample offset
     uint64_t stream_fpga0;
     try {
         // If the first packet has not been received, we don't know FPGA0.
-        stream_fpga0 = _stream->get_first_fpga_count(beam);
+        stream_fpga0 = _stream->get_first_fpgacount();
     } catch (const runtime_error &e) {
         return e.what();
     }
@@ -1239,32 +1241,36 @@ int L1RpcServer::_handle_masked_freqs_2(zmq::message_t* client, string funcname,
     vector<int> measbeams;
     vector<uint64_t> measfpga0;
 
+    uint64_t fpga0;
+    try {
+        fpga0 = _stream->get_first_fpgacount();
+    } catch (const std::exception& e) {
+        chlog("get_masked_frequencies_2: no fpga0");
+        pk.pack_array(0);
+        //  Send reply back to client.
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(*client, *token_to_message(token), *reply);
+    }
+
     uint64_t fpga_counts_per_sample = _stream->ini_params.fpga_counts_per_sample;
+    vector<int> beams = _stream->get_beam_ids();
 
     for (const auto &it : _mask_stats->map) {
-        int beam_id = it.first.first;
+        int stream_ind = it.first.first;
         string this_where = it.first.second;
 
         // match requested "beam" & "where"
-        if (beam >= 0 && beam_id != beam)
+        if (beam >= 0 && beams[stream_ind] != beam)
             continue;
         if (this_where != where)
             continue;
 
-        uint64_t fpga0;
-        try {
-            fpga0 = _stream->get_first_fpga_count(beam_id);
-        } catch (const std::exception& e) {
-            chlog("get_masked_frequencies_2: no fpga0 for beam " << beam_id);
-            continue;
-        }
         ssize_t samplestart = 0;
         ssize_t sampleend   = 0;
         if (fpgastart >= fpga0)
             samplestart = (fpgastart - fpga0) / fpga_counts_per_sample;
         if (fpgaend >= fpga0)
             sampleend   = (fpgaend   - fpga0) / fpga_counts_per_sample;
-        //chlog("get_masked_frequencies_2: sample range " << samplestart << " to " << sampleend);
         shared_ptr<rf_pipelines::mask_measurements_ringbuf> ms = it.second;
         shared_ptr<rf_pipelines::mask_measurements> meas = ms->get_summed_measurements(samplestart, sampleend);
         if (!meas) {
@@ -1272,7 +1278,7 @@ int L1RpcServer::_handle_masked_freqs_2(zmq::message_t* client, string funcname,
         } else {
             //chlog("Got summed measurements: pos " << meas->pos << ", nt " << meas->nt);
             measlist.push_back(meas);
-            measbeams.push_back(beam_id);
+            measbeams.push_back(beams[stream_ind]);
             measfpga0.push_back(fpga0);
         }
     }
@@ -1321,11 +1327,9 @@ int L1RpcServer::_handle_max_fpga(zmq::message_t* client, string funcname, uint3
     vector<uint64_t> retrieved;
     _stream->get_max_fpga_count_seen(flushed, retrieved);
 
-    intensity_network_stream::initializer ini = _stream->ini_params;
-    int nbeams = _stream->ini_params.beam_ids.size();
-    for (int i=0; i<nbeams; i++) {
-        // _stream->get_first_fpga_count(beamid)
-        seen.beam = _stream->ini_params.beam_ids[i];
+    vector<int> beams = _stream->get_beam_ids();
+    for (size_t i=0; i<beams.size(); i++) {
+        seen.beam = beams[i];
         seen.where = "chunk_flushed";
         seen.max_fpga_seen = flushed[i];
         fpgaseen.push_back(seen);
@@ -1335,18 +1339,18 @@ int L1RpcServer::_handle_max_fpga(zmq::message_t* client, string funcname, uint3
         fpgaseen.push_back(seen);
     }
 
+    uint64_t fpga0 = 0;
+    try {
+        fpga0 = _stream->get_first_fpgacount();
+    } catch (const runtime_error &e) {
+        // if first packet has not been received
+        goto bailout;
+    }
     for (size_t i=0; i<_latencies.size(); i++) {
-        int beam_id = std::get<0>(_latencies[i]);
+        int stream_ibeam = std::get<0>(_latencies[i]);
         string where = std::get<1>(_latencies[i]);
         const auto &late = std::get<2>(_latencies[i]);
-
-        uint64_t fpga0 = 0;
-        try {
-            fpga0 = _stream->get_first_fpga_count(beam_id);
-        } catch (const runtime_error &e) {
-            // if first packet has not been received
-            continue;
-        }
+        int beam_id = _stream->get_beam_ids()[stream_ibeam];
         uint64_t fpga = (late->pos_lo * _stream->ini_params.fpga_counts_per_sample
                          + fpga0);
         seen.beam = beam_id;
@@ -1354,20 +1358,11 @@ int L1RpcServer::_handle_max_fpga(zmq::message_t* client, string funcname, uint3
         seen.max_fpga_seen = fpga;
         fpgaseen.push_back(seen);
     }
-        
-    for (size_t i=0; i<_bonsais.size(); i++) {
-        const auto &bonsai = _bonsais[i];
-        if (!bonsai)
-            continue;
-        int beam_id = _stream->ini_params.beam_ids[i];
+
+    for (auto iter = _beam_to_bonsai.begin(); iter != _beam_to_bonsai.end(); iter++) {
+        int beam_id = iter->first;
+        auto bonsai = iter->second;
         int nc = bonsai->get_nchunks_processed();
-        uint64_t fpga0 = 0;
-        try {
-            fpga0 = _stream->get_first_fpga_count(beam_id);
-        } catch (const runtime_error &e) {
-            // if first packet has not been received
-            continue;
-        }
         uint64_t fpga = (nc * bonsai->nt_chunk * _stream->ini_params.fpga_counts_per_sample
                          + fpga0);
         seen.beam = beam_id;
@@ -1375,7 +1370,8 @@ int L1RpcServer::_handle_max_fpga(zmq::message_t* client, string funcname, uint3
         seen.max_fpga_seen = fpga;
         fpgaseen.push_back(seen);
     }
-        
+
+ bailout:
     pk.pack(fpgaseen);
 
     //  Send reply back to client.

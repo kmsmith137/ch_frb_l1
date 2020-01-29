@@ -123,9 +123,11 @@ l1_config::l1_config(int argc, const char **argv)
     parser.add_flag("-c,--crash", this->deliberately_crash, "Deliberately crash dedispersion thread (for debugging, obviously)");
     parser.add_flag("-t,--toy", this->tflag, "Starts a \"toy server\" which assembles packets, but does not run RFI removal, dedispersion, or L1B (if -t is specified, then the last 3 arguments are optional)");
     parser.add_flag("-r,--rfi", this->rflag, "Starts an \"RFI testing\" (semi-toy) server with no bonsai dedispersion or L1B (last 2 args are then optional).");
-    parser.add_option("-a,--acq", acq_name, "Stream data to disk, saving it to this acquisition directory name");
-    parser.add_flag("-n,--nfs", acq_nfs, "For streaming data acquisition, stream to NFS, not SSD");
-    parser.add_option("-b,--beam", acq_beams, "For streaming data acquisition, beam number to capture (can be repeated; default is all beams)");
+    /*
+     parser.add_option("-a,--acq", acq_name, "Stream data to disk, saving it to this acquisition directory name");
+     parser.add_flag("-n,--nfs", acq_nfs, "For streaming data acquisition, stream to NFS, not SSD");
+     parser.add_option("-b,--beam", acq_beams, "For streaming data acquisition, beam number to capture (can be repeated; default is all beams)");
+     */
     parser.add_option("l1_config", this->l1_config_filename, "l1_config.yaml")
         ->required()->check(CLI::ExistingFile);
     parser.add_option("rfi_config", this->rfi_config_filename, "rfi_config.json")
@@ -332,17 +334,11 @@ l1_config::l1_config(int argc, const char **argv)
 			    + to_string(nstreams) + ", inferred from number of (ipaddr,port) pairs");
     }
 
-    // Read beam_ids (postponed to here, so we get the check on 'nbeams' first).
-    
-    this->beam_ids = p.read_vector<int> ("beam_ids", vrange(0,nbeams));
-
-    if (beam_ids.size() != (unsigned)nbeams)
-	throw runtime_error(l1_config_filename + ": 'beam_ids' must have length 'nbeams'");
-
     // Read stream params (postponed to here, so we get 'beam_ids' first).
 
-    // If a stream is specified on the command-line, override the config file.
-    if (acq_name.size()) {
+    /*
+     // If a stream is specified on the command-line, override the config file.
+     if (acq_name.size()) {
         if (acq_name == "none") {
             // no streaming!
         } else {
@@ -359,6 +355,7 @@ l1_config::l1_config(int argc, const char **argv)
     for (int b: stream_beam_ids)
 	if (!vcontains(beam_ids, b))
 	    throw runtime_error(l1_config_filename + ": 'stream_beam_ids' must be a subset of 'beam_ids' (which defaults to [0,...,nbeams-1] if unspecified)");
+     */
 
     // "Derived" unassembled ringbuf params.
 
@@ -531,6 +528,7 @@ struct dedispersion_thread_context {
     vector<int> allowed_cores;
     bool asynchronous_dedispersion;   // run RFI and dedispersion in separate threads?
     int ibeam;
+    int stream_ibeam;  // aka iassembler
 
     void _thread_main() const;
     void _toy_thread_main() const;  // if -t command-line argument is specified
@@ -540,7 +538,7 @@ struct dedispersion_thread_context {
 };
 
 
-void dedispersion_thread_context::_init_mask_counters(const shared_ptr<rf_pipelines::pipeline_object> &pipeline, int beam_id) const
+void dedispersion_thread_context::_init_mask_counters(const shared_ptr<rf_pipelines::pipeline_object> &pipeline, int stream_ibeam) const
 {
     vector<shared_ptr<rf_pipelines::mask_counter_transform>> mask_counters;
     bool clippers_after_mask_counters = false;
@@ -584,14 +582,14 @@ void dedispersion_thread_context::_init_mask_counters(const shared_ptr<rf_pipeli
     for (unsigned int i = 0; i < mask_counters.size(); i++) {
 	rf_pipelines::mask_counter_transform::runtime_attrs attrs;
 	attrs.ringbuf_nhistory = config.rfi_mask_meas_history;
-	attrs.chime_beam_id = beam_id;
+	attrs.chime_stream_index = stream_ibeam;
 
 	// If RFI masks are requested, then the last mask_counter in the chain fills assembled_chunks.
 	if ((config.nrfifreq > 0) && ((i+1) == mask_counters.size()))
 	    attrs.chime_stream = this->sp;
 
 	mask_counters[i]->set_runtime_attrs(attrs);
-	this->ms_map->put(beam_id, mask_counters[i]->where, mask_counters[i]->ringbuf);
+	this->ms_map->put(stream_ibeam, mask_counters[i]->where, mask_counters[i]->ringbuf);
     }
 }
 
@@ -610,9 +608,8 @@ void dedispersion_thread_context::_thread_main() const
         // Note: deep copy here, to get thread-local copy of transfer matrices!
         bonsai_config = config.bonsai_config.deep_copy();
     
-    // Note: the distinction between 'ibeam' and 'beam_id' is a possible source of bugs!
-    int beam_id = config.beam_ids[ibeam];
-    auto stream = rf_pipelines::make_chime_network_stream(sp, beam_id, config.intensity_prescale);
+    // Note: the distinction between 'ibeam' and 'stream_ibeam' is a possible source of bugs!
+    auto stream = rf_pipelines::make_chime_network_stream(sp, stream_ibeam, config.intensity_prescale);
     auto rfi_chain = rf_pipelines::pipeline_object::from_json(config.rfi_transform_chain_json);
 
     shared_ptr<rf_pipelines::wi_transform> bonsai_transform;
@@ -654,7 +651,7 @@ void dedispersion_thread_context::_thread_main() const
         bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
     }
 
-    _init_mask_counters(rfi_chain, beam_id);
+    _init_mask_counters(rfi_chain, stream_ibeam);
         
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);
@@ -683,7 +680,7 @@ void dedispersion_thread_context::_thread_main() const
     
     if (max_tracker) {
 	stringstream ss;
-	ss << "ch-frb-l1: beam_id=" << beam_id 
+	ss << "ch-frb-l1: beam index=" << ibeam
 	   << ": most significant FRB has SNR=" << max_tracker->global_max_trigger
 	   << ", and (dm,arrival_time)=(" << max_tracker->global_max_trigger_dm
 	   << "," << max_tracker->global_max_trigger_arrival_time
@@ -719,6 +716,8 @@ void dedispersion_thread_context::_toy_thread_main() const
 
     // FIXME: stream-starting stuff also needs cleanup.
     sp->start_stream();
+
+    sp->wait_for_first_packet();
 
     for (;;) {
         auto chunk = sp->get_assembled_chunk(ibeam_within_stream);
@@ -918,7 +917,9 @@ void l1_server::spawn_l1b_subprocesses()
 	vector<string> l1b_command_line = {
 	    config.l1b_executable_filename,
 	    config.l1b_config_filename,
-	    std::to_string(config.beam_ids[ibeam])
+            /// HAAAAAAACK FIXME
+            "0"
+	    //std::to_string(config.beam_ids[ibeam])
 	};
 	
 	bonsai::trigger_pipe::initializer l1b_initializer;
@@ -980,6 +981,13 @@ void l1_server::make_memory_slab_pools()
 }
 
 
+void l1_server::first_packet_received(vector<int> beams) {
+    chlog("First packet received.  Beams:");
+    for (int b : beams) {
+        chlog("  beam " << b);
+    }
+}
+
 void l1_server::make_input_streams()
 {
     if (input_streams.size() != 0)
@@ -995,15 +1003,15 @@ void l1_server::make_input_streams()
     this->input_streams.resize(config.nstreams);
 
     for (int istream = 0; istream < config.nstreams; istream++) {
-	auto beam_id0 = config.beam_ids.begin() + istream * nbeams_per_stream;
-	auto beam_id1 = config.beam_ids.begin() + (istream+1) * nbeams_per_stream;
 	auto memory_slab_pool = this->memory_slab_pools[istream / nstreams_per_cpu];
 	
 	ch_frb_io::intensity_network_stream::initializer ini_params;
 
+	ch_frb_io::intensity_network_stream::first_packet_listener fpl = std::bind(&l1_server::first_packet_received, this, std::placeholders::_1);
+        
 	ini_params.ipaddr = config.ipaddr[istream];
 	ini_params.udp_port = config.port[istream];
-	ini_params.beam_ids = vector<int> (beam_id0, beam_id1);
+        ini_params.nbeams = nbeams_per_stream;
 	ini_params.nupfreq = xdiv(config.nfreq, ch_frb_io::constants::nfreq_coarse_tot);
         ini_params.nrfifreq = config.nrfifreq;
 	ini_params.nt_per_packet = config.nt_per_packet;
@@ -1049,16 +1057,19 @@ void l1_server::make_input_streams()
 	ini_params.throw_exception_on_buffer_drop = !config.tflag;
 
 	input_streams[istream] = ch_frb_io::intensity_network_stream::make(ini_params);
-	
+        input_streams[istream]->add_first_packet_listener(fpl);
+        
+        /* FIXME -- drop support for stream_beam_ids ??  Do via RPC?
+
 	// This is the subset of 'stream_beam_ids' which is processed by stream 'istream'.
 	vector<int> sf_beam_ids;
 	for (int b: config.stream_beam_ids)
 	    if (vcontains(ini_params.beam_ids, b))
 		sf_beam_ids.push_back(b);
-
 	// If config.stream_filename_pattern is an empty string, then stream_to_files() doesn't do anything.
         bool need_rfi = (config.nrfifreq > 0);
 	input_streams[istream]->stream_to_files(config.stream_filename_pattern, sf_beam_ids, 0, need_rfi);   // (pattern, priority)
+         */
     }
 }
 
@@ -1111,9 +1122,9 @@ void l1_server::make_rpc_servers()
         for (int ib = 0; ib < nbeams_per_stream; ib++) {
             inj[ib] = injectors[istream * nbeams_per_stream + ib];
             rpc_bonsais.push_back(bonsai_dedispersers[istream * nbeams_per_stream + ib]);
-            rpc_latency.push_back(make_tuple(config.beam_ids[istream * nbeams_per_stream + ib], "before_rfi",
+            rpc_latency.push_back(make_tuple(ib, "before_rfi",
                                              latency_monitors_pre[istream * nbeams_per_stream + ib]));
-            rpc_latency.push_back(make_tuple(config.beam_ids[istream * nbeams_per_stream + ib], "after_rfi",
+            rpc_latency.push_back(make_tuple(ib, "after_rfi",
                                              latency_monitors_post[istream * nbeams_per_stream + ib]));
         }
 
@@ -1194,9 +1205,10 @@ void l1_server::spawn_dedispersion_threads()
 	context.allowed_cores = this->dedispersion_cores[ibeam];
 	context.asynchronous_dedispersion = this->asynchronous_dedispersion;
 	context.ibeam = ibeam;
+	context.stream_ibeam = ibeam % nbeams_per_stream;
 
 	if (config.l1_verbosity >= 2) {
-	    cout << "ch-frb-l1: spawning dedispersion thread " << ibeam << ", beam_id=" << config.beam_ids[ibeam] 
+	    cout << "ch-frb-l1: spawning dedispersion thread " << ibeam //<< ", beam_id=" << config.beam_ids[ibeam] 
 		 << ", stream=" << context.sp->ini_params.ipaddr << ":" << context.sp->ini_params.udp_port
 		 << ", allowed_cores=" << ch_frb_io::vstr(context.allowed_cores) 
 		 << ", asynchronous_dedispersion=" << context.asynchronous_dedispersion << endl;

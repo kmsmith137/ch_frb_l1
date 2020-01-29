@@ -104,11 +104,6 @@ struct l1_config
     // Size of RFI mask measurement ringbuffer (15 seconds required for prometheus; more could be useful for other monitoring tools)
     int rfi_mask_meas_history;
 
-    // A vector of length nbeams, containing the beam_ids that will be processed on this L1 server.
-    // It is currently assumed that these are known in advance and never change!
-    // If unspecified, 'beam_ids' defaults to { 0, ..., nbeams-1 }.
-    std::vector<int> beam_ids;
-
     // Buffer sizes, as specified in config file.
     int unassembled_ringbuf_nsamples = 4096;
     int assembled_ringbuf_nsamples = 8192;
@@ -228,6 +223,9 @@ struct l1_server {
     void make_prometheus_servers();
     void spawn_dedispersion_threads();
 
+    // callback registered with intensity_network_stream
+    void first_packet_received(std::vector<int> beams);
+    
     // These methods wait for the server to exit, and print some summary info.
     void join_all_threads();
     void print_statistics();

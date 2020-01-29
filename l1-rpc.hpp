@@ -121,6 +121,9 @@ protected:
 
     void _update_n_chunks_waiting(bool inc);
 
+    std::shared_ptr<const bonsai::dedisperser> _get_bonsai_for_beam(int beam);
+    std::shared_ptr<rf_pipelines::intensity_injector> _get_injector_for_beam(int beam);
+    
 private:
     // The command line that launched this L1 process
     std::string _command_line;
@@ -170,6 +173,9 @@ private:
 
     // Bonsai dedisperser objects (used for latency reporting)
     std::vector<std::shared_ptr<const bonsai::dedisperser> > _bonsais;
+
+    std::map<int, std::shared_ptr<const bonsai::dedisperser> > _beam_to_bonsai;
+    std::map<int, std::shared_ptr<rf_pipelines::intensity_injector> > _beam_to_injector;
 
     // Latency monitors
     std::vector<std::tuple<int, std::string, std::shared_ptr<const rf_pipelines::pipeline_object> > > _latencies;
