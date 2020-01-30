@@ -1101,9 +1101,22 @@ int L1RpcServer::_handle_masked_freqs(zmq::message_t* client, string funcname, u
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     vector<int> beams = _stream->get_beam_ids();
-    pk.pack_array(_mask_stats->size());
+    int ngood = 0;
     for (const auto &it : _mask_stats->map) {
         int stream_ind = it.first.first;
+        if (stream_ind >= beams.size()) {
+            cout << "masked_freqs: first packet not received yet" << endl;
+            continue;
+        }
+        ngood++;
+    }
+    pk.pack_array(ngood);
+    for (const auto &it : _mask_stats->map) {
+        int stream_ind = it.first.first;
+        if (stream_ind >= beams.size()) {
+            cout << "masked_freqs: first packet not received yet" << endl;
+            continue;
+        }
         string where = it.first.second;
         int beam = beams[stream_ind];
         shared_ptr<rf_pipelines::mask_measurements_ringbuf> ms = it.second;

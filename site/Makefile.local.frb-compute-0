@@ -45,3 +45,5 @@ CPP_LFLAGS += $(shell pkg-config --libs hdf5)
 
 # We use the C (not C++) compiler only once: to compile civetweb/civetweb.o.
 CC=gcc -pthread -fPIC -Wall -O3 -march=native -ffast-math -funroll-loops -I. -I/usr/include/jsoncpp -I$(INCDIR)
+
+CPP += -DHAVE_BONSAI=y
