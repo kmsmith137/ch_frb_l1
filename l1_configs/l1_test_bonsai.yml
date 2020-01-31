@@ -29,7 +29,11 @@ output_devices: [ "" ]
 slow_kernels: False
 
 assembled_ringbuf_nsamples: 16384
-telescoping_ringbuf_nsamples: [ 16384, 4096, 4096 ]
+telescoping_ringbuf_nsamples: [ 16384, 16384, 4096 ]
+
+#assembled_ringbuf_nsamples: 32768
+#telescoping_ringbuf_nsamples: [ 32768, 4096, 4096 ]
+
 write_staging_area_gb: 0.1
 
 # L1b configuration.
@@ -44,6 +48,7 @@ write_staging_area_gb: 0.1
 
 #l1b_executable_filename: "./fake-l1b.sh"
 l1b_executable_filename: "./trigger"
+#l1b_executable_filename: "./toy-l1b.py"
 l1b_buffer_nsamples: 0
 l1b_pipe_timeout: 5.0
 

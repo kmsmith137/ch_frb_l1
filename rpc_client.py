@@ -31,12 +31,13 @@ class AssembledChunk(object):
         c = msgpacked_chunk
         # print('header', c[0])
         version = c[1]
-        assert(version in [1, 2])
+        assert(version in [1, 2, 3])
         if version == 1:
             assert(len(c) == 17)
         if version == 2:
-            assert((len(c) == 21)
-                   or (len(c) == 29))
+            assert(len(c) == 21)
+        if version == 3:
+            assert(len(c) == 29)
         self.version = version
         # print('version', version)
         compressed = c[2]
@@ -65,18 +66,19 @@ class AssembledChunk(object):
         self.nrfifreq = 0
         self.has_rfi_mask = False
         self.rfi_mask = None
-        if self.version == 2:
+        if self.version >= 2:
             self.frame0_nano = c[17]
             self.nrfifreq = c[18]
             self.has_rfi_mask = c[19]
             mask = c[20]
-            # to numpy
-            mask = np.fromstring(mask, dtype=np.uint8)
-            mask = mask.reshape((self.nrfifreq, self.nt//8))
-            # Expand mask!
-            self.rfi_mask = np.zeros((self.nrfifreq, self.nt), bool)
-            for i in range(8):
-                self.rfi_mask[:,i::8] = (mask & (1<<i)) > 0
+            if self.has_rfi_mask:
+                # to numpy
+                mask = np.fromstring(mask, dtype=np.uint8)
+                mask = mask.reshape((self.nrfifreq, self.nt//8))
+                # Expand mask!
+                self.rfi_mask = np.zeros((self.nrfifreq, self.nt), bool)
+                for i in range(8):
+                    self.rfi_mask[:,i::8] = (mask & (1<<i)) > 0
 
         if compressed:
            import pybitshuffle
@@ -90,7 +92,7 @@ class AssembledChunk(object):
         self.data = np.frombuffer(data, dtype=np.uint8)
         self.data = self.data.reshape((-1, self.nt))
 
-        # version 2b: extra args
+        # version 3: extra args
         nf = self.data.shape[0]
         self.has_detrend_t = False
         self.has_detrend_f = False
@@ -98,17 +100,18 @@ class AssembledChunk(object):
         self.detrend_f_type = None
         self.detrend_t = None
         self.detrend_f = None
-        if version == 2 and (len(c) >= 29):
+        if version >= 3:
             self.detrend_t_type = c[21]
             self.detrend_f_type = c[25]
             self.has_detrend_t = c[22]
             self.has_detrend_f = c[26]
             d = c[24]
             if len(d):
-                self.detrend_t = np.fromstring(d, dtype='<f4').reshape((-1, self.nt))
+                # Note, this is detrending *along* the t axis, so has nf elements.
+                self.detrend_t = np.fromstring(d, dtype='<f4').reshape((nf, -1)).T
             d = c[28]
             if len(d):
-                self.detrend_f = np.fromstring(d, dtype='<f4').reshape((-1, nf))
+                self.detrend_f = np.fromstring(d, dtype='<f4').reshape((-1, self.nt))
 
     def __str__(self):
         if self.has_rfi_mask:
@@ -149,6 +152,41 @@ class AssembledChunk(object):
         weights = ((self.data > 0) * (self.data < 255)) * np.float32(1.0)
 
         return intensities,weights
+
+    def get_spline_model(self):
+        spline_co = self.detrend_f
+        nco,nt_ = spline_co.shape
+        nf = self.data.shape[0]
+        nbins = (nco - 2)//2
+        bins = ((np.arange(nbins+1) / nbins * nf) + 0.5).astype(int)
+
+        spline_model = np.zeros((nf, self.nt), np.float32)
+        for ib,(b0,b1) in enumerate(zip(bins, bins[1:])):
+            i = np.arange(b0, b1)
+            x = nbins * (i + 0.5) / nf - ib
+            polys = np.vstack((
+                (1.-x) * (1.-x) * (1.+2.*x),
+                (1.-x) * (1.-x) * x,
+                x*x * (3. - 2.*x),
+                x*x * (x - 1.),
+                )).T
+            co = spline_co[ib*2: ib*2+4, :]
+            spline_model[b0:b1, :] = np.dot(polys, co)
+        return spline_model
+
+    def get_polynomial_model(self):
+        poly_co = self.detrend_t
+        nco,nf = poly_co.shape
+        z = 2. * (np.arange(self.nt) + 0.5) / self.nt - 1.;
+        legpoly = np.zeros((nco, self.nt), np.float32)
+        legpoly[0,:] = 1.0
+        legpoly[1,:] = z
+        for ell in range(2, nco):
+            a = (2.*ell-1.) / ell
+            b = -(ell-1.) / ell
+            legpoly[ell,:] = a * z * legpoly[ell-1,:] + b * legpoly[ell-2,:]
+        poly_model = np.dot(poly_co.T, legpoly)
+        return poly_model
 
     def time_start(self):
         '''
