@@ -1,5 +1,7 @@
 # Makefile.local for frb.compute-X
 
+
+
 # Directory where executables will be installed
 BINDIR ?= $(HOME)/bin
 # (nothing is installed here, but it is used to link to other installed code)
@@ -32,6 +34,8 @@ CPP += $(shell pkg-config --cflags libzmq)
 CPP += $(shell pkg-config --cflags hdf5)
 CPP += $(shell pkg-config --cflags libzmq)
 CPP += -I${HOME}/chime/msgpack-c/include
+
+CPP += -DHAVE_BONSAI=y
 
 # Any C++ flags which should only be specified when linking 
 # Don't forget to put -L. and -L$(LIBDIR) on the command line (in this order)
