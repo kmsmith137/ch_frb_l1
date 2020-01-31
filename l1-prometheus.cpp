@@ -257,18 +257,20 @@ public:
                 mg_printf(conn,
                           "# HELP %s %s\n"
                           "# TYPE %s %s\n", name, ms5[i].help, name, ms5[i].type);
+                std::vector<int> beams = _stream->get_beam_ids();
                 for (size_t ib=0; ib<maskstats.size(); ib++) {
                     int stream_ibeam;
                     string where;
                     unordered_map<string, float> mstats;
                     std::tie(stream_ibeam, where, mstats) = maskstats[ib];
-                    int beam_id = _stream->get_beam_ids()[stream_ibeam];
+                    if (stream_ibeam >= beams.size())
+                        continue;
+                    int beam_id = beams[stream_ibeam];
                     const char* key = ms5[i].key;
                     mg_printf(conn, "%s{beam=\"%i\",where=\"%s\"} %.2f\n", name,
                               beam_id, where.c_str(), mstats[key]);
                 }
             }
-            
         }
         
         return true;
