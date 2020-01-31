@@ -506,43 +506,56 @@ void l1_config::_have_warnings() const
 class ch_frb_l1::stream_coordinator {
 public:
     stream_coordinator(int nbeams) :
-        reset(nbeams, false),
-        all_reset(false)
+        checkedin(nbeams, false),
+        proceed(false),
+        nreturned(0)
     {
     }
-    void wait_for(int index) {
+    bool wait_for(int index) {
         ulock u(mutx);
         chlog("stream_coord: waiting: " << index);
-        reset[index] = true;
+        checkedin[index] = true;
         bool alldone = true;
-        for (bool r : reset) {
+        for (bool r : checkedin) {
             if (!r) {
                 alldone = false;
                 break;
             }
         }
-        if (alldone && !all_reset) {
-            all_reset = true;
+        if (alldone) {
             chlog("stream_coord: all beams have arrived!");
-            u.unlock();
-            cond.notify_all();
-            return;
+            nreturned++;
+            return true;
         }
-        while (!all_reset) {
+        while (!proceed)
             cond.wait(u);
+        nreturned++;
+        if (nreturned == checkedin.size()) {
+            for (size_t i=0; i<checkedin.size(); i++)
+                checkedin[i] = false;
+            proceed = false;
+            nreturned = 0;
         }
+        return false;
     }
-    void reset_all() {
-        ulock u(mutx);
-        for (size_t i=0; i<reset.size(); i++)
-            reset[i] = false;
-        all_reset = false;
+    void release() {
+        proceed = true;
+        cond.notify_all();
     }
+    /*
+      void reset() {
+      ulock u(mutx);
+      for (size_t i=0; i<checkedin.size(); i++)
+      checkedin[i] = false;
+      proceed = false;
+      }
+    */
 protected:
     std::mutex mutx;
     std::condition_variable cond;
-    std::vector<bool> reset;
-    bool all_reset;
+    std::vector<bool> checkedin;
+    bool proceed;
+    int nreturned;
 };
 
 
@@ -721,49 +734,51 @@ void dedispersion_thread_context::_thread_main() const
     rparams.outdir = "";  // disables
     rparams.verbosity = 0;
 
-    //// HMMMMM, how do we reset the network stream?  Recall that
-    // there are multiple of these threads, listening to different
-    // beams all coming from the same intensity_network_stream.  We
-    // want to reset each of these rf_pipelines, but only reset the
-    // underlying intensity_network_stream once!!
-
     for (;;) {
         // FIXME more sensible synchronization scheme!
         pipeline->run(rparams);
         if (!config.mflag)
             break;
         chlog("Multi-stream: pipeline finished.  Resetting!");
-        reset_coord->wait_for(stream_ibeam);
-        chlog("ch-frb-l1: reset coordination finished!");
-        if (stream_ibeam == 0) {
-            chlog("ch-frb-l1: I am stream_ibeam 0: resetting underlying stream!");
+        if (reset_coord->wait_for(stream_ibeam)) {
+            //if (stream_ibeam == 0) {
+            chlog("ch-frb-l1: I am stream_ibeam " << stream_ibeam << ": resetting underlying stream!");
             sp->reset_stream();
-            reset_coord->reset_all();
+            /// HACK -- ch-frb-simulate-l0 sends 5 end-of-stream packets, separated by 0.1 sec --
+            // so we'll wait a full second and then flush them!
+            sleep(1);
+            sp->flush_end_of_stream();
+            reset_coord->release();
         }
+        chlog("ch-frb-l1: reset coordination finished (" << stream_ibeam << ")!");
+
+        if (max_tracker) {
+            stringstream ss;
+            ss << "ch-frb-l1: beam index=" << ibeam
+               << ": most significant FRB has SNR=" << max_tracker->global_max_trigger
+               << ", and (dm,arrival_time)=(" << max_tracker->global_max_trigger_dm
+               << "," << max_tracker->global_max_trigger_arrival_time
+               << ")\n";
+            cout << ss.str().c_str() << flush;
+        }
+
+        // FIXME is it necessary for the dedispersion thread to wait for L1B?
+        // If not, it would be clearer to move this into l1_server::join_all_threads().
+        if (l1b_subprocess) {
+            chlog("Waiting for L1b process to finish...");
+            int l1b_status = l1b_subprocess->wait_for_child();
+            if (config.l1_verbosity >= 1)
+                cout << "l1b process exited with status " << l1b_status << endl;
+            chlog("L1b process finished.");
+        }
+        
+        chlog("Restarting pipeline!");
+        
         pipeline->reset();
     }
     // shut it down!!
     sp->join_threads();
     
-    if (max_tracker) {
-	stringstream ss;
-	ss << "ch-frb-l1: beam index=" << ibeam
-	   << ": most significant FRB has SNR=" << max_tracker->global_max_trigger
-	   << ", and (dm,arrival_time)=(" << max_tracker->global_max_trigger_dm
-	   << "," << max_tracker->global_max_trigger_arrival_time
-	   << ")\n";
-	
-	cout << ss.str().c_str() << flush;
-    }
-
-    // FIXME is it necessary for the dedispersion thread to wait for L1B?
-    // If not, it would be clearer to move this into l1_server::join_all_threads().
-
-    if (l1b_subprocess) {
-	int l1b_status = l1b_subprocess->wait_for_child();
-	if (config.l1_verbosity >= 1)
-	    cout << "l1b process exited with status " << l1b_status << endl;
-    }
 } 
 
 
