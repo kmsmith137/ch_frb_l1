@@ -48,6 +48,9 @@ struct l1_config
     bool tflag = false;
     bool rflag = false;
     bool fflag = false;
+
+    bool mflag = true;
+    
     bool l1b_pipe_io_debug = false;
     bool memory_pool_debug = false;
     bool write_chunk_debug = false;
@@ -168,6 +171,7 @@ struct l1_config
 //
 // This master data structure defines an L1 server instance.
 
+class stream_coordinator;
 
 struct l1_server {        
     using corelist_t = std::vector<int>;
@@ -192,6 +196,7 @@ struct l1_server {
     std::vector<std::shared_ptr<ch_frb_io::output_device>> output_devices;
     std::vector<std::shared_ptr<ch_frb_io::memory_slab_pool>> memory_slab_pools;
     std::vector<std::shared_ptr<ch_frb_io::intensity_network_stream>> input_streams;
+    std::vector<std::shared_ptr<stream_coordinator> > stream_reset_coordinators;
 
     std::vector<std::shared_ptr<mask_stats_map> > mask_stats_maps;
     std::vector<std::shared_ptr<L1RpcServer>> rpc_servers;

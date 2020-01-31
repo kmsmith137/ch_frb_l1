@@ -503,6 +503,51 @@ void l1_config::_have_warnings() const
     exit(1);
 }
 
+class ch_frb_l1::stream_coordinator {
+public:
+    stream_coordinator(int nbeams) :
+        reset(nbeams, false),
+        all_reset(false)
+    {
+    }
+    void wait_for(int index) {
+        ulock u(mutx);
+        chlog("stream_coord: waiting: " << index);
+        reset[index] = true;
+        bool alldone = true;
+        for (bool r : reset) {
+            if (!r) {
+                alldone = false;
+                break;
+            }
+        }
+        if (alldone && !all_reset) {
+            all_reset = true;
+            chlog("stream_coord: all beams have arrived!");
+            u.unlock();
+            cond.notify_all();
+            return;
+        }
+        while (!all_reset) {
+            cond.wait(u);
+        }
+    }
+    void reset_all() {
+        ulock u(mutx);
+        for (size_t i=0; i<reset.size(); i++)
+            reset[i] = false;
+        all_reset = false;
+    }
+protected:
+    std::mutex mutx;
+    std::condition_variable cond;
+    std::vector<bool> reset;
+    bool all_reset;
+};
+
+
+
+
 
 // -------------------------------------------------------------------------------------------------
 //
@@ -518,6 +563,7 @@ void l1_config::_have_warnings() const
 struct dedispersion_thread_context {
     l1_config config;
     shared_ptr<ch_frb_io::intensity_network_stream> sp;
+    shared_ptr<stream_coordinator> reset_coord;
     shared_ptr<mask_stats_map> ms_map;
     std::function<void(int, shared_ptr<const bonsai::dedisperser>,
                        shared_ptr<const rf_pipelines::pipeline_object> latency_pre,
@@ -675,8 +721,29 @@ void dedispersion_thread_context::_thread_main() const
     rparams.outdir = "";  // disables
     rparams.verbosity = 0;
 
-    // FIXME more sensible synchronization scheme!
-    pipeline->run(rparams);
+    //// HMMMMM, how do we reset the network stream?  Recall that
+    // there are multiple of these threads, listening to different
+    // beams all coming from the same intensity_network_stream.  We
+    // want to reset each of these rf_pipelines, but only reset the
+    // underlying intensity_network_stream once!!
+
+    for (;;) {
+        // FIXME more sensible synchronization scheme!
+        pipeline->run(rparams);
+        if (!config.mflag)
+            break;
+        chlog("Multi-stream: pipeline finished.  Resetting!");
+        reset_coord->wait_for(stream_ibeam);
+        chlog("ch-frb-l1: reset coordination finished!");
+        if (stream_ibeam == 0) {
+            chlog("ch-frb-l1: I am stream_ibeam 0: resetting underlying stream!");
+            sp->reset_stream();
+            reset_coord->reset_all();
+        }
+        pipeline->reset();
+    }
+    // shut it down!!
+    sp->join_threads();
     
     if (max_tracker) {
 	stringstream ss;
@@ -998,6 +1065,7 @@ void l1_server::make_input_streams()
     int nbeams_per_stream = xdiv(config.nbeams, config.nstreams);
 
     this->input_streams.resize(config.nstreams);
+    this->stream_reset_coordinators.resize(config.nstreams);
 
     for (int istream = 0; istream < config.nstreams; istream++) {
 	auto memory_slab_pool = this->memory_slab_pools[istream / nstreams_per_cpu];
@@ -1055,7 +1123,9 @@ void l1_server::make_input_streams()
 
 	input_streams[istream] = ch_frb_io::intensity_network_stream::make(ini_params);
         input_streams[istream]->add_first_packet_listener(fpl);
-        
+
+        stream_reset_coordinators[istream] = make_shared<stream_coordinator>(nbeams_per_stream);
+
         /* FIXME -- drop support for stream_beam_ids ??  Do via RPC?
 
 	// This is the subset of 'stream_beam_ids' which is processed by stream 'istream'.
@@ -1166,6 +1236,8 @@ void l1_server::spawn_dedispersion_threads()
 	throw("ch-frb-l1 internal error: double call to spawn_dedispersion_threads()");
     if (input_streams.size() != size_t(config.nstreams))
 	throw("ch-frb-l1 internal error: spawn_dedispersion_threads() was called, without first calling make_input_streams()");
+    if (stream_reset_coordinators.size() != size_t(config.nstreams))
+        throw("ch-frb-l1 internal error: spawn_dedispersion_threads() was called, without first calling make_input_streams()");
     if (l1b_subprocesses.size() != size_t(config.nbeams))
 	throw("ch-frb-l1 internal error: spawn_dedispersion_threads() was called, without first calling spawn_l1b_subprocesses()");
 
@@ -1195,6 +1267,7 @@ void l1_server::spawn_dedispersion_threads()
 	dedispersion_thread_context context;
 	context.config = this->config;
 	context.sp = this->input_streams[istream];
+        context.reset_coord = this->stream_reset_coordinators[istream];
         context.injector_transform = this->injectors[ibeam];
         context.ms_map = this->mask_stats_maps[istream];
         context.set_bonsai = set_bonsai;
