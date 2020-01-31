@@ -75,6 +75,11 @@ fpga_counts_per_sample = pipeline_attrs['fpga_counts_per_sample']
 print 'initial_fpga_count =', initial_fpga_count
 print 'fpga_counts_per_sample =', fpga_counts_per_sample
 
+print 'All opaque_context:', dedisp.opaque_context
+if beam_id == 0:
+    if 'beam_id' in pipeline_attrs:
+        beam_id = pipeline_attrs['beam_id']
+    print 'Set beam to', beam_id
 #
 # This is the main receive loop, which gets triggers from L1a.
 #
