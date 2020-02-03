@@ -284,10 +284,20 @@ protected:
 class L1PrometheusServer : public CivetServer {
 public:
     L1PrometheusServer(std::vector<std::string> options,
+                       shared_ptr<intensity_network_stream> stream,
+                       shared_ptr<const mask_stats_map> maskstats,
                        const struct CivetCallbacks *callbacks = 0,
                        const void *UserContext = 0) :
-        CivetServer(options, callbacks, UserContext) {}
-    virtual ~L1PrometheusServer() {}
+        CivetServer(options, callbacks, UserContext) {
+        handler = make_shared<L1PrometheusHandler>(stream, maskstats);
+        this->addHandler("/metrics", handler.get());
+    }
+    virtual ~L1PrometheusServer() {
+        removeHandler("/metrics");
+        handler.reset();
+    }
+protected:
+    std::shared_ptr<L1PrometheusHandler> handler;
 };
 
 shared_ptr<L1PrometheusServer> start_prometheus_server(string ipaddr_port,
@@ -303,14 +313,11 @@ shared_ptr<L1PrometheusServer> start_prometheus_server(string ipaddr_port,
     options.push_back(std::to_string(8));
     shared_ptr<L1PrometheusServer> server;
     try {
-        server = make_shared<L1PrometheusServer>(options);
+        server = make_shared<L1PrometheusServer>(options, stream, ms);
     } catch (CivetException &e) {
         cout << "Failed to start web server on address " << ipaddr_port << ": "
              << e.what() << endl;
         return server;
     }
-    // we're going to memory-leak this handler object
-    L1PrometheusHandler* h = new L1PrometheusHandler(stream, ms);
-    server->addHandler("/metrics", h);
     return server;
 }
