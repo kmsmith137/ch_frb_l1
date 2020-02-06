@@ -123,7 +123,7 @@ l1_config::l1_config(int argc, const char **argv)
     parser.add_flag("-c,--crash", this->deliberately_crash, "Deliberately crash dedispersion thread (for debugging, obviously)");
     parser.add_flag("-t,--toy", this->tflag, "Starts a \"toy server\" which assembles packets, but does not run RFI removal, dedispersion, or L1B (if -t is specified, then the last 3 arguments are optional)");
     parser.add_flag("-r,--rfi", this->rflag, "Starts an \"RFI testing\" (semi-toy) server with no bonsai dedispersion or L1B (last 2 args are then optional).");
-    parser.add_flag("-m,--multi", this->mflag, "Enable restarting network streams (different beams)");
+    parser.add_flag("-b,--multi", this->mflag, "Enable restarting network streams (different beams)");
     /*
      parser.add_option("-a,--acq", acq_name, "Stream data to disk, saving it to this acquisition directory name");
      parser.add_flag("-n,--nfs", acq_nfs, "For streaming data acquisition, stream to NFS, not SSD");

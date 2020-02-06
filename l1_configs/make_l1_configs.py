@@ -3,7 +3,7 @@ from __future__ import print_function
 import yaml
 
 def update_beam_ids(info, beam_offset):
-    info['beam_ids'] = range(beam_offset, beam_offset+8)
+    #info['beam_ids'] = range(beam_offset, beam_offset+8)
     return info
 
 ## NOTE, not currently used
@@ -33,7 +33,7 @@ def main():
         'nrfifreq': 1024,
         'nt_per_packet': 16,
         'nt_align': 4096,
-        'beam_ids': [0, 1, 2, 3, 4, 5, 6, 7],
+        #'beam_ids': [0, 1, 2, 3, 4, 5, 6, 7],
         'intensity_prescale': 0.0001,
         'ipaddr': [ "eno1",
                   "eno2" ],
