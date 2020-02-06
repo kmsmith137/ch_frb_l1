@@ -48,8 +48,7 @@ struct l1_config
     bool tflag = false;
     bool rflag = false;
     bool fflag = false;
-
-    bool mflag = true;
+    bool mflag = false;
     
     bool l1b_pipe_io_debug = false;
     bool memory_pool_debug = false;
