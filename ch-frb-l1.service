@@ -12,5 +12,13 @@ WorkingDirectory=/home/l1operator/
 ExecStart=/home/l1operator/ch-frb-l1-dispatch.sh
 Restart=on-abnormal
 
+# UGH the "+" prefix -- retain extra power -- does not exist in the ancient
+# systemd 219 we are running on site.
+#ExecStartPre=+/home/l1operator/ch-frb-l1-prestart.sh
+#ExecStopPost=+/home/l1operator/ch-frb-l1-poststop.sh
+
+ExecStartPre=/home/l1operator/ch-frb-l1-prestart.sh
+ExecStopPost=/home/l1operator/ch-frb-l1-poststop.sh
+
 # [Install]
 # WantedBy=multi-user.target
