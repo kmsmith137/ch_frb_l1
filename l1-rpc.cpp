@@ -313,11 +313,15 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
     _frontend.setsockopt(ZMQ_ROUTER_MANDATORY, 1);
 }
 
-
 L1RpcServer::~L1RpcServer() {
     _frontend.close();
     if (_created_ctx)
         delete _ctx;
+}
+
+void L1RpcServer::reset_beams() {
+    // FIXME -- re-setup mappings _beam_to_bonsai and _beam_to_injector!!
+    chlog("reset_beams()");
 }
 
 bool L1RpcServer::is_shutdown() {
@@ -629,18 +633,42 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 }
 
 std::shared_ptr<const bonsai::dedisperser> L1RpcServer::_get_bonsai_for_beam(int beam) {
-    auto it = _beam_to_bonsai.find(beam);
-    if (it == _beam_to_bonsai.end()) {
-        return shared_ptr<bonsai::dedisperser>();
+    for (int i=0; i<_stream->get_beam_ids().size(); i++) {
+        int b = _stream->get_beam_ids()[i];
+        if (b == beam) {
+            if (i < _bonsais.size()) {
+                return _bonsais[i];
+            }
+        }
     }
-    return it->second;
+    return shared_ptr<bonsai::dedisperser>();
+    /*
+     auto it = _beam_to_bonsai.find(beam);
+     if (it == _beam_to_bonsai.end()) {
+     return shared_ptr<bonsai::dedisperser>();
+     }
+     return it->second;
+     */
 }
 
 std::shared_ptr<rf_pipelines::intensity_injector> L1RpcServer::_get_injector_for_beam(int beam) {
-    auto it = _beam_to_injector.find(beam);
-    if (it == _beam_to_injector.end())
-        return shared_ptr<rf_pipelines::intensity_injector>();
-    return it->second;
+    chlog("Searching for injector for beam " << beam << ": have " <<
+          _injectors.size() << " injectors.");
+    for (int i=0; i<_stream->get_beam_ids().size(); i++) {
+        int b = _stream->get_beam_ids()[i];
+        if (b == beam) {
+            if (i < _injectors.size()) {
+                return _injectors[i];
+            }
+        }
+    }
+    return shared_ptr<rf_pipelines::intensity_injector>();
+    /*
+     auto it = _beam_to_injector.find(beam);
+     if (it == _beam_to_injector.end())
+     return shared_ptr<rf_pipelines::intensity_injector>();
+     return it->second;
+     */
 }
 
 int L1RpcServer::_handle_streaming_request(zmq::message_t* client, string funcname, uint32_t token,

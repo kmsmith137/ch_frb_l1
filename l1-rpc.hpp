@@ -68,6 +68,11 @@ public:
                                std::string filename,
                                int priority = 0);
 
+    // Called when *possibly* first packet has been received.  Will
+    // also be called when first packet has been received on the L1
+    // server's *other* stream/port!
+    void reset_beams();
+
 protected:
     // responds to the given RPC request, either sending immediate
     // reply or queuing work for worker threads.
