@@ -974,39 +974,43 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         //  Send reply back to client.
         zmq::message_t* reply = sbuffer_to_message(buffer);
         return _send_frontend_message(*client, *token_to_message(token), *reply);
-    } else if (funcname == "get_alex_test_msg"){ 
-        msgpack::sbuffer buffer;
-        std::string result("alex_l1_reply");
-        msgpack::pack(buffer, result);
-        //  Send reply back to client.
-        zmq::message_t* reply = sbuffer_to_message(buffer);
-        return _send_frontend_message(*client, *token_to_message(token),
-                                      *reply);
     } else if (funcname == "set_spulsar_writer_params"){
         msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
         
-        auto nfreq_out = oh.get().via.array.ptr[0].as<int>();
-        auto nds_out = oh.get().via.array.ptr[1].as<int>();
-        auto nbits_out = oh.get().via.array.ptr[2].as<int>();
-        chime_slow_pulsar_writer::output_file_params ofp;
+        // TODO: reject requests based on file version (useful for dev)
+        auto target_beam = oh.get().via.array.ptr[0].as<int>();
 
-        ofp.nfreq_out = nfreq_out;
-        ofp.nds_out = nds_out;
-        ofp.nbits_out = nbits_out;
+        auto nfreq = oh.get().via.array.ptr[1].as<int>();
+        auto ntime = oh.get().via.array.ptr[2].as<int>();
+        auto nbins = oh.get().via.array.ptr[3].as<int>();
+        
+        int nbeams = this->_stream->ini_params.beam_ids.size();
+        int beam_id;
+        int target_ibeam = -1;
+        for (int ibeam=0; ibeam<nbeams; ibeam++) {
+            if(this->_stream->ini_params.beam_ids[ibeam] == target_beam)
+            {
+                target_ibeam = ibeam;
+                break;
+            }
+        }
 
-        // ofp.nfreq_out = nfreq_out;
-        // ofp.nds_out = nds_out;
-        // ofp.nbits_out = nbits_out;
 
-        chlog("Pulsar writer paramter update" << std::endl << "\tnfreq_out: " << nfreq_out
-                    << std::endl <<  "\tnds_out: " << nds_out << std::endl << "\tnbits_out " << nbits_out << std::endl);
-
-        //update the writer thread...
-        //FIXME extend to arbitrary beam count; set by beam?
-        this->_slow_pulsar_writer_hash->get(0)->set_output_file_params(ofp);
+        if(target_ibeam != -1) {
+            this->_slow_pulsar_writer_hash->get(target_ibeam)->set_params(target_beam, nfreq, ntime, nbins);
+            chlog("Pulsar writer paramter update" << std::endl << "\tnfreq_out: " << nfreq
+                    << std::endl <<  "\tntime_out: " << ntime << std::endl << "\tnbins " << nbins << std::endl);
+        }
 
         msgpack::sbuffer buffer;
-        std::string result("successfully set slow pulsar writer params");
+        string result;
+        if(target_ibeam == -1) {
+            result = "failure: target beam_id not found!";
+        }
+        else {
+            result = "parameters successfully applied to slow pulsar writer";
+        }
+
         msgpack::pack(buffer, result);
         zmq::message_t* reply = sbuffer_to_message(buffer);
         return _send_frontend_message(*client, *token_to_message(token), *reply);
