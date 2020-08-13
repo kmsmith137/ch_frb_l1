@@ -27,15 +27,18 @@ node=$(hostname | cut -c 5)
 rack=$(hostname | cut -c 3)
 
 #if [ $rack == 1 ]; then
-if [ $(hostname) == cf1n0 ]; then
+#if [ $(hostname) == cf1n0 ]; then
+#if true; then
+if false; then
     echo "I am $(hostname) aka rack $rack node $node .  Running DEV version"
     export VERSION=dev
-    export RFI_CONFIG=18-11-15-low-latency-nonuniform-v1-noplot.json
+    export RFI_CONFIG=18-11-15-low-latency-uniform-v1-noplot.json
     export BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
 else
+    echo "I am $(hostname) aka rack $rack node $node .  Running PRODUCTION version"
     export VERSION=production
-    export RFI_CONFIG=17-12-02-two-pass-v5-noplot.json
-    export BONSAI_CONFIG=bonsai_production_noups_nbeta2_5tree_experiment.hdf5
+    export RFI_CONFIG=18-11-15-low-latency-uniform-v1-noplot.json
+    export BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
 fi
 
 export LD_LIBRARY_PATH=/home/l1operator/${VERSION}/lib:/usr/local/lib
@@ -45,14 +48,3 @@ export PATH=/usr/local/bin:/usr/bin:/bin:/home/l1operator/${VERSION}/bin
 cd /home/l1operator/${VERSION}/ch_frb_l1
 
 ./ch-frb-l1 l1_configs/l1_production_8beam_rack${rack}_node${node}.yaml ../ch_frb_rfi/json_files/rfi_16k/${RFI_CONFIG} /data/bonsai_configs/${BONSAI_CONFIG} L1b_config_site.yaml
-
-#./ch-frb-l1 l1_configs/l1_production_8beam_rack${rack}_node${node}.yaml ../ch_frb_rfi/json_files/rfi_16k/17-12-02-two-pass-v5-noplot.json /data/bonsai_configs/bonsai_production_noups_nbeta2_5tree_experiment.hdf5 L1b_config_site.yaml
-#18-02-02-rfi-level1-v1-noplot.json 
-
-#./ch-frb-l1 l1_configs/l1_production_8beam_rack${rack}_node${node}.yaml ../ch_frb_rfi/json_files/rfi_16k/18-11-15-low-latency-nonuniform-v1-noplot.json /data/bonsai_configs/bonsai_production_noups_nbeta2_v4.hdf5 L1b_config_site.yaml
-
-#./ch-frb-l1 l1_configs/l1_production_8beam_rack${rack}_node${node}.yaml ../ch_frb_rfi/json_files/rfi_16k/17-12-02-two-pass-v5-noplot.json /data/bonsai_configs/bonsai_production_noups_nbeta2_5tree_experiment.hdf5 L1b_config_site.yaml
-
-#./ch-frb-l1 l1_configs/l1_production_8beam_rack${rack}_node${node}.yaml ../ch_frb_rfi/json_files/rfi_16k/18-11-15-low-latency-nonuniform-v1-noplot.json /data/bonsai_configs/bonsai_production_noups_nbeta2_v4.hdf5 L1b_config_site.yaml
-
-#./ch-frb-l1 l1_configs/l1_production_8beam_rack${rack}_node${node}.yaml ../ch_frb_rfi/json_files/rfi_16k/17-12-02-two-pass-v3-noplot.json bonsai_configs/bonsai_production_noups_nbeta1_v2.hdf5 L1b_config_site.yaml

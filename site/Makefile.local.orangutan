@@ -11,8 +11,9 @@ PYTHON_INCDIR=/usr/include/python2.7
 # On orangutan, I use two NUMPY_INCDIRs, to allow for the possibility that there may or may not be
 # a pip-installed version of numpy in $HOME/.local.
 
-NUMPY_INCDIR1=$(HOME)/venvfrb2/lib/python2.7/site-packages/numpy/core/include
-NUMPY_INCDIR2=/usr/lib/python2.7/dist-packages/numpy/core/include
+
+NUMPY_INCDIR1=$(HOME)/.local/lib/python2.7/site-packages/numpy/core/include
+NUMPY_INCDIR2=/usr/local/lib/python2.7/dist-packages/numpy/core/include
 
 #
 # C++ command line
