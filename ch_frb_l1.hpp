@@ -98,11 +98,6 @@ struct l1_config
     // Optional chlog logging server address
     std::string logger_address;
 
-    // Optional URL to get frame0-ctime
-    std::string frame0_url;
-    // Timeout (in ms) for retrieving frame0-ctime
-    int frame0_timeout;
-
     // Size of RFI mask measurement ringbuffer (15 seconds required for prometheus; more could be useful for other monitoring tools)
     int rfi_mask_meas_history;
 

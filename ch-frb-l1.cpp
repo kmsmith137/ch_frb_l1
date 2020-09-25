@@ -27,8 +27,6 @@
 #include <sys/socket.h>
 #include <ifaddrs.h>
 
-#include <curl/curl.h>
-
 #include "ch_frb_l1.hpp"
 #include "chlog.hpp"
 
@@ -225,8 +223,6 @@ l1_config::l1_config(int argc, const char **argv)
     this->heavy_rpc_address = p.read_vector<string> ("heavy_rpc_address", vector<string>());
     this->prometheus_address = p.read_vector<string> ("prometheus_address");
     this->logger_address = p.read_scalar<string> ("logger_address", "");
-    this->frame0_url = p.read_scalar<string> ("frame0_url");
-    this->frame0_timeout = p.read_scalar<int> ("frame0_timeout_ms", 3000);
     this->rfi_mask_meas_history = p.read_scalar<int>("rfi_mask_meas_history", 300);
     this->slow_kernels = p.read_scalar<bool> ("slow_kernels", false);
     this->unassembled_ringbuf_nsamples = p.read_scalar<int> ("unassembled_ringbuf_nsamples", 4096);
@@ -1099,8 +1095,6 @@ void l1_server::make_input_streams()
 	ini_params.fpga_counts_per_sample = config.fpga_counts_per_sample;
 	ini_params.nt_align = config.nt_align;
 	ini_params.stream_id = istream + 1;   // +1 here since first NFS mount is /frb-archive-1, not /frb-archive-0
-        ini_params.frame0_url = config.frame0_url;
-        ini_params.frame0_timeout = config.frame0_timeout;
 	ini_params.force_fast_kernels = !config.slow_kernels;
 	ini_params.force_reference_kernels = config.slow_kernels;
 	ini_params.deliberately_crash = config.deliberately_crash;
