@@ -71,6 +71,9 @@ rpc-client: rpc_client.o
 ch-frb-l1: ch-frb-l1-main.o ch-frb-l1.o file_utils.o yaml_paramfile.o $(L1_OBJS) $(CIVET_OBJS)
 	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lrf_pipelines -lbonsai -lch_frb_io -lrf_kernels -lzmq -lyaml-cpp -ljsoncpp -ldl -lcurl
 
+l0-timing: l0-timing.o
+	$(CPP) -o $@ $^ $(CPP_LFLAGS) -lch_frb_io
+
 ch-frb-simulate-l0: ch-frb-simulate-l0.o simulate-l0.o file_utils.o yaml_paramfile.o
 	$(CPP) -o $@ $^ $(CPP_CFLAGS) $(CPP_LFLAGS) -lch_frb_io -lyaml-cpp
 
