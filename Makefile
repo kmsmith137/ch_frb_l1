@@ -42,8 +42,8 @@ INSTALLED_BINARIES := ch-frb-l1 ch-frb-simulate-l0
 NON_INSTALLED_BINARIES := rpc-client test-l1-rpc test-packet-rates
 
 debug: ch-frb-l1 ch-frb-simulate-l0 rpc-client test-l1-rpc test-packet-rates simulate_l0.so
-# debug:
-# 	@echo $(value INSTALLED_BINARIES) $(value NON_INSTALLED_BINARIES)
+# # debug:
+# # 	@echo $(value INSTALLED_BINARIES) $(value NON_INSTALLED_BINARIES)
 
 all: $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES) simulate_l0.so
 
@@ -93,7 +93,7 @@ test-l1-rpc: test-l1-rpc.cpp $(L1_OBJS) file_utils.o $(CIVET_OBJS)
 	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lzmq -lhdf5 -llz4 -lbonsai -lrf_pipelines -lch_frb_io -ldl
 
 test-packet-rates: test-packet-rates.cpp $(L1_OBJS) file_utils.o $(CIVET_OBJS)
-	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lzmq -lhdf5 -llz4 -l bonsai -lrf_pipelines -lch_frb_io -ldl
+	$(CPP) $(CPP_CFLAGS) $(CPP_LFLAGS) -o $@ $^ -lzmq -lhdf5 -llz4 -lbonsai -lrf_pipelines -lch_frb_io -ldl
 
 clean:
 	rm -f *.o *~ civetweb/*.o civetweb/*~ $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES) simulate_l0.so terminus-l1 hdf5-stream
