@@ -1,0 +1,15 @@
+# single-beam injection server
+
+[Unit]
+Description=ch-frb-l1 - CHIME/FRB L1 server
+After=network.target
+#StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=l1operator
+WorkingDirectory=/home/l1operator/
+ExecStart=/home/l1operator/singlebeam.sh d
+Restart=always
+RestartSec=5
+

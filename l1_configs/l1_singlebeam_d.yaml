@@ -1,0 +1,21 @@
+ipaddr: eno1
+port: 1404
+prometheus_address: eno1:8004
+rpc_address: tcp://eno1:5004
+heavy_rpc_address: tcp://eno1:6004
+
+assembled_ringbuf_nsamples: 10000
+frame0_url: http://carillon.chime:54321/get-frame0-time
+intensity_prescale: 0.0001
+l1b_buffer_nsamples: 4000
+l1b_executable_filename: ../ch_frb_L1b/ch-frb-l1b.py
+l1b_pipe_timeout: 0
+nbeams: 1
+nfreq: 16384
+nrfifreq: 1024
+nt_align: 4096
+nt_per_packet: 16
+output_devices: [/frb-archiver-1, /frb-archiver-2]
+slow_kernels: false
+telescoping_ringbuf_nsamples: [60000, 120000, 240000]
+write_staging_area_gb: 2.4

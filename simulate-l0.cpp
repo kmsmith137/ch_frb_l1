@@ -21,6 +21,8 @@ l0_params::l0_params(const string &filename, double gbps)
     this->nfreq_fine = p.read_scalar<int> ("nfreq");
     this->nt_per_packet = p.read_scalar<int> ("nt_per_packet");
     this->gbps = gbps;
+
+    this->beam_offset = p.read_scalar<int> ("beam_offset");
     
     if (p.has_param("fpga_counts_per_sample"))
 	this->fpga_counts_per_sample = p.read_scalar<int> ("fpga_counts_per_sample");
@@ -137,7 +139,7 @@ shared_ptr<ch_frb_io::intensity_network_ostream> l0_params::make_ostream(int ith
 
     ch_frb_io::intensity_network_ostream::initializer ini_params;
     ini_params.dstname = ipaddr[istream] + ":" + to_string(port[istream]);
-    ini_params.beam_ids = vrange(istream * nbeams_per_stream, (istream+1) * nbeams_per_stream);
+    ini_params.beam_ids = vrange(beam_offset + istream * nbeams_per_stream, beam_offset + (istream+1) * nbeams_per_stream);
     ini_params.coarse_freq_ids = vrange(jthread * nfreq_coarse_per_thread, (jthread+1) * nfreq_coarse_per_thread);
     ini_params.nupfreq = nupfreq;
     ini_params.nt_per_chunk = ch_frb_io::constants::nt_per_assembled_chunk;
@@ -253,7 +255,8 @@ void l0_params::send_chunks(int istream,
 
         //cout << "elts per chunk " << ostream->elts_per_chunk << ", nt per chunk " << ostream->nt_per_chunk << endl;
         int nsub = chunk->nt_coarse * chunk->nt_per_packet / ostream->nt_per_chunk;
-        cout << "splitting assembled chunk into " << nsub << " pieces" << endl;
+        //cout << "splitting assembled chunk into " << nsub << " pieces" << endl;
+        cout << "simulate-l0: sending chunk with fpgacounts " << chunk->fpga_begin << " = sample " << chunk->fpga_begin / chunk->fpga_counts_per_sample << endl;
         for (int i=0; i<nsub; i++) {
             vector<float> intensity(ostream->elts_per_chunk, 0.0);
             vector<float> weights(ostream->elts_per_chunk, 1.0);
@@ -267,13 +270,12 @@ void l0_params::send_chunks(int istream,
         }
     }
 
-    for (int ichunk = 0; ichunk < data.size(); ichunk++) {
+    for (size_t ichunk = 0; ichunk < data.size(); ichunk++) {
 	//int64_t fpga_count = int64_t(ichunk) * int64_t(ostream->fpga_counts_per_chunk);
         int64_t fpga_count = fpgacounts[ichunk];
 
         int stride = ostream->nt_per_chunk;
         pair<vector<float>,vector<float> > iw = data[ichunk];
-        cout << "sending chunk " << ichunk << " with fpgacounts " << fpga_count << endl;
         ostream->send_chunk(iw.first.data(), stride,
                             iw.second.data(), stride,
                             fpga_count);
