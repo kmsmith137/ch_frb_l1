@@ -75,6 +75,11 @@ fpga_counts_per_sample = pipeline_attrs['fpga_counts_per_sample']
 print 'initial_fpga_count =', initial_fpga_count
 print 'fpga_counts_per_sample =', fpga_counts_per_sample
 
+print 'All opaque_context:', dedisp.opaque_context
+if beam_id == 0:
+    if 'beam_id' in pipeline_attrs:
+        beam_id = pipeline_attrs['beam_id']
+    print 'Set beam to', beam_id
 #
 # This is the main receive loop, which gets triggers from L1a.
 #
@@ -104,6 +109,7 @@ for ichunk in itertools.count():
     assert len(t) == dedisp.ntrees
     for (i,a) in enumerate(t):
         assert a.shape == (dedisp.ndm_coarse[i], dedisp.nsm[i], dedisp.nbeta[i], dedisp.nt_coarse_per_chunk[i])
+        print '  tree index', i, 'shape', a.shape, 'max', np.max(a)
 
     # A quick-and-dirty way to prevent the final plot from getting too large.
     time_samples_processed = (ichunk+1) * dedisp.nt_chunk
@@ -128,6 +134,7 @@ except:
     sys.exit(0)
 
 nchunks = len(all_triggers)
+print('toy-l1b.py: number of all_triggers:', nchunks)
 nxpix_per_chunk = np.max(dedisp.nt_coarse_per_chunk)
 nxpix_tot = nchunks * nxpix_per_chunk
 

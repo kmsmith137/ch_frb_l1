@@ -1,0 +1,1 @@
+l1operator ALL = NOPASSWD: /bin/systemctl start ch-frb-l1, /bin/systemctl stop ch-frb-l1, /bin/systemctl restart ch-frb-l1, /bin/systemctl status ch-frb-l1, /bin/journalctl -u ch-frb-l1, /home/l1operator/start-singlebeam.sh, /home/l1operator/stop-singlebeam.sh

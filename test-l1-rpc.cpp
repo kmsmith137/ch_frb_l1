@@ -84,8 +84,7 @@ int main(int argc, char** argv) {
     }
     
     intensity_network_stream::initializer ini;
-    for (int beam: beams)
-        ini.beam_ids.push_back(beam);
+    ini.nbeams = beams.size();
     ini.nupfreq = nupfreq;
     ini.nt_per_packet = nt_per;
     ini.fpga_counts_per_sample = fpga_per;
@@ -136,7 +135,8 @@ int main(int argc, char** argv) {
 
     chlog("Starting RPC server on port " << port);
     vector<shared_ptr<const bonsai::dedisperser> > bonsais;
-    L1RpcServer rpc(stream, ms, sp, bonsais, port);
+    std::vector<std::shared_ptr<rf_pipelines::intensity_injector> > inj;
+    L1RpcServer rpc(stream, inj, ms, sp, bonsais, true, port);
     std::thread rpc_thread = rpc.start();
 
     std::random_device rd;
