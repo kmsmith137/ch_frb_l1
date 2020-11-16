@@ -723,9 +723,6 @@ void dedispersion_thread_context::_thread_main() const
         bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
     }
 
-    if (l1b_subprocess)
-	dedisperser->add_processor(l1b_subprocess);
-
     // cout << "RFI chain:" << endl;
     // rf_pipelines::print_pipeline(rfi_chain);
 
