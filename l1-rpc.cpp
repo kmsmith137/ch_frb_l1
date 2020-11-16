@@ -619,17 +619,22 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         auto ntime = oh.get().via.array.ptr[2].as<int>();
         auto nbins = oh.get().via.array.ptr[3].as<int>();
         
-        int nbeams = this->_stream->ini_params.beam_ids.size();
+        const ssize_t nbeams = this->_stream->ini_params.nbeams;
         int beam_id;
         int target_ibeam = -1;
-        for (int ibeam=0; ibeam<nbeams; ibeam++) {
-            if(this->_stream->ini_params.beam_ids[ibeam] == target_beam)
-            {
-                target_ibeam = ibeam;
-                break;
+
+        shared_ptr<vector<int>> beam_ids(new vector<int>(this->_stream->get_beam_ids()));
+
+        // check that the stream beam_ids 
+        if(beam_ids->size() == nbeams){
+            for (int ibeam=0; ibeam<nbeams; ibeam++) {
+                if((*beam_ids)[ibeam] == target_beam)
+                {
+                    target_ibeam = ibeam;
+                    break;
+                }
             }
         }
-
 
         if(target_ibeam != -1) {
             this->_slow_pulsar_writer_hash->get(target_ibeam)->set_params(target_beam, nfreq, ntime, nbins);

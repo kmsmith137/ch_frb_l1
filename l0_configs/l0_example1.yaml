@@ -11,6 +11,9 @@ nbeams: 1
 nfreq: 1024
 nt_per_packet: 64
 
+fpga_counts_per_sample: 384
+# fpga_counts_per_sample: 768
+
 # Send data to the loopback address (127.0.0.1), UDP port 6677.
 
 ipaddr: "127.0.0.1"

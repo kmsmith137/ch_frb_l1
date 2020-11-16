@@ -221,6 +221,7 @@ struct l1_server {
     void make_mask_stats();
     void make_rpc_servers();
     void make_prometheus_servers();
+    void make_slow_pulsar_writer_hashes();
     void spawn_dedispersion_threads();
 
     // callback registered with intensity_network_stream
