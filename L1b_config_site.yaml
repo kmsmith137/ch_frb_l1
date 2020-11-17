@@ -1,12 +1,12 @@
 ---
 verbose: True
-log_addr: "tcp://10.6.213.18:10000"
-log_directory: "/frb-archiver-1/L1b_logs/"
+#log_addr: "tcp://10.6.213.18:10000"
+#log_directory: "/frb-archiver-1/L1b_logs/"
 default_beam_id: 0
 fallback_fpga_start: 0
 
 TriggerGrouper:
-    snr_thr: 4.0
+    snr_thr: 8.0
     histogram_triggers: False
 
 CandidateSifter:
