@@ -744,7 +744,8 @@ void dedispersion_thread_context::_thread_main() const
 	throw runtime_error("ch-frb-l1: fatal: expected RFI json file to contain a chime_slow_pulsar_writer");
 
     rf_pipelines::chime_slow_pulsar_writer::real_time_state sp_rts;
-    sp_rts.beam_id = stream_ibeam;
+    // find beam id
+    sp_rts.beam_id = stream->get_beam_ids()[stream_ibeam];
     sp_rts.memory_pool = sp->ini_params.memory_pool;
     sp_rts.output_devices = make_shared<ch_frb_io::output_device_pool> (sp->ini_params.output_devices);
 
