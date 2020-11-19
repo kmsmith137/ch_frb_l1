@@ -100,9 +100,10 @@ int main(int argc, char** argv) {
         streams.push_back(stream);
         
         string rpc_addr = "tcp://127.0.0.1:" + to_string(rpc_port + i);
+        std::vector<std::shared_ptr<rf_pipelines::intensity_injector> > inj;
         shared_ptr<ch_frb_l1::mask_stats_map> ms = make_shared<ch_frb_l1::mask_stats_map>();
         vector<shared_ptr<const bonsai::dedisperser> > bonsais;
-        shared_ptr<L1RpcServer> rpc = make_shared<L1RpcServer>(stream, ms, bonsais, rpc_addr);
+        shared_ptr<L1RpcServer> rpc = make_shared<L1RpcServer>(stream, inj, ms, bonsais, true, rpc_addr);
         rpcs.push_back(rpc);
         rpc_threads[i] = rpc->start();
         

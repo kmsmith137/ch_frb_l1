@@ -5,7 +5,7 @@ import pylab as plt
 
 import simulate_l0
 import numpy as np
-from rpc_client import read_msgpack_file, RpcClient
+from rpc_client import read_msgpack_file, RpcClient, InjectData
 from time import sleep
 import subprocess
 import os
@@ -45,7 +45,7 @@ offset = np.empty((nf_coarse, nt_coarse), np.float32)
 scale = np.empty((nf_coarse, nt_coarse), np.float32)
 rfi = None
 
-offset[:,:] = -128.
+offset[:,:] = -64.
 scale[:,:] = 1.
 
 prom_cmd = 'wget http://127.0.0.1:9999/metrics -O -'
@@ -57,11 +57,12 @@ for i in range(20):
     # Make an RFI spike
     #data[:, i*50:i*50+100] = 200
     # in the frequency direction (where we have better counting)
-    data[i*50:i*50+100, :] = 200
+    #data[i*50:i*50+100, :] = 200
+    data[i*500:(i+1)*500, :] = 200
     ichunk = i + chunk0
     
     ch = simulate_l0.assembled_chunk(beam_id, fpga_counts_per_sample, ichunk,
-                                     data, offset, scale, rfi)
+                                     data, scale, offset, rfi)
     #print('Chunk:', ch)
     print('Sending chunk...')
     l0.send_chunk(0, ch)
@@ -71,7 +72,7 @@ for i in range(20):
 
         print('After sending 5 chunks:')
         print(client.get_statistics())
-        
+
         print('Sending write request...')
         res = client.write_chunks([0], 0, (50 + 4) * 384 * 1024,
                                   'chunk-test-rfi-mask-(FPGA0).msgpack', need_rfi=need_rfi,
@@ -90,8 +91,12 @@ for i in range(20):
 
     # Give L1 some time to process...
     sleep(2)
+    #sleep(10)
 
 os.system(prom_cmd)
+
+l0.end_streams()
+sleep(5)
 
 l1.terminate()
 
@@ -111,6 +116,10 @@ for i,fn in enumerate(fns):
     plt.imshow(chunk.rfi_mask, interpolation='nearest', origin='lower',
                vmin=0, vmax=1, cmap='gray',
                extent=[sample0, sample0+nt * chunk.binning, 0, nf])
-    fn = 'chunk-%i.png' % i
+    plt.xlabel('sample number (~ms)')
+    plt.ylabel('(downsampled) frequency')
+    plt.title('RFI mask')
+    fn = 'chunk-rfi-%02i.png' % i
     plt.savefig(fn)
     print('Wrote', fn)
+

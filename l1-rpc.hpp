@@ -9,6 +9,8 @@
 #include <condition_variable>
 #include <zmq.hpp>
 #include <ch_frb_io.hpp>
+#include <rf_pipelines.hpp>
+#include <rpc.hpp>
 #include <mask_stats.hpp>
 
 const int default_port_l1_rpc = 5555;
@@ -35,9 +37,11 @@ public:
     // Creates a new RPC server listening on the given port, and reading
     // from the ring buffers of the given stream.
     L1RpcServer(std::shared_ptr<ch_frb_io::intensity_network_stream> stream,
+                std::vector<std::shared_ptr<rf_pipelines::intensity_injector> > injectors,
                 std::shared_ptr<const ch_frb_l1::mask_stats_map> maskstats,
                 std::vector<std::shared_ptr<const bonsai::dedisperser> > bonsais =
                 std::vector<std::shared_ptr<const bonsai::dedisperser> >(),
+                bool heavy = true,
                 const std::string &port = "",
                 const std::string &cmdline = "",
                 std::vector<std::tuple<int, std::string, std::shared_ptr<const rf_pipelines::pipeline_object> > > monitors =
@@ -69,6 +73,38 @@ protected:
     // reply or queuing work for worker threads.
     int _handle_request(zmq::message_t* client, zmq::message_t* request);
 
+    int _handle_streaming_request(zmq::message_t* client, std::string funcname, uint32_t token,
+                                  const char* req_data, std::size_t length, std::size_t& offset);
+                                  
+    int _handle_stream_status(zmq::message_t* client, std::string funcname, uint32_t token,
+                              const char* req_data, std::size_t length, std::size_t& offset);
+
+    int _handle_packet_rate(zmq::message_t* client, std::string funcname, uint32_t token,
+                            const char* req_data, std::size_t length, std::size_t& offset);
+
+    int _handle_packet_rate_history(zmq::message_t* client, std::string funcname, uint32_t token,
+                                    const char* req_data, std::size_t length, std::size_t& offset);
+
+    int _handle_get_statistics(zmq::message_t* client, std::string funcname, uint32_t token,
+                               const char* req_data, std::size_t length, std::size_t& offset);
+
+    int _handle_list_chunks(zmq::message_t* client, std::string funcname, uint32_t token,
+                            const char* req_data, std::size_t length, std::size_t& offset);
+
+    int _handle_write_chunks(zmq::message_t* client, std::string funcname, uint32_t token,
+                             const char* req_data, std::size_t length, std::size_t& offset);
+
+    int _handle_masked_freqs(zmq::message_t* client, std::string funcname, uint32_t token,
+                             const char* req_data, std::size_t length, std::size_t& offset);
+
+    int _handle_masked_freqs_2(zmq::message_t* client, std::string funcname, uint32_t token,
+                             const char* req_data, std::size_t length, std::size_t& offset);
+
+    int _handle_max_fpga(zmq::message_t* client, std::string funcname, uint32_t token,
+                             const char* req_data, std::size_t length, std::size_t& offset);
+    
+    std::string _handle_inject(const char* req_data, size_t req_size, size_t req_offset);
+
     void _check_backend_queue();
 
     // retrieves assembled_chunks overlapping the given range of
@@ -85,6 +121,9 @@ private:
     // The command line that launched this L1 process
     std::string _command_line;
 
+    // Are we doing heavy-weight RPCs?
+    bool _heavy;
+    
     // ZeroMQ context
     zmq::context_t* _ctx;
 
@@ -115,6 +154,9 @@ private:
 
     // the stream we are serving RPC requests for.
     std::shared_ptr<ch_frb_io::intensity_network_stream> _stream;
+
+    // the injector_transforms for the beams we are running.
+    std::vector<std::shared_ptr<rf_pipelines::intensity_injector> > _injectors;
 
     // objects holding RFI mask statistics
     std::shared_ptr<const ch_frb_l1::mask_stats_map> _mask_stats;

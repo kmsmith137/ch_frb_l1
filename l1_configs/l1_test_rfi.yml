@@ -13,6 +13,7 @@ nt_align: 4096
 ipaddr: "127.0.0.1"
 port: 6677
 rpc_address: "tcp://127.0.0.1:5555"
+#heavy_rpc_address: "tcp://127.0.0.1:5556"
 prometheus_address: "127.0.0.1:9999"
 
 # If you set up an ssh tunnel, you can test this:

@@ -40,6 +40,8 @@ def main():
         'port': 1313,
         'rpc_address': [ "tcp://eno1:5555", 
         	       "tcp://eno2:5555" ],
+        'heavy_rpc_address': [ "tcp://eno1:5556",
+                               "tcp://eno2:5556" ],
         'prometheus_address': [ "eno1:8888",
                               "eno2:8888" ],
         'frame0_url': "http://carillon.chime:54321/get-frame0-time",

@@ -104,6 +104,7 @@ for ichunk in itertools.count():
     assert len(t) == dedisp.ntrees
     for (i,a) in enumerate(t):
         assert a.shape == (dedisp.ndm_coarse[i], dedisp.nsm[i], dedisp.nbeta[i], dedisp.nt_coarse_per_chunk[i])
+        print '  tree index', i, 'shape', a.shape, 'max', np.max(a)
 
     # A quick-and-dirty way to prevent the final plot from getting too large.
     time_samples_processed = (ichunk+1) * dedisp.nt_chunk
@@ -128,6 +129,7 @@ except:
     sys.exit(0)
 
 nchunks = len(all_triggers)
+print('toy-l1b.py: number of all_triggers:', nchunks)
 nxpix_per_chunk = np.max(dedisp.nt_coarse_per_chunk)
 nxpix_tot = nchunks * nxpix_per_chunk
 

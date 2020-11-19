@@ -263,17 +263,27 @@ bool chunk_status_map::get(const string& filename,
     }
 }
 
+void inject_data_request::swap(rf_pipelines::intensity_injector::inject_args& dest) {
+    std::swap(this->mode, dest.mode);
+    std::swap(this->sample_offset, dest.sample_offset);
+    std::swap(this->ndata, dest.ndata);
+    std::swap(this->data, dest.data);
+}
+
 // -------------------------------------------------------------------------------------------------
 
 L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
+                         vector<shared_ptr<rf_pipelines::intensity_injector> > injectors,
                          shared_ptr<const ch_frb_l1::mask_stats_map> ms,
                          vector<shared_ptr<const bonsai::dedisperser> > bonsais,
+                         bool heavy,
                          const string &port,
                          const string &cmdline,
                          std::vector<std::tuple<int, std::string, std::shared_ptr<const rf_pipelines::pipeline_object> > > monitors,
                          zmq::context_t *ctx
                          ) :
     _command_line(cmdline),
+    _heavy(heavy),
     _ctx(ctx ? ctx : new zmq::context_t()),
     _created_ctx(ctx == NULL),
     _frontend(*_ctx, ZMQ_ROUTER),
@@ -282,10 +292,15 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
     _chunk_status(make_shared<chunk_status_map>()),
     _shutdown(false),
     _stream(stream),
+    _injectors(injectors),
     _mask_stats(ms),
     _bonsais(bonsais),
     _latencies(monitors)
 {
+    if ((_injectors.size() != 0) &&
+        (_injectors.size() != _stream->ini_params.beam_ids.size()))
+        throw runtime_error("L1RpcServer: expected injectors array size to be zero or the same size as the beams array");
+
     if (port.length())
         _port = port;
     else
@@ -360,7 +375,7 @@ void L1RpcServer::run() {
 	    chlog("Failed to receive message on frontend socket!");
 	    break;
 	}
-	chlog("Received RPC request");
+	//chlog("Received RPC request");
 	more = _frontend.getsockopt<int>(ZMQ_RCVMORE);
 	if (!more) {
 	    chlog("Expected two message parts on frontend socket!");
@@ -388,16 +403,16 @@ void L1RpcServer::run() {
 
 	try {
 	    _handle_request(&client, &msg);
-	} catch (const std::exception& e) {
-	    chlog("Warning: Failed to handle RPC request... ignoring!  Error: " << e.what());
-	    try {
-		msgpack::object_handle oh = msgpack::unpack(reinterpret_cast<const char *>(msg.data()), msg.size());
-		msgpack::object obj = oh.get();
-		chlog("  message: " << obj);
-	    } catch (...) {
-		chlog("  failed to un-msgpack message");
-	    }
-	}
+        } catch (const std::exception& e) {
+            chlog("Warning: Failed to handle RPC request... ignoring!  Error: " << e.what());
+            try {
+        	msgpack::object_handle oh = msgpack::unpack(reinterpret_cast<const char *>(msg.data()), msg.size());
+        	msgpack::object obj = oh.get();
+        	chlog("  message: " << obj);
+            } catch (...) {
+        	chlog("  failed to un-msgpack message");
+            }
+    	}
     }
 
     chlog("L1 RPC server: exiting.");
@@ -444,376 +459,51 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
     string funcname = rpcreq.function;
     uint32_t token = rpcreq.token;
 
-    chlog("Received RPC request for function: '" << funcname << "'");
+    struct timeval tv1 = get_time();
+    chlog("Received RPC request for function: '" << funcname << "', token " << token);
     //from client '" << msg_string(*client) << "'");
+
+    int rtnval = -1;
 
     if (funcname == "shutdown") {
         chlog("Shutdown requested.");
         do_shutdown();
-        return 0;
+        rtnval = 0;
 
-    } else if ((funcname == "start_logging") ||
-               (funcname == "stop_logging")) {
+    } else if ((funcname == "start_logging") || (funcname == "stop_logging")) {
         // grab address argument
         msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
         string addr = oh.get().as<string>();
         chlog("Logging request: " << funcname << ", address " << addr);
-
-        if (funcname == "start_logging") {
+        if (funcname == "start_logging")
             chime_log_add_server(addr);
-        } else {
+        else
             chime_log_remove_server(addr);
-        }
-        return 0;
+        rtnval = 0;
 
     } else if (funcname == "stream") {
-        // grab arguments: [ "acq_name", "acq_dev", "acq_meta.json",
-        //                   [ beam ids ] ]
-        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
-        if (oh.get().via.array.size != 5) {
-            chlog("stream RPC: failed to parse input arguments: expected array of size 5");
-            return -1;
-        }
-        string acq_name = oh.get().via.array.ptr[0].as<string>();
-        string acq_dev = oh.get().via.array.ptr[1].as<string>();
-        string acq_meta = oh.get().via.array.ptr[2].as<string>();
-        bool acq_new = oh.get().via.array.ptr[4].as<bool>();
-        // grab beam_ids
-        vector<int> beam_ids;
-        int nbeams = oh.get().via.array.ptr[3].via.array.size;
-        for (int i=0; i<nbeams; i++) {
-            int beam = oh.get().via.array.ptr[3].via.array.ptr[i].as<int>();
-            // Be forgiving about requests to stream beams that we
-            // aren't handling -- otherwise the client has to keep
-            // track of which L1 server has which beams, which is a
-            // pain.
-            bool found = false;
-            for (int b : _stream->ini_params.beam_ids) {
-                if (b == beam) {
-                    found = true;
-                    break;
-                }
-            }
-            if (found)
-                beam_ids.push_back(beam);
-            else
-                chlog("Stream request for beam " << beam << " which isn't being handled by this node.  Ignoring.");
-        }
 
-        chlog("Stream request: \"" << acq_name << "\", device=\"" << acq_dev << "\", " << beam_ids.size() << " beams.");
-        if (beam_ids.size()) {
-            for (size_t i=0; i<beam_ids.size(); i++)
-                chlog("  beam " << beam_ids[i]);
-        }
-        // Default to all beams if no beams were specified.
-        // (note that we use nbeams: the number of specified beams, even if
-        // none of them are owned by this node.  The beams owned by this node
-        // that aren't in the specified set will have streaming turned off.)
-        if (nbeams == 0)
-            beam_ids = _stream->ini_params.beam_ids;
-        // Default to acq_dev = "ssd"
-        if (acq_dev.size() == 0)
-            acq_dev = "ssd";
-        pair<bool, string> result;
-        string pattern;
-        if (acq_name.size() == 0) {
-            // Turn off streaming
-            pattern = "";
-            chlog("Turning off streaming");
-            _stream->stream_to_files(pattern, { }, 0, false);
-            result.first = true;
-            result.second = pattern;
-        } else {
-            try {
-                pattern = ch_frb_l1::acqname_to_filename_pattern(acq_dev, acq_name, { _stream->ini_params.stream_id }, _stream->ini_params.beam_ids, acq_new);
-                chlog("Streaming to filename pattern: " << pattern);
-                if (acq_new && acq_meta.size()) {
-                    // write metadata file in acquisition dir.
-                    string acqdir = ch_frb_l1::acq_pattern_to_dir(pattern);
-                    acqdir = replaceAll(acqdir, "(STREAM)", stringprintf("%01i", _stream->ini_params.stream_id));
-                    chlog("Substituted (STREAM): writing metadata to dir " << acqdir);
-                    string fn = acqdir + "/metadata.json";
-                    chlog("Writing acquisition metadata to " << fn);
-                    FILE* fout = std::fopen(fn.c_str(), "w");
-                    if (!fout) {
-                        chlog("Failed to open metadata file for writing: " << fn << ": " << strerror(errno));
-                    } else {
-                        if (std::fwrite(acq_meta.c_str(), 1, acq_meta.size(), fout) != acq_meta.size()) {
-                            chlog("Failed to write " << acq_meta.size() << " bytes of metadata to " << fn << ": " << strerror(errno));
-                        }
-                        if (std::fclose(fout)) {
-                            chlog("Failed to close metadata file: " << fn << ": " << strerror(errno));
-                        }
-                    }
-                }
-                bool need_rfi = (_stream->ini_params.nrfifreq > 0);
-                _stream->stream_to_files(pattern, beam_ids, 0, need_rfi);
-                result.first = true;
-                result.second = pattern;
-            } catch (const std::exception& e) {
-                chlog("Exception!");
-                result.first = false;
-                result.second = e.what();
-                chlog("Failed to set streaming: " << e.what());
-            }
-        }
-        // Pack return value into msgpack buffer
-        msgpack::sbuffer buffer;
-        msgpack::pack(buffer, result);
-        //  Send reply back to client.
-        zmq::message_t* reply = sbuffer_to_message(buffer);
-        return _send_frontend_message(*client, *token_to_message(token), *reply);
+        rtnval = _handle_streaming_request(client, funcname, token, req_data, request->size(), offset);
 
     } else if (funcname == "stream_status") {
 
-        unordered_map<string, string> dict;
-
-        string stream_filename;
-        vector<int> stream_beams;
-        int stream_priority;
-        int chunks_written;
-        size_t bytes_written;
-        _stream->get_streaming_status(stream_filename, stream_beams, stream_priority,
-                                      chunks_written, bytes_written);
-
-        dict["stream_filename"] = stream_filename;
-        dict["stream_priority"] = std::to_string(stream_priority);
-        dict["stream_chunks_written"] = std::to_string(chunks_written);
-        dict["stream_bytes_written"] = std::to_string(bytes_written);
-        
-        // df for "ssd" and "nfs"
-        struct statvfs vfs;
-        if (statvfs("/frb-archiver-1", &vfs) == 0) {
-            size_t gb = vfs.f_bsize * vfs.f_bavail / (1024 * 1024 * 1024);
-            dict["nfs_gb_free"] = std::to_string((int)gb);
-        }
-        if (statvfs("/local", &vfs) == 0) {
-            size_t gb = ((size_t)vfs.f_frsize * (size_t)vfs.f_bavail) / (size_t)(1024 * 1024 * 1024);
-            dict["ssd_gb_free"] = std::to_string((int)gb);
-        }
-
-        // du in _last_stream_to_files
-        /*
-         if (_last_stream_to_files.size()) {
-         // drop two directory components
-         string acqdir = ch_frb_l1::acq_pattern_to_dir(_last_stream_to_files);
-         try {
-         size_t gb = ch_frb_l1::disk_space_used(acqdir) / (1024 * 1024 * 1024);
-         dict["stream_gb_used"] = std::to_string((int)gb);
-         } catch (const std::exception& e) {
-         chlog("disk_space_used " << _last_stream_to_files << ": " << e.what());
-         }
-         }
-         */
-
-        // all my beams, as a comma-separated string
-        string allbeams = "";
-        for (size_t i=0; i<_stream->ini_params.beam_ids.size(); i++) {
-            if (i) allbeams += ",";
-            allbeams += std::to_string(_stream->ini_params.beam_ids[i]);
-        }
-        dict["all_beams"] = allbeams;
-        // beams being streamed
-        string strbeams = "";
-        for (size_t i=0; i<stream_beams.size(); i++) {
-            if (i) strbeams += ",";
-            strbeams += std::to_string(stream_beams[i]);
-        }
-        dict["stream_beams"] = strbeams;
-        
-        // Pack return value into msgpack buffer
-        msgpack::sbuffer buffer;
-        msgpack::pack(buffer, dict);
-        //  Send reply back to client.
-        zmq::message_t* reply = sbuffer_to_message(buffer);
-        return _send_frontend_message(*client, *token_to_message(token), *reply);
+        rtnval = _handle_stream_status(client, funcname, token, req_data, request->size(), offset);
 
     } else if (funcname == "get_packet_rate") {
-        // grab *start* and *period* arguments
-        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
-        if (oh.get().via.array.size != 2) {
-            chlog("get_packet_rate RPC: failed to parse input arguments");
-            return -1;
-        }
-        double start = oh.get().via.array.ptr[0].as<double>();
-        double period = oh.get().via.array.ptr[1].as<double>();
-        //chlog("get_packet_rate: start " << start << ", period " << period);
-        shared_ptr<packet_counts> rate = _stream->get_packet_rates(start, period);
-        PacketRate pr;
-        if (rate) {
-            pr.start = rate->start_time();
-            pr.period = rate->period;
-            pr.packets = rate->to_string();
-            int total = 0;
-            for (auto it=pr.packets.begin(); it!=pr.packets.end(); it++)
-                total += it->second;
-            chlog(_port << ": Retrieved packet rate for " << rate->start_time() << ", period " << rate->period << ", average counts " << (float)total/float(pr.packets.size()));
-        } else {
-            chlog("No packet rate available");
-            pr.start = 0;
-            pr.period = 0;
-        }
-        
-        // Pack return value into msgpack buffer
-        msgpack::sbuffer buffer;
-        msgpack::pack(buffer, pr);
-        //  Send reply back to client.
-        zmq::message_t* reply = sbuffer_to_message(buffer);
-        return _send_frontend_message(*client, *token_to_message(token), *reply);
+
+        rtnval = _handle_packet_rate(client, funcname, token, req_data, request->size(), offset);
 
     } else if (funcname == "get_packet_rate_history") {
 
-        // grab arguments: *start*, *end*, *period*, *l0*
-        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
-        if (oh.get().via.array.size != 4) {
-            chlog("get_packet_rate_history RPC: failed to parse input arguments");
-            return -1;
-        }
-        double start = oh.get().via.array.ptr[0].as<double>();
-        double end   = oh.get().via.array.ptr[1].as<double>();
-        double period = oh.get().via.array.ptr[2].as<double>();
-        vector<string> l0 = oh.get().via.array.ptr[3].as<vector<string> >();
-
-        vector<shared_ptr<packet_counts> > packets = _stream->get_packet_rate_history(start, end, period);
-
-        // For now, only compute the sum over L0 nodes.
-        vector<double> times;
-        vector<vector<double> > rates;
-
-        for (size_t i=0; i<l0.size(); i++)
-            rates.push_back(vector<double>());
-
-        //for (int i=0; i<l0.size(); i++)
-        //    chlog("packet history: getting l0 node " << l0[i]);
-        //chlog("packet history: " << packets.size() << " time slices");
-
-        // for each time slice
-        for (auto it=packets.begin(); it!=packets.end(); it++) {
-            int j;
-            times.push_back((*it)->start_time());
-            auto l0name=l0.begin();
-            for (j=0; l0name != l0.end(); l0name++, j++) {
-                int64_t val = 0;
-                if (*l0name == "sum") {
-                    // for each l0->npackets pair
-                    for (auto it2=(*it)->counts.begin();
-                         it2!=(*it)->counts.end(); it2++)
-                        val += it2->second;
-                } else {
-                    // Yuck -- convert to string:int map!
-                    // Should instead parse name to int and look up directly
-                    auto scounts = (*it)->to_string();
-                    auto pval = scounts.find(*l0name);
-                    if (pval != scounts.end())
-                        val = pval->second;
-                }
-                rates[j].push_back((double)val / (*it)->period);
-            }
-        }
-
-        //chlog("times: " << times.size());
-        
-        pair<vector<double>,
-             vector<vector<double> > > rtn = make_pair(times, rates);
-
-        //chlog("Returning " << rtn.first.size() << " times");
-        
-        // Pack return value into msgpack buffer
-        msgpack::sbuffer buffer;
-        msgpack::pack(buffer, rtn);
-        //  Send reply back to client.
-        zmq::message_t* reply = sbuffer_to_message(buffer);
-        return _send_frontend_message(*client, *token_to_message(token), *reply);
+        rtnval = _handle_packet_rate_history(client, funcname, token, req_data, request->size(), offset);
 
     } else if (funcname == "get_statistics") {
-        //cout << "RPC get_statistics() called" << endl;
-        // No input arguments, so don't unpack anything more.
 
-        // Gather stats...
-        vector<unordered_map<string, uint64_t> > stats = _stream->get_statistics();
-        {
-            // This is a bit of a HACK!
-            // read and parse /proc/stat, add to stats[0].
-            ifstream s("/proc/stat");
-            string key;
-            int arrayi = 0;
-
-            double dt = time_diff(_time0, get_time());
-            // /proc/stat values are in "jiffies"?
-            stats[0]["procstat_time"] = dt * 100;
-
-            for (; s.good();) {
-                string word;
-                s >> word;
-                if ((word.size() == 0) && (s.eof()))
-                    break;
-                if (key.size() == 0) {
-                    key = word;
-                    arrayi = 0;
-                } else {
-                    uint64_t ival = stoll(word);
-                    // HACK -- skip 0 values.
-                    if (ival) {
-                        string fullkey = "procstat_" + key + "_" + to_string(arrayi);
-                        stats[0][fullkey] = ival;
-                    }
-                    arrayi++;
-                    //cout << "set: " << fullkey << " = " << ival << endl;
-                }
-                if (s.peek() == '\n') {
-                    key = "";
-                }
-            }
-        }
-
-        msgpack::sbuffer buffer;
-        msgpack::pack(buffer, stats);
-        //  Send reply back to client.
-        //cout << "Sending RPC reply of size " << buffer.size() << endl;
-        zmq::message_t* reply = sbuffer_to_message(buffer);
-        //cout << "  client: " << msg_string(*client) << endl;
-        return _send_frontend_message(*client, *token_to_message(token),
-                                     *reply);
+        rtnval = _handle_get_statistics(client, funcname, token, req_data, request->size(), offset);
 
     } else if (funcname == "list_chunks") {
-       // No input arguments, so don't unpack anything more.
 
-        // Grab snapshot of all ringbufs...
-        vector<tuple<uint64_t, uint64_t, uint64_t, uint64_t> > allchunks;
-
-        intensity_network_stream::initializer ini = _stream->ini_params;
-        for (auto beamit = ini.beam_ids.begin(); beamit != ini.beam_ids.end(); beamit++) {
-            // Retrieve one beam at a time
-            int beam = *beamit;
-            vector<int> beams;
-            beams.push_back(beam);
-            vector<vector<pair<shared_ptr<assembled_chunk>, uint64_t> > > chunks = _stream->get_ringbuf_snapshots(beams);
-            // iterate over beams (we only requested one)
-            for (auto it1 = chunks.begin(); it1 != chunks.end(); it1++) {
-                // iterate over chunks
-                for (auto it2 = (*it1).begin(); it2 != (*it1).end(); it2++) {
-                    allchunks.push_back(make_tuple((uint64_t)it2->first->beam_id,
-                                                   it2->first->fpga_begin,
-                                                   it2->first->fpga_end,
-                                                   it2->second));
-                }
-            }
-        }
-
-	// KMS: I removed code here to retrieve messages queued for writing,
-	// since we're currently trying to decide whether to keep the list_chunks
-	// RPC, or phase it out!  
-	//
-	// If we do decide to keep the list_chunks RPC , then it would be easy to
-	// add a member function to 'class ch_frb_io::output_device_pool' to return
-	// the chunks queued for writing.
-
-        msgpack::sbuffer buffer;
-        msgpack::pack(buffer, allchunks);
-        zmq::message_t* reply = sbuffer_to_message(buffer);
-        //  Send reply back to client.
-        return _send_frontend_message(*client, *token_to_message(token),
-                                     *reply);
+        rtnval = _handle_list_chunks(client, funcname, token, req_data, request->size(), offset);
 
         /*
          The get_chunks() RPC is disabled for now.
@@ -835,85 +525,8 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
          */
 
     } else if (funcname == "write_chunks") {
-        //cout << "RPC write_chunks() called" << endl;
 
-        // grab WriteChunks_Request argument
-        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
-
-        bool need_rfi = false;
-        
-        // "v1" write_chunks requests have 9 arguments; "v2" have 10 arguments ("need_rfi" flag added)
-        msgpack::object obj = oh.get();
-        cout << "Write_chunks request: arguments size " << obj.via.array.size << endl;
-        WriteChunks_Request req;
-        if (obj.via.array.size == 9) {
-            req = oh.get().as<WriteChunks_Request>();
-        } else if (obj.via.array.size == 10) {
-            WriteChunks_Request_v2 req2 = oh.get().as<WriteChunks_Request_v2>();
-            req = req2;
-            need_rfi = req2.need_rfi;
-        }
-
-        /*
-         cout << "WriteChunks request: FPGA range " << req.min_fpga << "--" << req.max_fpga << endl;
-         cout << "beams: [ ";
-         for (auto beamit = req.beams.begin(); beamit != req.beams.end(); beamit++)
-         cout << (*beamit) << " ";
-         cout << "]" << endl;
-         */
-
-        // Retrieve the chunks requested.
-        vector<shared_ptr<assembled_chunk> > chunks;
-        _get_chunks(req.beams, req.min_fpga, req.max_fpga, chunks);
-
-        //cout << "get_chunks: got " << chunks.size() << " chunks" << endl;
-
-        // Keep a list of the chunks to be written; we'll reply right away with this list.
-        vector<WriteChunks_Reply> reply;
-
-	for (const auto &chunk: chunks) {
-	    shared_ptr<l1_write_request> w = make_shared<l1_write_request> ();
-
-            // Format the filename the chunk will be written to.
-            w->filename = chunk->format_filename(req.filename_pattern);
-
-            // Copy client ID
-	    w->client = new zmq::message_t();
-	    w->client->copy(client);
-
-	    // Fill remaining fields and enqueue the write request for the I/O threads.
-	    w->backend_queue = this->_backend_queue;
-            w->chunk_status = this->_chunk_status;
-	    w->priority = req.priority;
-	    w->chunk = chunk;
-	    w->token = token;
-            w->need_rfi_mask = need_rfi;
-
-	    // Returns false if request failed to queue.  
-	    bool success = _output_devices.enqueue_write_request(w);
-
-	    // Record the status for this filename.
-            // (status will be set via a status_changed() call during
-            // enqueue_write_request.)
-	    string status;
-            string error_message;
-            _chunk_status->get(w->filename, status, error_message);
-
-            WriteChunks_Reply rep;
-            rep.beam = chunk->beam_id;
-            rep.fpga0 = chunk->fpga_begin;
-            rep.fpgaN = chunk->fpga_end - chunk->fpga_begin;
-            rep.filename = w->filename;
-            rep.success = success;
-            reply.push_back(rep);
-        }
-
-        msgpack::sbuffer buffer;
-        msgpack::pack(buffer, reply);
-        zmq::message_t* replymsg = sbuffer_to_message(buffer);
-
-        return _send_frontend_message(*client, *token_to_message(token),
-                                     *replymsg);
+        rtnval = _handle_write_chunks(client, funcname, token, req_data, request->size(), offset);
 
     } else if (funcname == "get_writechunk_status") {
 
@@ -931,117 +544,757 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         msgpack::pack(buffer, result);
         //  Send reply back to client.
         zmq::message_t* reply = sbuffer_to_message(buffer);
-        return _send_frontend_message(*client, *token_to_message(token),
-                                      *reply);
+        rtnval = _send_frontend_message(*client, *token_to_message(token), *reply);
 
-    } else if (funcname == "get_masked_frequencies") {
+    } else if (funcname == "inject_data") {
 
-        // no arguments?
-
-        // Returns:
-        // list of [beam_id, where, nt, [ measurements ] ]
-        // where measurements is a list of uint16_ts, one per freq bin
-
+        string errstring = _handle_inject(req_data, request->size(), offset);
         msgpack::sbuffer buffer;
-        msgpack::packer<msgpack::sbuffer> pk(&buffer);
-        pk.pack_array(_mask_stats->size());
-        for (const auto &it : _mask_stats->map) {
-            int beam_id = it.first.first;
-            string where = it.first.second;
-            shared_ptr<rf_pipelines::mask_measurements_ringbuf> ms = it.second;
-            vector<rf_pipelines::mask_measurements> meas = ms->get_all_measurements();
-            cout << "Got " << meas.size() << " measurements from beam " << beam_id << " where " << where << endl;
-            pk.pack_array(4);
-            pk.pack(beam_id);
-            pk.pack(where);
-            int nt = 0;
-            if (meas.size())
-                nt = meas[0].nt;
-            pk.pack(nt);
-            pk.pack_array(meas.size());
-            for (const auto &m : meas) {
-                pk.pack_array(m.nf);
-                int* fum = m.freqs_unmasked.get();
-                for (int k=0; k<m.nf; k++)
-                    pk.pack(m.nt - fum[k]);
-            }
-        }
+        msgpack::pack(buffer, errstring);
         //  Send reply back to client.
         zmq::message_t* reply = sbuffer_to_message(buffer);
         return _send_frontend_message(*client, *token_to_message(token), *reply);
+        
+    } else if (funcname == "get_masked_frequencies") {
+
+        rtnval = _handle_masked_freqs(client, funcname, token, req_data, request->size(), offset);
+
+    } else if (funcname == "get_masked_frequencies_2") {
+
+        rtnval = _handle_masked_freqs_2(client, funcname, token, req_data, request->size(), offset);
 
     } else if (funcname == "get_max_fpga_counts") {
 
-        // Returns a list of tuples:
-        // [(where, beam, max_fpgacount_seen), ...]
-        msgpack::sbuffer buffer;
-        msgpack::packer<msgpack::sbuffer> pk(&buffer);
-
-        vector<fpga_counts_seen> fpgaseen;
-        fpga_counts_seen seen;
-
-        seen.where = "packet_stream";
-        seen.beam = -1;
-        seen.max_fpga_seen = _stream->packet_max_fpga_seen;
-        fpgaseen.push_back(seen);
-
-        vector<uint64_t> flushed;
-        vector<uint64_t> retrieved;
-        _stream->get_max_fpga_count_seen(flushed, retrieved);
-        
-        intensity_network_stream::initializer ini = _stream->ini_params;
-        int nbeams = _stream->ini_params.beam_ids.size();
-        for (int i=0; i<nbeams; i++) {
-            // _stream->get_first_fpga_count(beamid)
-            seen.beam = _stream->ini_params.beam_ids[i];
-            seen.where = "chunk_flushed";
-            seen.max_fpga_seen = flushed[i];
-            fpgaseen.push_back(seen);
-
-            seen.where = "chunk_retrieved";
-            seen.max_fpga_seen = retrieved[i];
-            fpgaseen.push_back(seen);
-        }
-
-        chlog("max_fpga: latency monitors size: " << _latencies.size());
-        for (size_t i=0; i<_latencies.size(); i++) {
-            int beam_id = std::get<0>(_latencies[i]);
-            string where = std::get<1>(_latencies[i]);
-            const auto &late = std::get<2>(_latencies[i]);
-            uint64_t fpga = (late->pos_lo * _stream->ini_params.fpga_counts_per_sample
-                             + _stream->get_first_fpga_count(beam_id));
-            seen.beam = beam_id;
-            seen.where = where;
-            seen.max_fpga_seen = fpga;
-            fpgaseen.push_back(seen);
-        }
-        
-        chlog("max_fpga: bonsais size: " << _bonsais.size());
-        for (size_t i=0; i<_bonsais.size(); i++) {
-            const auto &bonsai = _bonsais[i];
-            int beam_id = _stream->ini_params.beam_ids[i];
-            int nc = bonsai->get_nchunks_processed();
-            uint64_t fpga = (nc * bonsai->nt_chunk * _stream->ini_params.fpga_counts_per_sample
-                             + _stream->get_first_fpga_count(beam_id));
-            seen.beam = beam_id;
-            seen.where = "bonsai";
-            seen.max_fpga_seen = fpga;
-            fpgaseen.push_back(seen);
-        }
-        
-        pk.pack(fpgaseen);
-
-        //  Send reply back to client.
-        zmq::message_t* reply = sbuffer_to_message(buffer);
-        return _send_frontend_message(*client, *token_to_message(token), *reply);
+        rtnval = _handle_max_fpga(client, funcname, token, req_data, request->size(), offset);
         
     } else {
         // Silent failure?
         chlog("Error: unknown RPC function name: " << funcname);
-        return -1;
+        rtnval = -1;
     }
+
+    struct timeval tv2 = get_time();
+    double dt = time_diff(tv1, tv2);
+    
+    chlog("Completed RPC request for function: '" << funcname << "', token " << token
+          << ": " << (int)(dt*1000.) << " ms");
+    return rtnval;
 }
 
+int L1RpcServer::_handle_streaming_request(zmq::message_t* client, string funcname, uint32_t token,
+                                           const char* req_data, size_t req_len, size_t& offset) {
+
+    // grab arguments: [ "acq_name", "acq_dev", "acq_meta.json",
+    //                   [ beam ids ] ]
+    msgpack::object_handle oh = msgpack::unpack(req_data, req_len, offset);
+    if (oh.get().via.array.size != 5) {
+        chlog("stream RPC: failed to parse input arguments: expected array of size 5");
+        return -1;
+    }
+    string acq_name = oh.get().via.array.ptr[0].as<string>();
+    string acq_dev = oh.get().via.array.ptr[1].as<string>();
+    string acq_meta = oh.get().via.array.ptr[2].as<string>();
+    bool acq_new = oh.get().via.array.ptr[4].as<bool>();
+    // grab beam_ids
+    vector<int> beam_ids;
+    int nbeams = oh.get().via.array.ptr[3].via.array.size;
+    for (int i=0; i<nbeams; i++) {
+        int beam = oh.get().via.array.ptr[3].via.array.ptr[i].as<int>();
+        // Be forgiving about requests to stream beams that we
+        // aren't handling -- otherwise the client has to keep
+        // track of which L1 server has which beams, which is a
+        // pain.
+        bool found = false;
+        for (int b : _stream->ini_params.beam_ids) {
+            if (b == beam) {
+                found = true;
+                break;
+            }
+        }
+        if (found)
+            beam_ids.push_back(beam);
+        else
+            chlog("Stream request for beam " << beam << " which isn't being handled by this node.  Ignoring.");
+    }
+
+    chlog("Stream request: \"" << acq_name << "\", device=\"" << acq_dev << "\", " << beam_ids.size() << " beams.");
+    if (beam_ids.size()) {
+        for (size_t i=0; i<beam_ids.size(); i++)
+            chlog("  beam " << beam_ids[i]);
+    }
+    // Default to all beams if no beams were specified.
+    // (note that we use nbeams: the number of specified beams, even if
+    // none of them are owned by this node.  The beams owned by this node
+    // that aren't in the specified set will have streaming turned off.)
+    if (nbeams == 0)
+        beam_ids = _stream->ini_params.beam_ids;
+    // Default to acq_dev = "ssd"
+    if (acq_dev.size() == 0)
+        acq_dev = "ssd";
+    pair<bool, string> result;
+    string pattern;
+    if (acq_name.size() == 0) {
+        // Turn off streaming
+        pattern = "";
+        chlog("Turning off streaming");
+        _stream->stream_to_files(pattern, { }, 0, false);
+        result.first = true;
+        result.second = pattern;
+    } else {
+        try {
+            pattern = ch_frb_l1::acqname_to_filename_pattern(acq_dev, acq_name, { _stream->ini_params.stream_id }, _stream->ini_params.beam_ids, acq_new);
+            chlog("Streaming to filename pattern: " << pattern);
+            if (acq_new && acq_meta.size()) {
+                // write metadata file in acquisition dir.
+                string acqdir = ch_frb_l1::acq_pattern_to_dir(pattern);
+                acqdir = replaceAll(acqdir, "(STREAM)", stringprintf("%01i", _stream->ini_params.stream_id));
+                chlog("Substituted (STREAM): writing metadata to dir " << acqdir);
+                string fn = acqdir + "/metadata.json";
+                chlog("Writing acquisition metadata to " << fn);
+                FILE* fout = std::fopen(fn.c_str(), "w");
+                if (!fout) {
+                    chlog("Failed to open metadata file for writing: " << fn << ": " << strerror(errno));
+                } else {
+                    if (std::fwrite(acq_meta.c_str(), 1, acq_meta.size(), fout) != acq_meta.size()) {
+                        chlog("Failed to write " << acq_meta.size() << " bytes of metadata to " << fn << ": " << strerror(errno));
+                    }
+                    if (std::fclose(fout)) {
+                        chlog("Failed to close metadata file: " << fn << ": " << strerror(errno));
+                    }
+                }
+            }
+            bool need_rfi = (_stream->ini_params.nrfifreq > 0);
+            _stream->stream_to_files(pattern, beam_ids, 0, need_rfi);
+            result.first = true;
+            result.second = pattern;
+        } catch (const std::exception& e) {
+            chlog("Exception!");
+            result.first = false;
+            result.second = e.what();
+            chlog("Failed to set streaming: " << e.what());
+        }
+    }
+    // Pack return value into msgpack buffer
+    msgpack::sbuffer buffer;
+    msgpack::pack(buffer, result);
+    //  Send reply back to client.
+    zmq::message_t* reply = sbuffer_to_message(buffer);
+    return _send_frontend_message(*client, *token_to_message(token), *reply);
+}
+
+int L1RpcServer::_handle_stream_status(zmq::message_t* client, string funcname, uint32_t token,
+                                       const char* req_data, size_t req_len, size_t& offset) {
+        
+    unordered_map<string, string> dict;
+
+    string stream_filename;
+    vector<int> stream_beams;
+    int stream_priority;
+    int chunks_written;
+    size_t bytes_written;
+    _stream->get_streaming_status(stream_filename, stream_beams, stream_priority,
+                                  chunks_written, bytes_written);
+
+    dict["stream_filename"] = stream_filename;
+    dict["stream_priority"] = std::to_string(stream_priority);
+    dict["stream_chunks_written"] = std::to_string(chunks_written);
+    dict["stream_bytes_written"] = std::to_string(bytes_written);
+        
+    // df for "ssd" and "nfs"
+    struct statvfs vfs;
+    if (statvfs("/frb-archiver-1", &vfs) == 0) {
+        size_t gb = vfs.f_bsize * vfs.f_bavail / (1024 * 1024 * 1024);
+        dict["nfs_gb_free"] = std::to_string((int)gb);
+    }
+    if (statvfs("/local", &vfs) == 0) {
+        size_t gb = ((size_t)vfs.f_frsize * (size_t)vfs.f_bavail) / (size_t)(1024 * 1024 * 1024);
+        dict["ssd_gb_free"] = std::to_string((int)gb);
+    }
+
+    // du in _last_stream_to_files
+    /*
+     if (_last_stream_to_files.size()) {
+     // drop two directory components
+     string acqdir = ch_frb_l1::acq_pattern_to_dir(_last_stream_to_files);
+     try {
+     size_t gb = ch_frb_l1::disk_space_used(acqdir) / (1024 * 1024 * 1024);
+     dict["stream_gb_used"] = std::to_string((int)gb);
+     } catch (const std::exception& e) {
+     chlog("disk_space_used " << _last_stream_to_files << ": " << e.what());
+     }
+     }
+     */
+
+    // all my beams, as a comma-separated string
+    string allbeams = "";
+    for (size_t i=0; i<_stream->ini_params.beam_ids.size(); i++) {
+        if (i) allbeams += ",";
+        allbeams += std::to_string(_stream->ini_params.beam_ids[i]);
+    }
+    dict["all_beams"] = allbeams;
+    // beams being streamed
+    string strbeams = "";
+    for (size_t i=0; i<stream_beams.size(); i++) {
+        if (i) strbeams += ",";
+        strbeams += std::to_string(stream_beams[i]);
+    }
+    dict["stream_beams"] = strbeams;
+        
+    // Pack return value into msgpack buffer
+    msgpack::sbuffer buffer;
+    msgpack::pack(buffer, dict);
+    //  Send reply back to client.
+    zmq::message_t* reply = sbuffer_to_message(buffer);
+    return _send_frontend_message(*client, *token_to_message(token), *reply);
+}
+
+int L1RpcServer::_handle_packet_rate(zmq::message_t* client, string funcname, uint32_t token,
+                                     const char* req_data, size_t req_len, size_t& offset) {
+    // grab *start* and *period* arguments
+    msgpack::object_handle oh = msgpack::unpack(req_data, req_len, offset);
+    if (oh.get().via.array.size != 2) {
+        chlog("get_packet_rate RPC: failed to parse input arguments");
+        return -1;
+    }
+    double start = oh.get().via.array.ptr[0].as<double>();
+    double period = oh.get().via.array.ptr[1].as<double>();
+    //chlog("get_packet_rate: start " << start << ", period " << period);
+    shared_ptr<packet_counts> rate = _stream->get_packet_rates(start, period);
+    PacketRate pr;
+    if (rate) {
+        pr.start = rate->start_time();
+        pr.period = rate->period;
+        pr.packets = rate->to_string();
+        int total = 0;
+        for (auto it=pr.packets.begin(); it!=pr.packets.end(); it++)
+            total += it->second;
+        chlog(_port << ": Retrieved packet rate for " << rate->start_time() << ", period " << rate->period << ", average counts " << (float)total/float(pr.packets.size()));
+    } else {
+        chlog("No packet rate available");
+        pr.start = 0;
+        pr.period = 0;
+    }
+        
+    // Pack return value into msgpack buffer
+    msgpack::sbuffer buffer;
+    msgpack::pack(buffer, pr);
+    //  Send reply back to client.
+    zmq::message_t* reply = sbuffer_to_message(buffer);
+    return _send_frontend_message(*client, *token_to_message(token), *reply);
+}
+
+int L1RpcServer::_handle_packet_rate_history(zmq::message_t* client, string funcname, uint32_t token,
+                                             const char* req_data, size_t req_len, size_t& offset) {
+        
+    // grab arguments: *start*, *end*, *period*, *l0*
+    msgpack::object_handle oh = msgpack::unpack(req_data, req_len, offset);
+    if (oh.get().via.array.size != 4) {
+        chlog("get_packet_rate_history RPC: failed to parse input arguments");
+        return -1;
+    }
+    double start = oh.get().via.array.ptr[0].as<double>();
+    double end   = oh.get().via.array.ptr[1].as<double>();
+    double period = oh.get().via.array.ptr[2].as<double>();
+    vector<string> l0 = oh.get().via.array.ptr[3].as<vector<string> >();
+
+    vector<shared_ptr<packet_counts> > packets = _stream->get_packet_rate_history(start, end, period);
+
+    // For now, only compute the sum over L0 nodes.
+    vector<double> times;
+    vector<vector<double> > rates;
+
+    for (size_t i=0; i<l0.size(); i++)
+        rates.push_back(vector<double>());
+
+    //for (int i=0; i<l0.size(); i++)
+    //    chlog("packet history: getting l0 node " << l0[i]);
+    //chlog("packet history: " << packets.size() << " time slices");
+
+    // for each time slice
+    for (auto it=packets.begin(); it!=packets.end(); it++) {
+        int j;
+        times.push_back((*it)->start_time());
+        auto l0name=l0.begin();
+        for (j=0; l0name != l0.end(); l0name++, j++) {
+            int64_t val = 0;
+            if (*l0name == "sum") {
+                // for each l0->npackets pair
+                for (auto it2=(*it)->counts.begin();
+                     it2!=(*it)->counts.end(); it2++)
+                    val += it2->second;
+            } else {
+                // Yuck -- convert to string:int map!
+                // Should instead parse name to int and look up directly
+                auto scounts = (*it)->to_string();
+                auto pval = scounts.find(*l0name);
+                if (pval != scounts.end())
+                    val = pval->second;
+            }
+            rates[j].push_back((double)val / (*it)->period);
+        }
+    }
+
+    //chlog("times: " << times.size());
+        
+    pair<vector<double>,
+         vector<vector<double> > > rtn = make_pair(times, rates);
+
+    //chlog("Returning " << rtn.first.size() << " times");
+        
+    // Pack return value into msgpack buffer
+    msgpack::sbuffer buffer;
+    msgpack::pack(buffer, rtn);
+    //  Send reply back to client.
+    zmq::message_t* reply = sbuffer_to_message(buffer);
+    return _send_frontend_message(*client, *token_to_message(token), *reply);
+}
+
+
+int L1RpcServer::_handle_get_statistics(zmq::message_t* client, string funcname, uint32_t token,
+                                        const char* req_data, size_t req_len, size_t& offset) {
+
+    //cout << "RPC get_statistics() called" << endl;
+    // No input arguments, so don't unpack anything more.
+
+    // Gather stats...
+    vector<unordered_map<string, uint64_t> > stats = _stream->get_statistics();
+    {
+        // This is a bit of a HACK!
+        // read and parse /proc/stat, add to stats[0].
+        ifstream s("/proc/stat");
+        string key;
+        int arrayi = 0;
+
+        double dt = time_diff(_time0, get_time());
+        // /proc/stat values are in "jiffies"?
+        stats[0]["procstat_time"] = dt * 100;
+
+        for (; s.good();) {
+            string word;
+            s >> word;
+            if ((word.size() == 0) && (s.eof()))
+                break;
+            if (key.size() == 0) {
+                key = word;
+                arrayi = 0;
+            } else {
+                uint64_t ival = stoll(word);
+                // HACK -- skip 0 values.
+                if (ival) {
+                    string fullkey = "procstat_" + key + "_" + to_string(arrayi);
+                    stats[0][fullkey] = ival;
+                }
+                arrayi++;
+                //cout << "set: " << fullkey << " = " << ival << endl;
+            }
+            if (s.peek() == '\n') {
+                key = "";
+            }
+        }
+    }
+
+    msgpack::sbuffer buffer;
+    msgpack::pack(buffer, stats);
+    //  Send reply back to client.
+    //cout << "Sending RPC reply of size " << buffer.size() << endl;
+    zmq::message_t* reply = sbuffer_to_message(buffer);
+    //cout << "  client: " << msg_string(*client) << endl;
+    return _send_frontend_message(*client, *token_to_message(token), *reply);
+}
+
+int L1RpcServer::_handle_list_chunks(zmq::message_t* client, string funcname, uint32_t token,
+                                     const char* req_data, size_t req_len, size_t& offset) {
+
+    // No input arguments, so don't unpack anything more.
+
+    // Grab snapshot of all ringbufs...
+    vector<tuple<uint64_t, uint64_t, uint64_t, uint64_t> > allchunks;
+
+    intensity_network_stream::initializer ini = _stream->ini_params;
+    for (auto beamit = ini.beam_ids.begin(); beamit != ini.beam_ids.end(); beamit++) {
+        // Retrieve one beam at a time
+        int beam = *beamit;
+        vector<int> beams;
+        beams.push_back(beam);
+        vector<vector<pair<shared_ptr<assembled_chunk>, uint64_t> > > chunks = _stream->get_ringbuf_snapshots(beams);
+        // iterate over beams (we only requested one)
+        for (auto it1 = chunks.begin(); it1 != chunks.end(); it1++) {
+            // iterate over chunks
+            for (auto it2 = (*it1).begin(); it2 != (*it1).end(); it2++) {
+                allchunks.push_back(make_tuple((uint64_t)it2->first->beam_id,
+                                               it2->first->fpga_begin,
+                                               it2->first->fpga_end,
+                                               it2->second));
+            }
+        }
+    }
+
+    // KMS: I removed code here to retrieve messages queued for writing,
+    // since we're currently trying to decide whether to keep the list_chunks
+    // RPC, or phase it out!  
+    //
+    // If we do decide to keep the list_chunks RPC , then it would be easy to
+    // add a member function to 'class ch_frb_io::output_device_pool' to return
+    // the chunks queued for writing.
+
+    msgpack::sbuffer buffer;
+    msgpack::pack(buffer, allchunks);
+    zmq::message_t* reply = sbuffer_to_message(buffer);
+    //  Send reply back to client.
+    return _send_frontend_message(*client, *token_to_message(token), *reply);
+                                      
+}
+
+int L1RpcServer::_handle_write_chunks(zmq::message_t* client, string funcname, uint32_t token,
+                                      const char* req_data, size_t req_len, size_t& offset) {
+
+    //cout << "RPC write_chunks() called" << endl;
+    // grab WriteChunks_Request argument
+    msgpack::object_handle oh = msgpack::unpack(req_data, req_len, offset);
+
+    bool need_rfi = false;
+        
+    // "v1" write_chunks requests have 9 arguments; "v2" have 10 arguments ("need_rfi" flag added)
+    msgpack::object obj = oh.get();
+    cout << "Write_chunks request: arguments size " << obj.via.array.size << endl;
+    WriteChunks_Request req;
+    if (obj.via.array.size == 9) {
+        req = oh.get().as<WriteChunks_Request>();
+    } else if (obj.via.array.size == 10) {
+        WriteChunks_Request_v2 req2 = oh.get().as<WriteChunks_Request_v2>();
+        req = req2;
+        need_rfi = req2.need_rfi;
+    }
+
+    /*
+     cout << "WriteChunks request: FPGA range " << req.min_fpga << "--" << req.max_fpga << endl;
+     cout << "beams: [ ";
+     for (auto beamit = req.beams.begin(); beamit != req.beams.end(); beamit++)
+     cout << (*beamit) << " ";
+     cout << "]" << endl;
+     */
+
+    // Retrieve the chunks requested.
+    vector<shared_ptr<assembled_chunk> > chunks;
+    _get_chunks(req.beams, req.min_fpga, req.max_fpga, chunks);
+
+    //cout << "get_chunks: got " << chunks.size() << " chunks" << endl;
+
+    // Keep a list of the chunks to be written; we'll reply right away with this list.
+    vector<WriteChunks_Reply> reply;
+
+    for (const auto &chunk: chunks) {
+        shared_ptr<l1_write_request> w = make_shared<l1_write_request> ();
+
+        // Format the filename the chunk will be written to.
+        w->filename = chunk->format_filename(req.filename_pattern);
+
+        // Copy client ID
+        w->client = new zmq::message_t();
+        w->client->copy(client);
+
+        // Fill remaining fields and enqueue the write request for the I/O threads.
+        w->backend_queue = this->_backend_queue;
+        w->chunk_status = this->_chunk_status;
+        w->priority = req.priority;
+        w->chunk = chunk;
+        w->token = token;
+        w->need_rfi_mask = need_rfi;
+
+        // Returns false if request failed to queue.  
+        bool success = _output_devices.enqueue_write_request(w);
+
+        // Record the status for this filename.
+        // (status will be set via a status_changed() call during
+        // enqueue_write_request.)
+        string status;
+        string error_message;
+        _chunk_status->get(w->filename, status, error_message);
+
+        WriteChunks_Reply rep;
+        rep.beam = chunk->beam_id;
+        rep.fpga0 = chunk->fpga_begin;
+        rep.fpgaN = chunk->fpga_end - chunk->fpga_begin;
+        rep.filename = w->filename;
+        rep.success = success;
+        reply.push_back(rep);
+    }
+
+    msgpack::sbuffer buffer;
+    msgpack::pack(buffer, reply);
+    zmq::message_t* replymsg = sbuffer_to_message(buffer);
+
+    return _send_frontend_message(*client, *token_to_message(token), *replymsg);
+}
+
+int L1RpcServer::_handle_masked_freqs(zmq::message_t* client, string funcname, uint32_t token,
+                                      const char* req_data, size_t req_len, size_t& offset) {
+    // no arguments?
+
+    // Returns:
+    // list of [beam_id, where, nt, [ measurements ] ]
+    // where measurements is a list of uint16_ts, one per freq bin
+
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_array(_mask_stats->size());
+    for (const auto &it : _mask_stats->map) {
+        int beam_id = it.first.first;
+        string where = it.first.second;
+        shared_ptr<rf_pipelines::mask_measurements_ringbuf> ms = it.second;
+        vector<rf_pipelines::mask_measurements> meas = ms->get_all_measurements();
+        cout << "Got " << meas.size() << " measurements from beam " << beam_id << " where " << where << endl;
+        pk.pack_array(4);
+        pk.pack(beam_id);
+        pk.pack(where);
+        int nt = 0;
+        if (meas.size())
+            nt = meas[0].nt;
+        pk.pack(nt);
+        pk.pack_array(meas.size());
+        for (const auto &m : meas) {
+            pk.pack_array(m.nf);
+            int* fum = m.freqs_unmasked.get();
+            for (int k=0; k<m.nf; k++)
+                pk.pack(m.nt - fum[k]);
+        }
+    }
+    //  Send reply back to client.
+    zmq::message_t* reply = sbuffer_to_message(buffer);
+    return _send_frontend_message(*client, *token_to_message(token), *reply);
+}
+
+string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t req_offset) {
+    if (!_heavy || (_injectors.size() == 0))
+        return "This RPC endoint does not support the inject_data call.  Try the heavy-weight RPC port.";
+
+    // This struct defines the msgpack "wire protocol"
+    shared_ptr<inject_data_request> injreq = make_shared<inject_data_request>();
+
+    // This is the struct we will send to rf_pipelines
+    shared_ptr<rf_pipelines::intensity_injector::inject_args> injdata = make_shared<rf_pipelines::intensity_injector::inject_args>();
+
+    // And this is the injector
+    shared_ptr<rf_pipelines::intensity_injector> syringe;
+    
+    msgpack::object_handle oh = msgpack::unpack(req_data, req_size, req_offset);
+    msgpack::object obj = oh.get();
+    obj.convert(injreq);
+    int beam = injreq->beam;
+    uint64_t fpga0 = injreq->fpga0;
+    injreq->swap(*injdata);
+    injreq.reset();
+
+    assert(_stream.get());
+    string errstring = injdata->check(_stream->ini_params.nupfreq * ch_frb_io::constants::nfreq_coarse_tot);
+    if (errstring.size())
+        return errstring;
+
+    // find the injector for this beam
+    for (size_t i=0; i<_stream->ini_params.beam_ids.size(); i++)
+        if (_stream->ini_params.beam_ids[i] == beam) {
+            assert(i < _injectors.size());
+            syringe = _injectors[i];
+            break;
+        }
+    // Matching beam
+    if (!syringe)
+        return "inject_data: beam=" + to_string(beam) + " which is not a beam that I am handling";
+    
+    // rf_pipelines sample offset
+    uint64_t stream_fpga0;
+    try {
+        // If the first packet has not been received, we don't know FPGA0.
+        stream_fpga0 = _stream->get_first_fpga_count(beam);
+    } catch (const runtime_error &e) {
+        return e.what();
+    }
+    injdata->sample0 = (ssize_t)(fpga0 / (uint64_t)_stream->ini_params.fpga_counts_per_sample) -
+        (ssize_t)(stream_fpga0 / (uint64_t)_stream->ini_params.fpga_counts_per_sample);
+    //cout << "L1-RPC inject_data: injection FPGA0 " << fpga0 << ", stream's first FPGA count: " << _stream->get_first_fpga_count(beam) << ", sample0 " << injdata->sample0 << endl;
+
+    try {
+        syringe->inject(injdata);
+    } catch (const runtime_error &e) {
+        return e.what();
+    }
+    cout << "Inject_data RPC: beam " << beam << ", mode " << injdata->mode << ", nfreq " << injdata->sample_offset.size() << ", sample0 " << injdata->sample0 << ", offset range " << injdata->min_offset << ", " << injdata->max_offset << endl;
+    return "";
+}
+
+int L1RpcServer::_handle_masked_freqs_2(zmq::message_t* client, string funcname, uint32_t token,
+                                        const char* req_data, size_t req_len, size_t& offset) {
+    // arguments: [beam, where, fpgacounts_low, fpgacounts_high]
+    // If *beam* == -1, returns all beams
+    // *where*: you probably want "before_rfi" or "after_rfi".
+    msgpack::object_handle oh = msgpack::unpack(req_data, req_len, offset);
+    if (oh.get().via.array.size != 4) {
+        chlog("get_masked_frequencies_2: expected arguments (beam, where, fpgacounts_low, fpgacounts_high)");
+        return -1;
+    }
+    int beam           = oh.get().via.array.ptr[0].as<int>();
+    string where       = oh.get().via.array.ptr[1].as<string>();
+    uint64_t fpgastart = oh.get().via.array.ptr[2].as<uint64_t>();
+    uint64_t fpgaend   = oh.get().via.array.ptr[3].as<uint64_t>();
+
+    // Returns:
+    // list (one per beam) of:
+    // [beam_id, fpga_start, fpga_end, pos_start, nt, nf, nsamples,
+    //  nsamples_masked, FREQS_MASKED]
+    // here FREQS_MASKED is a list (array / histogram) of length "nf".
+    // "pos_start" and "nt" are in intensity samples.
+
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+
+    vector<shared_ptr<rf_pipelines::mask_measurements> > measlist;
+    vector<int> measbeams;
+    vector<uint64_t> measfpga0;
+
+    uint64_t fpga_counts_per_sample = _stream->ini_params.fpga_counts_per_sample;
+
+    for (const auto &it : _mask_stats->map) {
+        int beam_id = it.first.first;
+        string this_where = it.first.second;
+
+        // match requested "beam" & "where"
+        if (beam >= 0 && beam_id != beam)
+            continue;
+        if (this_where != where)
+            continue;
+
+        uint64_t fpga0;
+        try {
+            fpga0 = _stream->get_first_fpga_count(beam_id);
+        } catch (const std::exception& e) {
+            chlog("get_masked_frequencies_2: no fpga0 for beam " << beam_id);
+            continue;
+        }
+        ssize_t samplestart = 0;
+        ssize_t sampleend   = 0;
+        if (fpgastart >= fpga0)
+            samplestart = (fpgastart - fpga0) / fpga_counts_per_sample;
+        if (fpgaend >= fpga0)
+            sampleend   = (fpgaend   - fpga0) / fpga_counts_per_sample;
+        //chlog("get_masked_frequencies_2: sample range " << samplestart << " to " << sampleend);
+        shared_ptr<rf_pipelines::mask_measurements_ringbuf> ms = it.second;
+        shared_ptr<rf_pipelines::mask_measurements> meas = ms->get_summed_measurements(samplestart, sampleend);
+        if (!meas) {
+            //chlog("Got empty measurement");
+        } else {
+            //chlog("Got summed measurements: pos " << meas->pos << ", nt " << meas->nt);
+            measlist.push_back(meas);
+            measbeams.push_back(beam_id);
+            measfpga0.push_back(fpga0);
+        }
+    }
+
+    pk.pack_array(measlist.size());
+    for (size_t i=0; i<measlist.size(); i++) {
+        shared_ptr<rf_pipelines::mask_measurements> meas = measlist[i];
+        int beam_id = measbeams[i];
+        uint64_t fpga0 = measfpga0[i];
+        pk.pack_array(9);
+        pk.pack(beam_id);
+        pk.pack(fpga0 + meas->pos * fpga_counts_per_sample);
+        pk.pack(fpga0 + (meas->pos + meas->nt) * fpga_counts_per_sample);
+        pk.pack(meas->pos);
+        pk.pack(meas->nt);
+        pk.pack(meas->nf);
+        pk.pack(meas->nsamples);
+        pk.pack(meas->nsamples_unmasked);
+        pk.pack_array(meas->nf);
+        int* fum = meas->freqs_unmasked.get();
+        for (int k=0; k<meas->nf; k++)
+            pk.pack(meas->nt - fum[k]);
+    }
+    //  Send reply back to client.
+    zmq::message_t* reply = sbuffer_to_message(buffer);
+    return _send_frontend_message(*client, *token_to_message(token), *reply);
+    
+}
+
+int L1RpcServer::_handle_max_fpga(zmq::message_t* client, string funcname, uint32_t token,
+                                  const char* req_data, size_t req_len, size_t& offset) {
+    // Returns a list of tuples:
+    // [(where, beam, max_fpgacount_seen), ...]
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+
+    vector<fpga_counts_seen> fpgaseen;
+    fpga_counts_seen seen;
+
+    seen.where = "packet_stream";
+    seen.beam = -1;
+    seen.max_fpga_seen = _stream->packet_max_fpga_seen;
+    fpgaseen.push_back(seen);
+
+    vector<uint64_t> flushed;
+    vector<uint64_t> retrieved;
+    _stream->get_max_fpga_count_seen(flushed, retrieved);
+
+    intensity_network_stream::initializer ini = _stream->ini_params;
+    int nbeams = _stream->ini_params.beam_ids.size();
+    for (int i=0; i<nbeams; i++) {
+        // _stream->get_first_fpga_count(beamid)
+        seen.beam = _stream->ini_params.beam_ids[i];
+        seen.where = "chunk_flushed";
+        seen.max_fpga_seen = flushed[i];
+        fpgaseen.push_back(seen);
+
+        seen.where = "chunk_retrieved";
+        seen.max_fpga_seen = retrieved[i];
+        fpgaseen.push_back(seen);
+    }
+
+    for (size_t i=0; i<_latencies.size(); i++) {
+        int beam_id = std::get<0>(_latencies[i]);
+        string where = std::get<1>(_latencies[i]);
+        const auto &late = std::get<2>(_latencies[i]);
+
+        uint64_t fpga0 = 0;
+        try {
+            fpga0 = _stream->get_first_fpga_count(beam_id);
+        } catch (const runtime_error &e) {
+            // if first packet has not been received
+            continue;
+        }
+        uint64_t fpga = (late->pos_lo * _stream->ini_params.fpga_counts_per_sample
+                         + fpga0);
+        seen.beam = beam_id;
+        seen.where = where;
+        seen.max_fpga_seen = fpga;
+        fpgaseen.push_back(seen);
+    }
+        
+    for (size_t i=0; i<_bonsais.size(); i++) {
+        const auto &bonsai = _bonsais[i];
+        if (!bonsai)
+            continue;
+        int beam_id = _stream->ini_params.beam_ids[i];
+        int nc = bonsai->get_nchunks_processed();
+        uint64_t fpga0 = 0;
+        try {
+            fpga0 = _stream->get_first_fpga_count(beam_id);
+        } catch (const runtime_error &e) {
+            // if first packet has not been received
+            continue;
+        }
+        uint64_t fpga = (nc * bonsai->nt_chunk * _stream->ini_params.fpga_counts_per_sample
+                         + fpga0);
+        seen.beam = beam_id;
+        seen.where = "bonsai";
+        seen.max_fpga_seen = fpga;
+        fpgaseen.push_back(seen);
+    }
+        
+    pk.pack(fpgaseen);
+
+    //  Send reply back to client.
+    zmq::message_t* reply = sbuffer_to_message(buffer);
+    return _send_frontend_message(*client, *token_to_message(token), *reply);
+    
+}
 
 // Called periodically by the RpcServer thread.
 void L1RpcServer::_check_backend_queue()
