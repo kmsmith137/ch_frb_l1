@@ -47,4 +47,31 @@ export PATH=/usr/local/bin:/usr/bin:/bin:/home/l1operator/${VERSION}/bin
 
 cd /home/l1operator/${VERSION}/ch_frb_l1
 
+# Environment variable "prometheus_multiproc_dir" is required for the
+# Prometheus Python client to operate in the multi-process mode. (See
+# https://github.com/prometheus/client_python#multiprocess-mode-gunicorn)
+# To avoid metric pollution across execution, we use a unique directory
+# per run, and remove it afterwards.
+export prometheus_multiproc_dir=$(mktemp --dir --tmp "l1b_metrics.XXXX")
+
+# Run a separate Python process just for reporting shared metrics
+cat <<EOF | python & <<EOF
+import prometheus_client as prom
+import prometheus_client.multiprocess as mp
+import time
+
+registry = prom.CollectorRegistry()
+mp.MultiProcessCollector(registry)
+prom.start_http_server(8080, registry=registry)
+
+while True:
+  time.sleep(10)
+EOF
+
 ./ch-frb-l1 l1_configs/l1_production_8beam_rack${rack}_node${node}.yaml ../ch_frb_rfi/json_files/rfi_16k/${RFI_CONFIG} /data/bonsai_configs/${BONSAI_CONFIG} L1b_config_site.yaml
+
+# cleanup Prometheus multiproc setup
+if [ -d "${prometheus_multiproc_dir}" ]; then
+    rm "${prometheus_multiproc_dir}"/*.db
+    rmdir "${prometheus_multiproc_dir}"
+fi
