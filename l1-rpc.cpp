@@ -641,7 +641,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
             this->_slow_pulsar_writer_hash->get(target_ibeam)->set_params(target_beam, nfreq, ntime, nbins, base_path);
             chlog("Pulsar writer paramter update" << std::endl << "\tnfreq_out: " << nfreq
                     << std::endl <<  "\tntime_out: " << ntime << std::endl << "\tnbins " 
-                    << nbins << "base_path " << *base_path << std::endl);
+                    << nbins << std::endl << "base_path " << *base_path << std::endl);
         }
 
         msgpack::sbuffer buffer;
