@@ -618,13 +618,14 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         auto nfreq = oh.get().via.array.ptr[1].as<int>();
         auto ntime = oh.get().via.array.ptr[2].as<int>();
         auto nbins = oh.get().via.array.ptr[3].as<int>();
-        
+        std::shared_ptr<std::string> base_path(new std::string(oh.get().via.array.ptr[4].as<std::string>()));
+
         const ssize_t nbeams = this->_stream->ini_params.nbeams;
         int beam_id;
         int target_ibeam = -1;
 
         shared_ptr<vector<int>> beam_ids(new vector<int>(this->_stream->get_beam_ids()));
-
+        
         // check that the stream beam_ids 
         if(beam_ids->size() == nbeams){
             for (int ibeam=0; ibeam<nbeams; ibeam++) {
@@ -637,9 +638,10 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         }
 
         if(target_ibeam != -1) {
-            this->_slow_pulsar_writer_hash->get(target_ibeam)->set_params(target_beam, nfreq, ntime, nbins);
+            this->_slow_pulsar_writer_hash->get(target_ibeam)->set_params(target_beam, nfreq, ntime, nbins, base_path);
             chlog("Pulsar writer paramter update" << std::endl << "\tnfreq_out: " << nfreq
-                    << std::endl <<  "\tntime_out: " << ntime << std::endl << "\tnbins " << nbins << std::endl);
+                    << std::endl <<  "\tntime_out: " << ntime << std::endl << "\tnbins " 
+                    << nbins << "base_path " << *base_path << std::endl);
         }
 
         msgpack::sbuffer buffer;
