@@ -633,7 +633,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 }
 
 std::shared_ptr<const bonsai::dedisperser> L1RpcServer::_get_bonsai_for_beam(int beam) {
-    for (int i=0; i<_stream->get_beam_ids().size(); i++) {
+    for (size_t i=0; i<_stream->get_beam_ids().size(); i++) {
         int b = _stream->get_beam_ids()[i];
         if (b == beam) {
             if (i < _bonsais.size()) {
@@ -654,7 +654,7 @@ std::shared_ptr<const bonsai::dedisperser> L1RpcServer::_get_bonsai_for_beam(int
 std::shared_ptr<rf_pipelines::intensity_injector> L1RpcServer::_get_injector_for_beam(int beam) {
     chlog("Searching for injector for beam " << beam << ": have " <<
           _injectors.size() << " injectors.");
-    for (int i=0; i<_stream->get_beam_ids().size(); i++) {
+    for (size_t i=0; i<_stream->get_beam_ids().size(); i++) {
         int b = _stream->get_beam_ids()[i];
         if (b == beam) {
             if (i < _injectors.size()) {
