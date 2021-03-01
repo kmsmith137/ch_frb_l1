@@ -106,10 +106,6 @@ l1_config::l1_config(int argc, const char **argv)
 
     vector<string> args;
 
-    vector<int> acq_beams;
-    string acq_name;
-    bool acq_nfs;
-
     bool verbose = false;
 
     CLI::App parser{"ch-frb-l1 CHIME FRB L1 server"};
@@ -123,11 +119,6 @@ l1_config::l1_config(int argc, const char **argv)
     parser.add_flag("-t,--toy", this->tflag, "Starts a \"toy server\" which assembles packets, but does not run RFI removal, dedispersion, or L1B (if -t is specified, then the last 3 arguments are optional)");
     parser.add_flag("-r,--rfi", this->rflag, "Starts an \"RFI testing\" (semi-toy) server with no bonsai dedispersion or L1B (last 2 args are then optional).");
     parser.add_flag("-b,--multi", this->mflag, "Enable restarting network streams (different beams)");
-    /*
-     parser.add_option("-a,--acq", acq_name, "Stream data to disk, saving it to this acquisition directory name");
-     parser.add_flag("-n,--nfs", acq_nfs, "For streaming data acquisition, stream to NFS, not SSD");
-     parser.add_option("-b,--beam", acq_beams, "For streaming data acquisition, beam number to capture (can be repeated; default is all beams)");
-     */
     parser.add_option("l1_config", this->l1_config_filename, "l1_config.yaml")
         ->required()->check(CLI::ExistingFile);
     parser.add_option("rfi_config", this->rfi_config_filename, "rfi_config.json")
@@ -332,29 +323,6 @@ l1_config::l1_config(int argc, const char **argv)
 			    + to_string(nstreams) + ", inferred from number of (ipaddr,port) pairs");
     }
 
-    // Read stream params (postponed to here, so we get 'beam_ids' first).
-
-    /*
-     // If a stream is specified on the command-line, override the config file.
-     if (acq_name.size()) {
-        if (acq_name == "none") {
-            // no streaming!
-        } else {
-            this->stream_devname = acq_nfs ? "nfs" : "ssd";
-            this->stream_acqname = acq_name;
-            this->stream_beam_ids = acq_beams;
-        }
-    } else {
-        this->stream_devname = p.read_scalar<string> ("stream_devname", "ssd");
-        this->stream_acqname = p.read_scalar<string> ("stream_acqname", "");
-        this->stream_beam_ids = p.read_vector<int> ("stream_beam_ids", this->beam_ids);
-    }
-
-    for (int b: stream_beam_ids)
-	if (!vcontains(beam_ids, b))
-	    throw runtime_error(l1_config_filename + ": 'stream_beam_ids' must be a subset of 'beam_ids' (which defaults to [0,...,nbeams-1] if unspecified)");
-     */
-
     // "Derived" unassembled ringbuf params.
 
     int fp = nt_per_packet * fpga_counts_per_sample;   // FPGA counts per packet
@@ -553,7 +521,7 @@ protected:
     std::condition_variable cond;
     std::vector<bool> checkedin;
     bool proceed;
-    int nreturned;
+    size_t nreturned;
 };
 
 

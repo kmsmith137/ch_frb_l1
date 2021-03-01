@@ -543,7 +543,7 @@ class RpcClient(object):
     ## the acq_beams should perhaps be a list of lists of beam ids,
     ## one list per L1 server.
     def stream(self, acq_name, acq_dev='', acq_meta='', acq_beams=[],
-               new_stream=True,
+               new_stream=True, max_chunks=0,
                servers=None, wait=True, timeout=-1):
         if servers is None:
             servers = self.servers.keys()
@@ -557,8 +557,9 @@ class RpcClient(object):
             acq_meta = str(acq_meta)
             acq_beams = [int(b) for b in acq_beams]
             new_stream = bool(new_stream)
+            max_chunks = int(max_chunks)
             args = msgpack.packb([acq_name, acq_dev, acq_meta, acq_beams,
-                                  new_stream])
+                                  new_stream, max_chunks])
             tokens.append(self.token)
             self.sockets[k].send(req + args)
         if not wait:
@@ -1049,11 +1050,11 @@ if __name__ == '__main__':
     parser.add_argument('--max-fpga-plot', type=float,
                         help='Request max FPGA counts seen at different places in the pipeline, for N seconds, and make a plot of the results.')
     parser.add_argument('--identity', help='(ignored)')
-    parser.add_argument('--stream', help='Stream to files')
+    parser.add_argument('--stream', help='Start/stop streaming intensity data to files', default=False, action='store_true')
     parser.add_argument('--stream-base', help='Stream base directory')
     parser.add_argument('--stream-meta', help='Stream metadata', default='')
     parser.add_argument('--stream-beams', action='append', default=[], help='Stream a subset of beams.  Can be a comma-separated list of integers.  Can be repeated.')
-
+    parser.add_argument('--stream-max-chunks', type=int, default=0, help='Set a limit on the number of (1-second) chunks to stream to disk.')
     parser.add_argument('--rate', action='store_true', default=False,
                         help='Send packet rate matrix request')
     parser.add_argument('--rate-history', action='store_true', default=False,
@@ -1325,7 +1326,8 @@ if __name__ == '__main__':
             words = b.split(',')
             for w in words:
                 beams.append(int(w))
-        patterns = client.stream(opt.stream, opt.stream_base, opt.stream_meta, beams, **kwa)
+        patterns = client.stream(opt.stream, opt.stream_base, opt.stream_meta, beams,
+                                 max_chunks=opt.stream_max_chunks, **kwa)
         print('Streaming to:', patterns)
         doexit = True
 
