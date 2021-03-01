@@ -675,16 +675,20 @@ int L1RpcServer::_handle_streaming_request(zmq::message_t* client, string funcna
                                            const char* req_data, size_t req_len, size_t& offset) {
 
     // grab arguments: [ "acq_name", "acq_dev", "acq_meta.json",
-    //                   [ beam ids ] ]
+    //                   [ beam ids ], "acq_new", (optional "acq_max_chunks") ]
     msgpack::object_handle oh = msgpack::unpack(req_data, req_len, offset);
-    if (oh.get().via.array.size != 5) {
-        chlog("stream RPC: failed to parse input arguments: expected array of size 5");
+    if (!((oh.get().via.array.size == 5) || (oh.get().via.array.size == 6))) {
+        chlog("stream RPC: failed to parse input arguments: expected array of size 5 or 6");
         return -1;
     }
     string acq_name = oh.get().via.array.ptr[0].as<string>();
     string acq_dev = oh.get().via.array.ptr[1].as<string>();
     string acq_meta = oh.get().via.array.ptr[2].as<string>();
     bool acq_new = oh.get().via.array.ptr[4].as<bool>();
+    int acq_max_chunks = 0;
+    if (oh.get().via.array.size == 6)
+        acq_max_chunks = oh.get().via.array.ptr[5].as<int>();
+
     // grab beam_ids
     vector<int> beam_ids;
     int nbeams = oh.get().via.array.ptr[3].via.array.size;
@@ -707,11 +711,12 @@ int L1RpcServer::_handle_streaming_request(zmq::message_t* client, string funcna
             chlog("Stream request for beam " << beam << " which isn't being handled by this node.  Ignoring.");
     }
 
-    chlog("Stream request: \"" << acq_name << "\", device=\"" << acq_dev << "\", " << beam_ids.size() << " beams.");
-    if (beam_ids.size()) {
+    chlog("Stream request: \"" << acq_name << "\", device=\"" << acq_dev << "\", " << beam_ids.size() << " beams");
+    if (beam_ids.size())
         for (size_t i=0; i<beam_ids.size(); i++)
             chlog("  beam " << beam_ids[i]);
-    }
+    if (acq_max_chunks)
+        chlog("Max chunks to stream: " << acq_max_chunks);
     // Default to all beams if no beams were specified.
     // (note that we use nbeams: the number of specified beams, even if
     // none of them are owned by this node.  The beams owned by this node
@@ -727,7 +732,7 @@ int L1RpcServer::_handle_streaming_request(zmq::message_t* client, string funcna
         // Turn off streaming
         pattern = "";
         chlog("Turning off streaming");
-        _stream->stream_to_files(pattern, { }, 0, false);
+        _stream->stream_to_files(pattern, { }, 0, false, 0);
         result.first = true;
         result.second = pattern;
     } else {
@@ -754,7 +759,7 @@ int L1RpcServer::_handle_streaming_request(zmq::message_t* client, string funcna
                 }
             }
             bool need_rfi = (_stream->ini_params.nrfifreq > 0);
-            _stream->stream_to_files(pattern, beam_ids, 0, need_rfi);
+            _stream->stream_to_files(pattern, beam_ids, 0, need_rfi, acq_max_chunks);
             result.first = true;
             result.second = pattern;
         } catch (const std::exception& e) {
