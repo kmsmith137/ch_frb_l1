@@ -10,6 +10,8 @@
 #include <zmq.hpp>
 #include <msgpack.hpp>
 
+#include <rf_pipelines.hpp>
+
 #include "ch_frb_io.hpp"
 #include "ch_frb_l1.hpp"
 #include "l1-rpc.hpp"
@@ -19,6 +21,7 @@
 
 using namespace std;
 using namespace ch_frb_io;
+using namespace rf_pipelines;
 
 /*
  The L1 RPC server is structured as a typical ZeroMQ multi-threaded
@@ -275,6 +278,7 @@ void inject_data_request::swap(rf_pipelines::intensity_injector::inject_args& de
 L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
                          vector<shared_ptr<rf_pipelines::intensity_injector> > injectors,
                          shared_ptr<const ch_frb_l1::mask_stats_map> ms,
+                         shared_ptr<ch_frb_l1::slow_pulsar_writer_hash> sp,
                          vector<shared_ptr<const bonsai::dedisperser> > bonsais,
                          bool heavy,
                          const string &port,
@@ -296,6 +300,7 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
     _injectors(injectors),
     _mask_stats(ms),
     _bonsais(bonsais),
+    _slow_pulsar_writer_hash(sp),
     _latencies(monitors)
 {
     if ((_injectors.size() != 0) &&
@@ -531,7 +536,6 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
          */
 
     } else if (funcname == "write_chunks") {
-
         rtnval = _handle_write_chunks(client, funcname, token, req_data, request->size(), offset);
 
     } else if (funcname == "get_writechunk_status") {
@@ -605,7 +609,62 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         //  Send reply back to client.
         zmq::message_t* reply = sbuffer_to_message(buffer);
         return _send_frontend_message(*client, *token_to_message(token), *reply);
+    } else if (funcname == "set_spulsar_writer_params"){
+        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
+        
+        // TODO: reject requests based on file version (useful for dev)
+        auto target_beam = oh.get().via.array.ptr[0].as<int>();
 
+        auto nfreq = oh.get().via.array.ptr[1].as<int>();
+        auto ntime = oh.get().via.array.ptr[2].as<int>();
+        auto nbins = oh.get().via.array.ptr[3].as<int>();
+        std::shared_ptr<std::string> base_path(new std::string(oh.get().via.array.ptr[4].as<std::string>()));
+
+        const ssize_t nbeams = this->_stream->ini_params.nbeams;
+        int beam_id;
+        int target_ibeam = -1;
+
+        shared_ptr<vector<int>> beam_ids(new vector<int>(this->_stream->get_beam_ids()));
+        
+        // check that the stream beam_ids 
+        if(beam_ids->size() == nbeams){
+            for (int ibeam=0; ibeam<nbeams; ibeam++) {
+                if((*beam_ids)[ibeam] == target_beam)
+                {
+                    target_ibeam = ibeam;
+                    break;
+                }
+            }
+        }
+
+        bool frame0_error = false;
+        string result;
+        if(target_ibeam != -1) {
+            shared_ptr<ch_frb_io::assembled_chunk> achunk = this->_stream->get_assembled_chunk(target_ibeam);
+            const uint64_t frame0_nano = achunk->frame0_nano;
+            if(frame0_nano == 0){
+                frame0_error = true;
+            }
+            else{
+                this->_slow_pulsar_writer_hash->get(target_ibeam)->set_params(target_beam, nfreq, 
+                                                            ntime, nbins, base_path, frame0_nano);
+                chlog("Pulsar writer paramter update" << std::endl << "\tnfreq_out: " << nfreq
+                        << std::endl <<  "\tntime_out: " << ntime << std::endl << "\tnbins: " 
+                        << nbins << std::endl << "base_path: " << *base_path << std::endl);
+            }
+        }
+
+        msgpack::sbuffer buffer;
+        if(target_ibeam == -1) {
+            result = "failure: target beam_id not found!";
+        }
+        else {
+            result = "parameters successfully applied to slow pulsar writer";
+        }
+
+        msgpack::pack(buffer, result);
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(*client, *token_to_message(token), *reply);
     } else if (funcname == "get_masked_frequencies") {
 
         rtnval = _handle_masked_freqs(client, funcname, token, req_data, request->size(), offset);
@@ -1092,7 +1151,7 @@ int L1RpcServer::_handle_write_chunks(zmq::message_t* client, string funcname, u
         w->priority = req.priority;
         w->chunk = chunk;
         w->token = token;
-        w->need_rfi_mask = need_rfi;
+        w->need_wait = need_rfi;
 
         // Returns false if request failed to queue.  
         bool success = _output_devices.enqueue_write_request(w);

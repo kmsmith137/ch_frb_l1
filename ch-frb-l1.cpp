@@ -30,6 +30,7 @@
 
 #include "ch_frb_l1.hpp"
 #include "chlog.hpp"
+#include "slow_pulsar_writer_hash.hpp"
 
 #include "CLI11.hpp"
 
@@ -544,6 +545,7 @@ struct dedispersion_thread_context {
     shared_ptr<ch_frb_io::intensity_network_stream> sp;
     shared_ptr<stream_coordinator> reset_coord;
     shared_ptr<mask_stats_map> ms_map;
+    std::shared_ptr<slow_pulsar_writer_hash> sp_writer_hash;
     std::function<void(int, shared_ptr<const bonsai::dedisperser>,
                        shared_ptr<const rf_pipelines::pipeline_object> latency_pre,
                        shared_ptr<const rf_pipelines::pipeline_object> latency_post
@@ -618,6 +620,19 @@ void dedispersion_thread_context::_init_mask_counters(const shared_ptr<rf_pipeli
     }
 }
 
+static void find_slow_pulsar_writer(shared_ptr<rf_pipelines::chime_slow_pulsar_writer> &sp_writer,
+				    const shared_ptr<rf_pipelines::pipeline_object> &pipe,
+				    int level)
+{
+    shared_ptr<rf_pipelines::chime_slow_pulsar_writer> sp = dynamic_pointer_cast<rf_pipelines::chime_slow_pulsar_writer> (pipe);
+    
+    if (!sp)
+        return;
+    if (sp_writer)
+	throw runtime_error("fatal: multiple chime_slow_pulsar_writers found in chain");
+
+    sp_writer = sp;
+}
 
 // Note: only called if config.tflag == false.
 void dedispersion_thread_context::_thread_main() const
@@ -676,8 +691,37 @@ void dedispersion_thread_context::_thread_main() const
         bonsai_transform = rf_pipelines::make_bonsai_dedisperser(dedisperser);
     }
 
+    // cout << "RFI chain:" << endl;
+    // rf_pipelines::print_pipeline(rfi_chain);
+
+    // FIXME resolve merge conflict!?
+    // if ((config.nrfifreq > 0) && (nchime != 1)) {
+    //     throw runtime_error("ch-frb-l1: need exactly one chime_mask_counter in the RFI config JSON file, or else RFI masks cannot be captured.");
+    // }
+
+    shared_ptr<rf_pipelines::chime_slow_pulsar_writer> sp_writer;
+
+    rf_pipelines::visit_pipeline(std::bind(find_slow_pulsar_writer,
+					   std::ref(sp_writer),
+					   std::placeholders::_1,
+					   std::placeholders::_2),
+				 rfi_chain);
+
+    // FIXME should make it a configurable option to run server with/without the slow_pulsar_writer.
+    if (!sp_writer)
+	throw runtime_error("ch-frb-l1: fatal: expected RFI json file to contain a chime_slow_pulsar_writer");
+
+    rf_pipelines::chime_slow_pulsar_writer::real_time_state sp_rts;
+    // don't bother finding the beam id anymore; other checks make sure the assignment
+    // is correct.
+    sp_rts.memory_pool = sp->ini_params.memory_pool;
+    sp_rts.output_devices = make_shared<ch_frb_io::output_device_pool> (sp->ini_params.output_devices);
+
+    sp_writer->init_real_time_state(sp_rts);
+    sp_writer_hash->set(stream_ibeam, sp_writer);
+	
     _init_mask_counters(rfi_chain, stream_ibeam);
-        
+
     auto pipeline = make_shared<rf_pipelines::pipeline> ();
     pipeline->add(stream);
     pipeline->add(injector_transform);
@@ -819,8 +863,6 @@ static void dedispersion_thread_main(const dedispersion_thread_context &context)
 	throw;
     }
 }
-
-
 
 
 l1_server::l1_server(int argc, const char **argv) :
@@ -1177,13 +1219,13 @@ void l1_server::make_rpc_servers()
         if (heavy) {
             vector<shared_ptr<rf_pipelines::intensity_injector> > empty_inj;
             // Light-weight RPC server gets no injectors
-            rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], empty_inj, mask_stats_maps[istream], rpc_bonsais, false, config.rpc_address[istream], command_line, rpc_latency);
+            rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], empty_inj, mask_stats_maps[istream], slow_pulsar_writer_hashes[istream], rpc_bonsais, false, config.rpc_address[istream], command_line, rpc_latency);
             // Heavy-weight RPC server does get injectors
-            heavy_rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], rpc_bonsais, true, config.heavy_rpc_address[istream], command_line, rpc_latency);
+            heavy_rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], slow_pulsar_writer_hashes[istream], rpc_bonsais, true, config.heavy_rpc_address[istream], command_line, rpc_latency);
             heavy_rpc_threads[istream] = heavy_rpc_servers[istream]->start();
         } else {
             // ?? Allow the single RPC server to support heavy-weight RPCs?
-            rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], rpc_bonsais, true, config.rpc_address[istream], command_line, rpc_latency);
+            rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], slow_pulsar_writer_hashes[istream], rpc_bonsais, true, config.rpc_address[istream], command_line, rpc_latency);
         }
 	rpc_threads[istream] = rpc_servers[istream]->start();
     }
@@ -1207,6 +1249,12 @@ void l1_server::make_mask_stats()
     for (int istream = 0; istream < config.nstreams; istream++) {
         mask_stats_maps.push_back(make_shared<mask_stats_map>());
     }
+}
+
+void l1_server::make_slow_pulsar_writer_hashes()
+{
+    for (int istream = 0; istream < config.nstreams; istream++)
+        slow_pulsar_writer_hashes.push_back(make_shared<slow_pulsar_writer_hash>());
 }
 
 void l1_server::spawn_dedispersion_threads()
@@ -1249,6 +1297,7 @@ void l1_server::spawn_dedispersion_threads()
         context.reset_coord = this->stream_reset_coordinators[istream];
         context.injector_transform = this->injectors[ibeam];
         context.ms_map = this->mask_stats_maps[istream];
+	context.sp_writer_hash = this->slow_pulsar_writer_hashes[istream];
         context.set_bonsai = set_bonsai;
 	context.l1b_subprocess = this->l1b_subprocesses[ibeam];
 	context.allowed_cores = this->dedispersion_cores[ibeam];
@@ -1347,5 +1396,3 @@ void l1_server::print_statistics()
 	}
     }
 }
-
-

@@ -1,0 +1,26 @@
+---
+verbose: True
+#log_addr: "tcp://10.6.213.18:10000"
+#log_directory: "/frb-archiver-1/L1b_logs/"
+default_beam_id: 0
+fallback_fpga_start: 0
+
+TriggerGrouper:
+    snr_thr: 8.0
+    histogram_triggers: False
+
+CandidateSifter:
+    grade_thr: 0
+    classifier: "SVC_180912.p"
+
+EventSender:
+    addr: "tcp://10.6.213.18:9001"
+    save: False
+    save_dir: "/frb-archiver-1/L1b_triggers/"
+
+TriggerReducer:
+    addr:
+      - "tcp://10.5.2.40:5140"    # frb-analysis
+      #- "tcp://10.6.50.21:5140"  # frb-archiver
+      #- "tcp://10.8.50.21:5140"  # frb-archiver
+...

@@ -17,6 +17,7 @@ int main(int argc, const char **argv)
     server.make_memory_slab_pools();
     server.make_input_streams();
     server.make_mask_stats();
+    server.make_slow_pulsar_writer_hashes();
     server.make_prometheus_servers();
     server.spawn_dedispersion_threads();
     server.make_rpc_servers();

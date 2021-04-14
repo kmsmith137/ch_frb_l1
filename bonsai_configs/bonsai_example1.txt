@@ -15,7 +15,8 @@ reweighting_timescale = 5.0
 nfreq = 1024
 freq_lo_MHz = 400.0
 freq_hi_MHz = 800.0
-dt_sample = 0.00098304    # exact CHIME value assuming 384 FPGA counts/sample
+dt_sample = 0.00098304
+# dt_sample = 0.00196608    # exact CHIME value assuming 768 FPGA counts/sample
 
 ntrees = 1
 tree_size = 4096
