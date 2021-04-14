@@ -41,11 +41,12 @@ SCRIPTS := ch-frb-make-acq-inventory
 INSTALLED_BINARIES := ch-frb-l1 ch-frb-simulate-l0
 NON_INSTALLED_BINARIES := rpc-client test-l1-rpc test-packet-rates
 
-debug: ch-frb-l1 ch-frb-simulate-l0 rpc-client test-l1-rpc test-packet-rates simulate_l0.so
-
 all: $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES) simulate_l0.so l1_server.so
 
 .PHONY: all install uninstall
+
+debug: ch-frb-l1 ch-frb-simulate-l0 rpc-client test-l1-rpc test-packet-rates simulate_l0.so
+.PHONY: debug
 
 INCFILES := ch_frb_l1.hpp l0-sim.hpp l1-rpc.hpp rpc.hpp mask_stats.hpp slow_pulsar_writer_hash.hpp
 
