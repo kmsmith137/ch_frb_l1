@@ -45,6 +45,10 @@ all: $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES) simulate_l0.so l1_server.so
 
 .PHONY: all install uninstall
 
+# Eliminate make's builtin rules (which for some reason I haven't figured out, were overriding
+# our perfectly good .cpp -> .o rule...
+.SUFFIXES:
+
 debug: ch-frb-l1 ch-frb-simulate-l0 rpc-client test-l1-rpc test-packet-rates simulate_l0.so
 .PHONY: debug
 
