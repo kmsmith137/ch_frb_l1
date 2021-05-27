@@ -280,9 +280,11 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
                          const string &port,
                          const string &cmdline,
                          std::vector<std::tuple<int, std::string, std::shared_ptr<const rf_pipelines::pipeline_object> > > monitors,
+                         const string &name,
                          zmq::context_t *ctx
                          ) :
     _command_line(cmdline),
+    _name(name),
     _heavy(heavy),
     _ctx(ctx ? ctx : new zmq::context_t()),
     _created_ctx(ctx == NULL),
@@ -352,7 +354,7 @@ void L1RpcServer::enqueue_write_request(std::shared_ptr<ch_frb_io::assembled_chu
 
 // Main thread for L1 RPC server.
 void L1RpcServer::run() {
-    chime_log_set_thread_name("L1-RPC-server");
+    chime_log_set_thread_name(_name.size() ? _name : "L1-RPC-server");
     chlog("bind(" << _port << ")");
     _frontend.bind(_port);
     
@@ -735,6 +737,10 @@ int L1RpcServer::_handle_streaming_request(zmq::message_t* client, string funcna
         _stream->stream_to_files(pattern, { }, 0, false, 0);
         result.first = true;
         result.second = pattern;
+    } else if (beam_ids.size() == 0) {
+        // Request to stream a specific set of beams, none of which we have.
+        result.first = false;
+        result.second = "No matching beams found.";
     } else {
         try {
             pattern = ch_frb_l1::acqname_to_filename_pattern(acq_dev, acq_name, { _stream->ini_params.stream_id }, _stream->get_beam_ids(), acq_new);

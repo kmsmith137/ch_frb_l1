@@ -46,6 +46,7 @@ public:
                 const std::string &cmdline = "",
                 std::vector<std::tuple<int, std::string, std::shared_ptr<const rf_pipelines::pipeline_object> > > monitors =
                 std::vector<std::tuple<int, std::string, std::shared_ptr<const rf_pipelines::pipeline_object> > >(),
+                const std::string &name = "",
                 zmq::context_t* ctx = NULL
 );
                 
@@ -135,7 +136,10 @@ private:
 
     // Are we doing heavy-weight RPCs?
     bool _heavy;
-    
+
+    // Name
+    std::string _name;
+
     // ZeroMQ context
     zmq::context_t* _ctx;
 

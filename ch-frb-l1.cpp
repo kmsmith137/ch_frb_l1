@@ -1177,12 +1177,21 @@ void l1_server::make_rpc_servers()
         if (heavy) {
             vector<shared_ptr<rf_pipelines::intensity_injector> > empty_inj;
             // Light-weight RPC server gets no injectors
-            rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], empty_inj, mask_stats_maps[istream], rpc_bonsais, false, config.rpc_address[istream], command_line, rpc_latency);
+            ostringstream name;
+            name << "Light-weight RPC server #" << (istream+1)
+                 << "(" << config.rpc_address[istream] << ")";
+            rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], empty_inj, mask_stats_maps[istream], rpc_bonsais, false, config.rpc_address[istream], command_line, rpc_latency, name.str());
+            name.str("");
             // Heavy-weight RPC server does get injectors
-            heavy_rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], rpc_bonsais, true, config.heavy_rpc_address[istream], command_line, rpc_latency);
+            name << "Heavy-weight RPC server #" << (istream+1)
+                 << "(" << config.heavy_rpc_address[istream] << ")";
+            heavy_rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], rpc_bonsais, true, config.heavy_rpc_address[istream], command_line, rpc_latency, name.str());
             heavy_rpc_threads[istream] = heavy_rpc_servers[istream]->start();
         } else {
             // ?? Allow the single RPC server to support heavy-weight RPCs?
+            ostringstream name;
+            name << "RPC server #" << (istream+1)
+                 << "(" << config.rpc_address[istream] << ")";
             rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], rpc_bonsais, true, config.rpc_address[istream], command_line, rpc_latency);
         }
 	rpc_threads[istream] = rpc_servers[istream]->start();
