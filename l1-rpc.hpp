@@ -39,6 +39,7 @@ public:
     L1RpcServer(std::shared_ptr<ch_frb_io::intensity_network_stream> stream,
                 std::vector<std::shared_ptr<rf_pipelines::intensity_injector> > injectors,
                 std::shared_ptr<const ch_frb_l1::mask_stats_map> maskstats,
+                std::shared_ptr<std::atomic<bool> > is_alive,
                 std::vector<std::shared_ptr<const bonsai::dedisperser> > bonsais =
                 std::vector<std::shared_ptr<const bonsai::dedisperser> >(),
                 bool heavy = true,
@@ -139,6 +140,9 @@ private:
 
     // Name
     std::string _name;
+
+    // Watchdog
+    std::shared_ptr<std::atomic<bool> > _is_alive;
 
     // ZeroMQ context
     zmq::context_t* _ctx;

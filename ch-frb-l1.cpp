@@ -23,6 +23,7 @@
 #include <fstream>
 #include <iomanip>
 #include <functional>
+#include <chrono>
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -1180,19 +1181,19 @@ void l1_server::make_rpc_servers()
             ostringstream name;
             name << "Light-weight RPC server #" << (istream+1)
                  << "(" << config.rpc_address[istream] << ")";
-            rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], empty_inj, mask_stats_maps[istream], rpc_bonsais, false, config.rpc_address[istream], command_line, rpc_latency, name.str());
+            rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], empty_inj, mask_stats_maps[istream], rpc_servers_alive[istream], rpc_bonsais, false, config.rpc_address[istream], command_line, rpc_latency, name.str());
             name.str("");
             // Heavy-weight RPC server does get injectors
             name << "Heavy-weight RPC server #" << (istream+1)
                  << "(" << config.heavy_rpc_address[istream] << ")";
-            heavy_rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], rpc_bonsais, true, config.heavy_rpc_address[istream], command_line, rpc_latency, name.str());
+            heavy_rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], heavy_rpc_servers_alive[istream], rpc_bonsais, true, config.heavy_rpc_address[istream], command_line, rpc_latency, name.str());
             heavy_rpc_threads[istream] = heavy_rpc_servers[istream]->start();
         } else {
             // ?? Allow the single RPC server to support heavy-weight RPCs?
             ostringstream name;
             name << "RPC server #" << (istream+1)
                  << "(" << config.rpc_address[istream] << ")";
-            rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], rpc_bonsais, true, config.rpc_address[istream], command_line, rpc_latency);
+            rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], rpc_servers_alive[istream], rpc_bonsais, true, config.rpc_address[istream], command_line, rpc_latency);
         }
 	rpc_threads[istream] = rpc_servers[istream]->start();
     }
@@ -1290,6 +1291,38 @@ void l1_server::set_bonsai(int ibeam,
 
 void l1_server::join_all_threads()
 {
+    // This function is called after all components of the L1 server
+    // are created, and only returns when all threads quit, which can
+    // happen naturally if a special short packet (of death) is sent
+    // to the L1 socket.  In production this never happens.
+
+    // Here, we're going to monitor the streams for the end-of-stream
+    // state, and also make sure that the L1 RPC servers are still
+    // running.  These can sometimes crash (segfault, etc), but they
+    // don't bring down the whole process (unfortunately!).  So we
+    // have a watchdog bit that they set each time through their main
+    // loop.
+    
+    while (true) {
+        bool quitnow = false
+        for (auto stream : input_streams)
+            if (stream->is_stream_ended()) {
+                quitnow = true;
+                break;
+            }
+        if (quitnow)
+            break;
+
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+
+        // FIXME -- finish implementing this!
+        // Set the flags false and wait for those threads to reset them to true.
+        for (auto alive : rpc_servers_alive)
+            alive->store(false);
+        for (auto alive : heavy_rpc_servers_alive)
+            alive->store(false);
+    }
+    
     for (size_t ibeam = 0; ibeam < dedispersion_threads.size(); ibeam++)
 	dedispersion_threads[ibeam].join();
     

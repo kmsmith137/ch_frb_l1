@@ -275,6 +275,7 @@ void inject_data_request::swap(rf_pipelines::intensity_injector::inject_args& de
 L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
                          vector<shared_ptr<rf_pipelines::intensity_injector> > injectors,
                          shared_ptr<const ch_frb_l1::mask_stats_map> ms,
+                         shared_ptr<std::atomic<bool> > is_alive,
                          vector<shared_ptr<const bonsai::dedisperser> > bonsais,
                          bool heavy,
                          const string &port,
@@ -284,8 +285,9 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
                          zmq::context_t *ctx
                          ) :
     _command_line(cmdline),
-    _name(name),
     _heavy(heavy),
+    _name(name),
+    _is_alive(is_alive),
     _ctx(ctx ? ctx : new zmq::context_t()),
     _created_ctx(ctx == NULL),
     _frontend(*_ctx, ZMQ_ROUTER),
@@ -369,6 +371,9 @@ void L1RpcServer::run() {
     while (!is_shutdown()) {
 	_check_backend_queue();
 
+        // Set watchdog!
+        _is_alive->store(true);
+        
         zmq::message_t client;
         zmq::message_t msg;
 
