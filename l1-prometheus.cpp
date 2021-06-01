@@ -263,7 +263,7 @@ public:
                     string where;
                     unordered_map<string, float> mstats;
                     std::tie(stream_ibeam, where, mstats) = maskstats[ib];
-                    if (stream_ibeam >= beams.size())
+                    if (stream_ibeam >= int(beams.size()))
                         continue;
                     int beam_id = beams[stream_ibeam];
                     const char* key = ms5[i].key;

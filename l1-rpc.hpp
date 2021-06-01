@@ -39,6 +39,7 @@ public:
     L1RpcServer(std::shared_ptr<ch_frb_io::intensity_network_stream> stream,
                 std::vector<std::shared_ptr<rf_pipelines::intensity_injector> > injectors,
                 std::shared_ptr<const ch_frb_l1::mask_stats_map> maskstats,
+                std::shared_ptr<std::atomic<bool> > is_alive,
                 std::vector<std::shared_ptr<const bonsai::dedisperser> > bonsais =
                 std::vector<std::shared_ptr<const bonsai::dedisperser> >(),
                 bool heavy = true,
@@ -73,6 +74,9 @@ public:
     // also be called when first packet has been received on the L1
     // server's *other* stream/port!
     void reset_beams();
+
+    // Name
+    const std::string _name;
 
 protected:
     // responds to the given RPC request, either sending immediate
@@ -136,7 +140,7 @@ protected:
 
     std::shared_ptr<const bonsai::dedisperser> _get_bonsai_for_beam(int beam);
     std::shared_ptr<rf_pipelines::intensity_injector> _get_injector_for_beam(int beam);
-    
+
 private:
     // The command line that launched this L1 process
     std::string _command_line;
@@ -144,8 +148,8 @@ private:
     // Are we doing heavy-weight RPCs?
     bool _heavy;
 
-    // Name
-    std::string _name;
+    // Watchdog
+    std::shared_ptr<std::atomic<bool> > _is_alive;
 
     // ZeroMQ context
     zmq::context_t* _ctx;

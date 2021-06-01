@@ -102,7 +102,8 @@ int main(int argc, char** argv) {
         std::vector<std::shared_ptr<rf_pipelines::intensity_injector> > inj;
         shared_ptr<ch_frb_l1::mask_stats_map> ms = make_shared<ch_frb_l1::mask_stats_map>();
         vector<shared_ptr<const bonsai::dedisperser> > bonsais;
-        shared_ptr<L1RpcServer> rpc = make_shared<L1RpcServer>(stream, inj, ms, bonsais, true, rpc_addr);
+        std::shared_ptr<std::atomic<bool>> is_alive;
+        shared_ptr<L1RpcServer> rpc = make_shared<L1RpcServer>(stream, inj, ms, is_alive, bonsais, true, rpc_addr);
         rpcs.push_back(rpc);
         rpc_threads[i] = rpc->start();
         
