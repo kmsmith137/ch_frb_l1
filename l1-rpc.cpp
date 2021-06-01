@@ -290,8 +290,8 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
                          zmq::context_t *ctx
                          ) :
     _command_line(cmdline),
-    _name(name),
     _heavy(heavy),
+    _name(name),
     _ctx(ctx ? ctx : new zmq::context_t()),
     _created_ctx(ctx == NULL),
     _frontend(*_ctx, ZMQ_ROUTER),
@@ -307,7 +307,7 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
     _latencies(monitors)
 {
     if ((_injectors.size() != 0) &&
-        (_injectors.size() != _stream->ini_params.nbeams))
+        (int(_injectors.size()) != _stream->ini_params.nbeams))
         throw runtime_error("L1RpcServer: expected injectors array size to be zero or the same size as the beams array");
 
     if (port.length())
@@ -1152,7 +1152,7 @@ int L1RpcServer::_handle_masked_freqs(zmq::message_t* client, string funcname, u
     int ngood = 0;
     for (const auto &it : _mask_stats->map) {
         int stream_ind = it.first.first;
-        if (stream_ind >= beams.size()) {
+        if (stream_ind >= int(beams.size())) {
             cout << "masked_freqs: first packet not received yet" << endl;
             continue;
         }
@@ -1161,7 +1161,7 @@ int L1RpcServer::_handle_masked_freqs(zmq::message_t* client, string funcname, u
     pk.pack_array(ngood);
     for (const auto &it : _mask_stats->map) {
         int stream_ind = it.first.first;
-        if (stream_ind >= beams.size()) {
+        if (stream_ind >= int(beams.size())) {
             cout << "masked_freqs: first packet not received yet" << endl;
             continue;
         }
