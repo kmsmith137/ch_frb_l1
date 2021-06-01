@@ -13,6 +13,7 @@
 #include "ch_frb_io.hpp"
 #include "ch_frb_l1.hpp"
 #include "l1-rpc.hpp"
+#include "zmq-monitor.hpp"
 #include "rpc.hpp"
 #include "chlog.hpp"
 #include "bonsai.hpp"
@@ -313,6 +314,9 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
 
     // Require messages sent on the frontend socket to have valid addresses.
     _frontend.setsockopt(ZMQ_ROUTER_MANDATORY, 1);
+
+    // monitor zmq events on the frontend socket.
+    //monitor_zmq_socket(_ctx, _frontend, _port);
 }
 
 L1RpcServer::~L1RpcServer() {
