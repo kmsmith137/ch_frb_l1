@@ -284,9 +284,9 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
                          const string &name,
                          zmq::context_t *ctx
                          ) :
+    _name(name),
     _command_line(cmdline),
     _heavy(heavy),
-    _name(name),
     _is_alive(is_alive),
     _ctx(ctx ? ctx : new zmq::context_t()),
     _created_ctx(ctx == NULL),

@@ -1304,7 +1304,8 @@ void l1_server::join_all_threads()
     // loop.
     
     while (true) {
-        bool quitnow = false
+        // Check for packet-of-death
+        bool quitnow = false;
         for (auto stream : input_streams)
             if (stream->is_stream_ended()) {
                 quitnow = true;
@@ -1315,14 +1316,38 @@ void l1_server::join_all_threads()
 
         std::this_thread::sleep_for(std::chrono::seconds(5));
 
-        // FIXME -- finish implementing this!
-        // Set the flags false and wait for those threads to reset them to true.
+        // Check RPC watchdog timer expiries
+        for (size_t i=0; i<rpc_servers_alive.size(); i++) {
+            auto alive = rpc_servers_alive[i];
+            if (alive->load())
+                continue;
+            // Not alive!!
+            chlog("RPC server " << rpc_servers[i]->_name << " failed to set its watchdog -- it may have crashed.  Killing all of L1!");
+            quitnow = true;
+        }
+        for (size_t i=0; i<heavy_rpc_servers_alive.size(); i++) {
+            auto alive = heavy_rpc_servers_alive[i];
+            if (alive->load())
+                continue;
+            // Not alive!!
+            chlog("Heavy RPC server " << heavy_rpc_servers[i]->_name << " failed to set its watchdog -- it may have crashed.  Killing all of L1!");
+            quitnow = true;
+        }
+        if (quitnow)
+            break;
+
+        // Reset the watchdog timer flags false and wait for the RPC threads to reset them to true.
         for (auto alive : rpc_servers_alive)
             alive->store(false);
         for (auto alive : heavy_rpc_servers_alive)
             alive->store(false);
     }
-    
+
+    // End streams
+    for (auto stream : input_streams)
+        stream->end_stream();
+
+    // Wait for threads to shut down.
     for (size_t ibeam = 0; ibeam < dedispersion_threads.size(); ibeam++)
 	dedispersion_threads[ibeam].join();
     

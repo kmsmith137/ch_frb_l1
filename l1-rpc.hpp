@@ -75,6 +75,9 @@ public:
     // server's *other* stream/port!
     void reset_beams();
 
+    // Name
+    const std::string _name;
+
 protected:
     // responds to the given RPC request, either sending immediate
     // reply or queuing work for worker threads.
@@ -130,16 +133,13 @@ protected:
 
     std::shared_ptr<const bonsai::dedisperser> _get_bonsai_for_beam(int beam);
     std::shared_ptr<rf_pipelines::intensity_injector> _get_injector_for_beam(int beam);
-    
+
 private:
     // The command line that launched this L1 process
     std::string _command_line;
 
     // Are we doing heavy-weight RPCs?
     bool _heavy;
-
-    // Name
-    std::string _name;
 
     // Watchdog
     std::shared_ptr<std::atomic<bool> > _is_alive;
