@@ -1175,10 +1175,13 @@ void l1_server::make_rpc_servers()
                                              latency_monitors_post[istream * nbeams_per_stream + ib]));
         }
 
+        rpc_servers_alive.push_back(make_shared<std::atomic<bool> >());
         if (heavy) {
             vector<shared_ptr<rf_pipelines::intensity_injector> > empty_inj;
             // Light-weight RPC server gets no injectors
             ostringstream name;
+            heavy_rpc_servers_alive.push_back(make_shared<std::atomic<bool> >());
+
             name << "Light-weight RPC server #" << (istream+1)
                  << "(" << config.rpc_address[istream] << ")";
             rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], empty_inj, mask_stats_maps[istream], rpc_servers_alive[istream], rpc_bonsais, false, config.rpc_address[istream], command_line, rpc_latency, name.str());
