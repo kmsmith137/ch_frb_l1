@@ -10,6 +10,11 @@
 #include <zmq.hpp>
 #include <msgpack.hpp>
 
+#if ZMQ_VERSION < ZMQ_MAKE_VERSION(4, 3, 0)
+#warning "A rare race condition exists in libzmq versions before 4.3.0.  Please upgrade libzmq!"
+#endif
+
+
 #include "ch_frb_io.hpp"
 #include "ch_frb_l1.hpp"
 #include "l1-rpc.hpp"
