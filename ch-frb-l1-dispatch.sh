@@ -87,8 +87,31 @@ if [ $(hostname) == cf5n0 ]; then
     echo "I am $(hostname) aka rack $rack node $node .  Running DEV6 version (sender)"
     VERSION=dev6
     L1_ARGS=-b -i
-    RFI_CONFIG=19-03-01-low-latency-uniform-nobadchannel-mask-noplot.json
-    BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
+    RFI_CONFIG=21-03-07-low-latency-uniform-badchannel-mask-noplot.json
+    #RFI_CONFIG=19-03-01-low-latency-uniform-nobadchannel-mask-noplot.json
+    #BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
+    BONSAI_CONFIG=bonsai_production_fixed_coarse_graining_hybrid_0.8_0.015.hdf5
+
+# elif [[ $(hostname) == cf1n7 ]]; then
+#     # Davor 2021-04-06: save l1b triggers for SPS fork testing
+#     echo "I am $(hostname) aka duplicating beams to SPS dev node and saving triggers.  Running DEV6 version (sender)"
+#     VERSION=dev6
+#     RFI_CONFIG=21-03-07-low-latency-uniform-badchannel-mask-noplot.json
+#     BONSAI_CONFIG=bonsai_production_fixed_coarse_graining_hybrid_0.8_0.015.hdf5
+#     # the only difference from the production config:
+#     L1B_CONFIG=L1b_config_save_triggers.yaml
+
+# # Alex Roman 2021-03-21: test sps writer branches
+# elif [[ $(hostname) == cf1n7 ||$(hostname) == cf4n9 ||  $(hostname) == cf8n1 || $(hostname) == cfbn3 ]]; then
+#     echo "I am $(hostname) aka rack $rack node $node .  Running SPS version (sender)"
+#     VERSION=sps
+#     L1_ARGS=-b -i
+#     RFI_CONFIG=21-03-07-low-latency-uniform-badchannel-mask-noplot.json
+#     # RFI_CONFIG=21-03-07-low-latency-uniform-badchannel-mask-noplot.json
+#     #RFI_CONFIG=19-03-01-low-latency-uniform-nobadchannel-mask-noplot.json
+#     #BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
+#     BONSAI_CONFIG=bonsai_production_fixed_coarse_graining_hybrid_0.8_0.015.hdf5
+
 
 # Marcus 2020-03-18: changed from cf5n2 to cfan6
 elif [ $(hostname) == cfan6 ]; then
@@ -96,32 +119,48 @@ elif [ $(hostname) == cfan6 ]; then
      VERSION=dev6
      L1_ARGS=-f -b -i
      L1_CONFIG=l1_configs/l1_production_8beam_receiver.yaml
-     RFI_CONFIG=19-03-01-low-latency-uniform-nobadchannel-mask-noplot.json
-     BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
+     RFI_CONFIG=21-03-07-low-latency-uniform-badchannel-mask-noplot.json
+     #RFI_CONFIG=19-03-01-low-latency-uniform-nobadchannel-mask-noplot.json
+     #BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
+     BONSAI_CONFIG=bonsai_production_fixed_coarse_graining_hybrid_0.8_0.015.hdf5
 
 # Marcus 2020-06-17: Testing injections on all of rack 5
 elif [ $rack == 5 ]; then
     echo "I am $(hostname) aka rack $rack node $node .  Running DEV6 version (sender)"
     VERSION=dev6
     L1_ARGS=-b -i
-    RFI_CONFIG=19-03-01-low-latency-uniform-nobadchannel-mask-noplot.json
-    BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
+    RFI_CONFIG=21-03-07-low-latency-uniform-badchannel-mask-noplot.json
+    #RFI_CONFIG=19-03-01-low-latency-uniform-nobadchannel-mask-noplot.json
+    #BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
+    BONSAI_CONFIG=bonsai_production_fixed_coarse_graining_hybrid_0.8_0.015.hdf5
 
 # Marcus 2020-04-30: added to test injection fluence against crab pulses
 elif [ $(hostname) == cf4n9 ]; then
     # Dustin 2019-07-22 -- beam duplication testing
     echo "I am $(hostname) aka rack $rack node $node .  Running DEV6 version (sender)"
     VERSION=dev6
-    RFI_CONFIG=20-09-10-low-latency-uniform-badchannel-mask-noplot.json
-    BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
+    RFI_CONFIG=21-03-07-low-latency-uniform-badchannel-mask-noplot.json
+    #RFI_CONFIG=20-09-10-low-latency-uniform-badchannel-mask-noplot.json
+    #BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
+    BONSAI_CONFIG=bonsai_production_fixed_coarse_graining_hybrid_0.8_0.015.hdf5
 
 # Marcus 2020-06-04: added to test injections in CygA beam 1105
 elif [ $(hostname) == cf5n5 ]; then
     # Dustin 2019-07-22 -- beam duplication testing
     echo "I am $(hostname) aka rack $rack node $node .  Running DEV6 version (sender)"
     VERSION=dev6
-    RFI_CONFIG=20-09-10-low-latency-uniform-badchannel-mask-noplot.json
-    BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
+    RFI_CONFIG=21-03-07-low-latency-uniform-badchannel-mask-noplot.json
+    #RFI_CONFIG=20-09-10-low-latency-uniform-badchannel-mask-noplot.json
+    #BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
+    BONSAI_CONFIG=bonsai_production_fixed_coarse_graining_hybrid_0.8_0.015.hdf5
+
+## Chitrang 2020-10-13: fixed coarse graining test
+elif [ $(hostname) == cf1n1 ]; then
+    echo "I am $(hostname) aka rack $rack node $node .  Running DEV6 version (sender)"
+    VERSION=dev6
+    RFI_CONFIG=21-03-07-low-latency-uniform-badchannel-mask-noplot.json
+    #RFI_CONFIG=20-09-10-low-latency-uniform-badchannel-mask-noplot.json
+    BONSAI_CONFIG=bonsai_production_fixed_coarse_graining_hybrid_0.8_0.015.hdf5
 
 else
     #    echo "I am $(hostname) aka rack $rack node $node .  Running DEV version"
@@ -130,8 +169,10 @@ else
     # Shriharsh 2020-06-24: Started using dev5 version in all nodes.
     echo "I am $(hostname) aka rack $rack node $node .  Running DEV6 version (sender)"
     VERSION=dev6
-    RFI_CONFIG=20-09-10-low-latency-uniform-badchannel-mask-noplot.json
-    BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
+    RFI_CONFIG=21-03-07-low-latency-uniform-badchannel-mask-noplot.json
+    #RFI_CONFIG=20-09-10-low-latency-uniform-badchannel-mask-noplot.json
+    #BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
+    BONSAI_CONFIG=bonsai_production_fixed_coarse_graining_hybrid_0.8_0.015.hdf5
 fi
 
 # else
@@ -141,12 +182,20 @@ fi
 #     BONSAI_CONFIG=bonsai_production_noups_nbeta2_v4.hdf5
 # fi
 
-export LD_LIBRARY_PATH=/home/l1operator/${VERSION}/lib:/usr/local/lib
-export PYTHONPATH=/home/l1operator/${VERSION}/lib/python2.7/site-packages
-export PATH=/usr/local/bin:/usr/bin:/bin:/home/l1operator/${VERSION}/bin
+#export LD_LIBRARY_PATH=/home/l1operator/${VERSION}/lib:/usr/local/lib:$LD_LIBRARY_PATH
+#export PYTHONPATH=/home/l1operator/${VERSION}/lib/python2.7/site-packages:$PYTHONPATH
+#export PATH=/usr/local/bin:/usr/bin:/bin:/home/l1operator/${VERSION}/bin:$PATH
+
+export LD_LIBRARY_PATH="/home/l1operator/${VERSION}/lib:$LD_LIBRARY_PATH"
+export PATH="/home/l1operator/${VERSION}/bin:$PATH"
+export PYTHONPATH="/home/l1operator/${VERSION}/lib/python2.7/site-packages:/home/l1operator/.local/lib/python2.7/site-packages/:/home/l1operator/.local/lib/python2.7/site-packages/scikit_learn-0.19.1-py2.7-linux-x86_64.egg:$PYTHONPATH"
 
 echo "cd /home/l1operator/${VERSION}/ch_frb_l1"
 echo "./ch-frb-l1 ${L1_ARGS} ${L1_CONFIG} ../ch_frb_rfi/json_files/rfi_16k/${RFI_CONFIG} /data/bonsai_configs/${BONSAI_CONFIG} ${L1B_CONFIG}"
+echo "../ch_frb_rfi/json_files/rfi_16k/${RFI_CONFIG}"
+echo " /data/bonsai_configs/${BONSAI_CONFIG}"
+echo " ${L1B_CONFIG}"
 
 cd /home/l1operator/${VERSION}/ch_frb_l1
+echo "Running: ./ch-frb-l1 ${L1_ARGS} ${L1_CONFIG} ../ch_frb_rfi/json_files/rfi_16k/${RFI_CONFIG} /data/bonsai_configs/${BONSAI_CONFIG} ${L1B_CONFIG}"
 ./ch-frb-l1 ${L1_ARGS} ${L1_CONFIG} ../ch_frb_rfi/json_files/rfi_16k/${RFI_CONFIG} /data/bonsai_configs/${BONSAI_CONFIG} ${L1B_CONFIG}
