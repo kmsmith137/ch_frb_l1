@@ -37,6 +37,12 @@ BONSAI_CONFIG=bonsai_production_fixed_coarse_graining_hybrid_0.8_0.015.hdf5
 
 if [ $(hostname) == cf1n1 ]; then
     VERSION=dev7
+    # Pick up our locally-installed zeromq library...
+    export LD_LIBRARY_PATH=/usr/local/zeromq-4.3.4/lib:${LD_LIBRARY_PATH}
+elif [ $(hostname) == cf4n2 ]; then
+    VERSION=dev7
+    # Pick up our locally-installed zeromq library...
+    export LD_LIBRARY_PATH=/usr/local/zeromq-4.3.4/lib:${LD_LIBRARY_PATH}
 
 # elif [ $(hostname) == cf5n3 ]; then
 #     # singlebeam -- start services
