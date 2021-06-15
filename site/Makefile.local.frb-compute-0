@@ -9,7 +9,7 @@ INCDIR ?= $(HOME)/include
 # Read-only location of python header files
 PYTHON_INCDIR=/usr/include/python2.7
 
-NUMPY_INCDIR=/usr/lib64/python2.7/site-packages/numpy/core/include
+NUMPY_INCDIR ?= /usr/lib64/python2.7/site-packages/numpy/core/include
 MSGPACK_INC ?= -I/usr/local/include
 JSONCPP_INCDIR=/usr/include/jsoncpp
 
