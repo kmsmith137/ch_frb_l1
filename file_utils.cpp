@@ -163,13 +163,16 @@ bool is_empty_directory(const string &dirname)
 	int err = readdir_r(dir, entry, &result);	
 	if (err)
 	    throw runtime_error(dirname + ": readdir_r() failed");
-	if (!result)
+	if (!result) {
+            closedir(dir);
 	    return true;
+        }
 	if (!strcmp(entry->d_name, "."))
 	    continue;
 	if (!strcmp(entry->d_name, ".."))
 	    continue;
 	
+        closedir(dir);
 	return false;
     }
 }
