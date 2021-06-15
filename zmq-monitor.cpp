@@ -1,6 +1,8 @@
 #include <string>
-#include <zmq.hpp>
 #include <thread>
+#include <functional>
+
+#include <zmq.hpp>
 
 #include "chlog.hpp"
 
