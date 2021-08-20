@@ -412,6 +412,23 @@ class RpcClient(object):
         return [msgpack.unpackb(p[0]) if p is not None else None
                 for p in parts]
 
+    def get_assembler_misses(self,
+                             servers=None, wait=True, timeout=-1):
+        if servers is None:
+            servers = self.servers.keys()
+        tokens = []
+        for k in servers:
+            self.token += 1
+            req = msgpack.packb(['get_assembler_misses', self.token])
+            tokens.append(self.token)
+            self.sockets[k].send(req)
+        if not wait:
+            return tokens
+        parts = self.wait_for_tokens(tokens, timeout=timeout)
+        # We expect one message part for each token.
+        return [msgpack.unpackb(p[0]) if p is not None else None
+                for p in parts]
+
     def start_fork(self, beam_offset, ipaddr, port, beam=0,
                    servers=None, wait=True, timeout=-1):
         '''
@@ -1045,6 +1062,8 @@ if __name__ == '__main__':
                         help='Just send list_chunks command and exit.')
     parser.add_argument('--stats', action='store_true', default=False,
                         help='Just request stats and exit.')
+    parser.add_argument('--assembler-misses', action='store_true', default=False,
+                        help='Send get_assembler_misses() RPC and exit')
     parser.add_argument('--max-fpga', action='store_true', default=False,
                         help='Request max FPGA counts seen at different places in the pipeline.')
     parser.add_argument('--max-fpga-plot', type=float,
@@ -1125,6 +1144,18 @@ if __name__ == '__main__':
                 for k in keys:
                     print('  ', k, '=', d[k])
                 print()
+        doexit = True
+
+    if opt.assembler_misses:
+        stats = client.get_assembler_misses(**kwa)
+        for m,server in zip(m, servers.values()):
+            print('', server)
+            if s is None:
+                print('  None')
+                continue
+            print()
+            for miss in m:
+                print('  ', miss)
         doexit = True
 
     if opt.max_fpga:
