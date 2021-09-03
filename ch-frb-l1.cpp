@@ -716,6 +716,7 @@ void dedispersion_thread_context::_thread_main() const
     // is correct.
     sp_rts.memory_pool = sp->ini_params.memory_pool;
     sp_rts.output_devices = make_shared<ch_frb_io::output_device_pool> (sp->ini_params.output_devices);
+    sp_rts.chime_stream = sp;
 
     sp_writer->init_real_time_state(sp_rts);
     sp_writer_hash->set(stream_ibeam, sp_writer);
