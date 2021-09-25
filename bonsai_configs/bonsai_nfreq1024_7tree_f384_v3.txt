@@ -1,0 +1,32 @@
+# mrafiei, OCT 15, 2017
+
+# For no deep reason, the (variance, reweighting) timescales are currently (100, 100) in
+# the 1K-channel bonsai configs, and (200, 400) in the 16K-channel configs.  These values
+# are chosen semi-arbitrarily, and we should do a study to determine optimal settings!
+
+variance_timescale = 100.0
+reweighting_timescale = 100.0
+
+nfreq = 1024
+
+ntrees = 7
+tree_size = [ 4096, 4096, 4096, 4096, 4096, 2048, 1024 ]
+nds = [ 1, 1, 2, 4, 8, 16, 32 ]
+nups = [ 2, 1, 1, 1, 1, 1, 1 ]
+
+nbeta = 2
+beta_depth = 2
+beta_min = -1.5
+beta_max = 1.5
+
+nsm = 1
+sm_depth = 0
+sm_max = 0
+
+freq_lo_MHz = 400.0
+freq_hi_MHz = 800.0
+dt_sample = 0.00098304   # sample length in seconds (=384 FPGA counts)
+
+nt_chunk = 2048
+dm_coarse_graining_factor = 16
+time_coarse_graining_factor = 64
