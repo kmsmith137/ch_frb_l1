@@ -23,6 +23,7 @@
 #include <fstream>
 #include <iomanip>
 #include <functional>
+#include <chrono>
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -1174,25 +1175,28 @@ void l1_server::make_rpc_servers()
                                              latency_monitors_post[istream * nbeams_per_stream + ib]));
         }
 
+        rpc_servers_alive.push_back(make_shared<std::atomic<bool> >());
         if (heavy) {
             vector<shared_ptr<rf_pipelines::intensity_injector> > empty_inj;
             // Light-weight RPC server gets no injectors
             ostringstream name;
+            heavy_rpc_servers_alive.push_back(make_shared<std::atomic<bool> >());
+
             name << "Light-weight RPC server #" << (istream+1)
                  << "(" << config.rpc_address[istream] << ")";
-            rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], empty_inj, mask_stats_maps[istream], rpc_bonsais, false, config.rpc_address[istream], command_line, rpc_latency, name.str());
+            rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], empty_inj, mask_stats_maps[istream], rpc_servers_alive[istream], rpc_bonsais, false, config.rpc_address[istream], command_line, rpc_latency, name.str());
             name.str("");
             // Heavy-weight RPC server does get injectors
             name << "Heavy-weight RPC server #" << (istream+1)
                  << "(" << config.heavy_rpc_address[istream] << ")";
-            heavy_rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], rpc_bonsais, true, config.heavy_rpc_address[istream], command_line, rpc_latency, name.str());
+            heavy_rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], heavy_rpc_servers_alive[istream], rpc_bonsais, true, config.heavy_rpc_address[istream], command_line, rpc_latency, name.str());
             heavy_rpc_threads[istream] = heavy_rpc_servers[istream]->start();
         } else {
             // ?? Allow the single RPC server to support heavy-weight RPCs?
             ostringstream name;
             name << "RPC server #" << (istream+1)
                  << "(" << config.rpc_address[istream] << ")";
-            rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], rpc_bonsais, true, config.rpc_address[istream], command_line, rpc_latency);
+            rpc_servers[istream] = make_shared<L1RpcServer> (input_streams[istream], inj, mask_stats_maps[istream], rpc_servers_alive[istream], rpc_bonsais, true, config.rpc_address[istream], command_line, rpc_latency);
         }
 	rpc_threads[istream] = rpc_servers[istream]->start();
     }
@@ -1290,6 +1294,63 @@ void l1_server::set_bonsai(int ibeam,
 
 void l1_server::join_all_threads()
 {
+    // This function is called after all components of the L1 server
+    // are created, and only returns when all threads quit, which can
+    // happen naturally if a special short packet (of death) is sent
+    // to the L1 socket.  In production this never happens.
+
+    // Here, we're going to monitor the streams for the end-of-stream
+    // state, and also make sure that the L1 RPC servers are still
+    // running.  These can sometimes crash (segfault, etc), but they
+    // don't bring down the whole process (unfortunately!).  So we
+    // have a watchdog bit that they set each time through their main
+    // loop.
+    
+    while (true) {
+        // Check for packet-of-death
+        bool quitnow = false;
+        for (auto stream : input_streams)
+            if (stream->is_stream_ended()) {
+                quitnow = true;
+                break;
+            }
+        if (quitnow)
+            break;
+
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+
+        // Check RPC watchdog timer expiries
+        for (size_t i=0; i<rpc_servers_alive.size(); i++) {
+            auto alive = rpc_servers_alive[i];
+            if (alive->load())
+                continue;
+            // Not alive!!
+            chlog("RPC server " << rpc_servers[i]->_name << " failed to set its watchdog -- it may have crashed.  Killing all of L1!");
+            quitnow = true;
+        }
+        for (size_t i=0; i<heavy_rpc_servers_alive.size(); i++) {
+            auto alive = heavy_rpc_servers_alive[i];
+            if (alive->load())
+                continue;
+            // Not alive!!
+            chlog("Heavy RPC server " << heavy_rpc_servers[i]->_name << " failed to set its watchdog -- it may have crashed.  Killing all of L1!");
+            quitnow = true;
+        }
+        if (quitnow)
+            break;
+
+        // Reset the watchdog timer flags false and wait for the RPC threads to reset them to true.
+        for (auto alive : rpc_servers_alive)
+            alive->store(false);
+        for (auto alive : heavy_rpc_servers_alive)
+            alive->store(false);
+    }
+
+    // End streams
+    for (auto stream : input_streams)
+        stream->end_stream();
+
+    // Wait for threads to shut down.
     for (size_t ibeam = 0; ibeam < dedispersion_threads.size(); ibeam++)
 	dedispersion_threads[ibeam].join();
     

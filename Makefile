@@ -47,7 +47,7 @@ all: $(INSTALLED_BINARIES) $(NON_INSTALLED_BINARIES) simulate_l0.so l1_server.so
 
 INCFILES := ch_frb_l1.hpp l1-rpc.hpp rpc.hpp
 
-L1_OBJS := l1-rpc.o mask_stats.o
+L1_OBJS := l1-rpc.o mask_stats.o zmq-monitor.o
 
 # Append compile flags
 CPP_CFLAGS ?=
