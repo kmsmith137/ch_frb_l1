@@ -2,6 +2,9 @@
 #include <unistd.h>
 #include <sys/time.h>
 #include <sys/statvfs.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <stdio.h>
 #include <thread>
 #include <queue>
@@ -211,7 +214,7 @@ void l1_write_request::status_changed(bool finished, bool success,
     if (!finished)
         return;
 
-    shared_ptr<l1_backend_queue::entry> e = make_shared<l1_backend_queue::entry> ();
+    shared_ptr<l1_backend_queue::entry> e = make_shared<l1_backend_queue::entry> (); 
     e->client = this->client;
     e->token = this->token;
 
@@ -284,8 +287,8 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
                          zmq::context_t *ctx
                          ) :
     _command_line(cmdline),
-    _name(name),
     _heavy(heavy),
+    _name(name),
     _ctx(ctx ? ctx : new zmq::context_t()),
     _created_ctx(ctx == NULL),
     _frontend(*_ctx, ZMQ_ROUTER),
@@ -301,7 +304,7 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
     _latencies(monitors)
 {
     if ((_injectors.size() != 0) &&
-        (_injectors.size() != _stream->ini_params.nbeams))
+        (_injectors.size() != (size_t)_stream->ini_params.nbeams))
         throw runtime_error("L1RpcServer: expected injectors array size to be zero or the same size as the beams array");
 
     if (port.length())
@@ -312,7 +315,7 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
     _time0 = get_time();
 
     // Require messages sent on the frontend socket to have valid addresses.
-    _frontend.setsockopt(ZMQ_ROUTER_MANDATORY, 1);
+    _frontend.set(zmq::sockopt::router_mandatory, 1);
 }
 
 L1RpcServer::~L1RpcServer() {
@@ -357,14 +360,17 @@ void L1RpcServer::run() {
     chime_log_set_thread_name(_name.size() ? _name : "L1-RPC-server");
     chlog("bind(" << _port << ")");
     _frontend.bind(_port);
-    
+
+    // HACK!! cf4n2 stream request bug
+    sleep(10);
+
     // Important: we set a timeout on the frontend socket, so that the RPC server
     // will check the backend_queue (and the shutdown flag) every 100 milliseconds.
 
     int timeout = 100;   // milliseconds
-    _frontend.setsockopt(ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
+    _frontend.set(zmq::sockopt::rcvtimeo, timeout);
 
-    // Main receive loop.  
+    // Main receive loop.
     // We check the shutdown flag and the backend_queue in every iteration.
     while (!is_shutdown()) {
 	_check_backend_queue();
@@ -372,39 +378,40 @@ void L1RpcServer::run() {
         zmq::message_t client;
         zmq::message_t msg;
 
-	// New request.  Should be exactly two message parts.
+        // New request.  Should be exactly two message parts.
 	int more;
-	bool ok;
+        zmq::recv_result_t res;
 
-	ok = _frontend.recv(&client);
-	if (!ok) {
-	    if (errno == EAGAIN)
-		continue;   // Timed out, back to top of main receive loop...
+	res = _frontend.recv(client);
+        if (!res.has_value())
+	    // EAGAIN
+            continue;   // Timed out, back to top of main receive loop...
+        if (!res.value()) {
 	    chlog("Failed to receive message on frontend socket!");
 	    break;
 	}
 	//chlog("Received RPC request");
-	more = _frontend.getsockopt<int>(ZMQ_RCVMORE);
+	more = _frontend.get(zmq::sockopt::rcvmore);
 	if (!more) {
 	    chlog("Expected two message parts on frontend socket!");
 	    continue;
 	}
-	ok = _frontend.recv(&msg);
-	if (!ok) {
+	res = _frontend.recv(msg);
+	if (!res.has_value() || !res.value()) {
 	    chlog("Failed to receive second message on frontend socket!");
 	    continue;
 	}
-	more = _frontend.getsockopt<int>(ZMQ_RCVMORE);
+	more = _frontend.get(zmq::sockopt::rcvmore);
 	if (more) {
 	    chlog("Expected only two message parts on frontend socket!");
 	    // recv until !more?
 	    while (more) {
-		ok = _frontend.recv(&msg);
-		if (!ok) {
+		res = _frontend.recv(msg);
+		if (!res.has_value() || !res.value()) {
 		    chlog("Failed to recv() while dumping bad message on frontend socket!");
 		    break;
 		}
-		more = _frontend.getsockopt<int>(ZMQ_RCVMORE);
+		more = _frontend.get(zmq::sockopt::rcvmore);
 	    }
 	    continue;
 	}
@@ -457,6 +464,21 @@ struct fpga_counts_seen {
     MSGPACK_DEFINE(where, beam, max_fpga_seen);
 };
 
+static string get_message_sender(zmq::message_t* msg) {
+    int srcfd = msg->get(ZMQ_SRCFD);
+    if (srcfd == -1)
+        return "[failed to retrieve ZMQ_SRCFD]";
+    struct sockaddr saddr;
+    socklen_t socklen;
+    int rtn = getpeername(srcfd, &saddr, &socklen);
+    if (rtn == -1)
+        return "[getpeername failed: " + string(strerror(errno)) + "]";
+    if (saddr.sa_family != AF_INET)
+        return "[getpeername sa_family != AF_INET]";
+    struct sockaddr_in* sin = reinterpret_cast<struct sockaddr_in*>(&saddr);
+    return inet_ntoa(sin->sin_addr) + string(":") + std::to_string(htons(sin->sin_port));
+}
+
 int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) {
     const char* req_data = reinterpret_cast<const char *>(request->data());
     std::size_t offset = 0;
@@ -467,9 +489,11 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
     string funcname = rpcreq.function;
     uint32_t token = rpcreq.token;
 
+    string client_ip = get_message_sender(client);
+
     struct timeval tv1 = get_time();
-    chlog("Received RPC request for function: '" << funcname << "', token " << token);
-    //from client '" << msg_string(*client) << "'");
+    chlog("Received RPC request for function: '" << funcname << "', token " << token
+          << " from client " << client_ip);
 
     int rtnval = -1;
 
@@ -720,9 +744,6 @@ int L1RpcServer::_handle_streaming_request(zmq::message_t* client, string funcna
     if (acq_max_chunks)
         chlog("Max chunks to stream: " << acq_max_chunks);
     // Default to all beams if no beams were specified.
-    // (note that we use nbeams: the number of specified beams, even if
-    // none of them are owned by this node.  The beams owned by this node
-    // that aren't in the specified set will have streaming turned off.)
     if (nbeams == 0)
         beam_ids = _stream->get_beam_ids();
     // Default to acq_dev = "ssd"
@@ -739,6 +760,7 @@ int L1RpcServer::_handle_streaming_request(zmq::message_t* client, string funcna
         result.second = pattern;
     } else if (beam_ids.size() == 0) {
         // Request to stream a specific set of beams, none of which we have.
+        chlog("No matching beams found for streaming request.");
         result.first = false;
         result.second = "No matching beams found.";
     } else {
@@ -1090,7 +1112,7 @@ int L1RpcServer::_handle_write_chunks(zmq::message_t* client, string funcname, u
 
         // Copy client ID
         w->client = new zmq::message_t();
-        w->client->copy(client);
+        w->client->copy(*client);
 
         // Fill remaining fields and enqueue the write request for the I/O threads.
         w->backend_queue = this->_backend_queue;
@@ -1143,7 +1165,7 @@ int L1RpcServer::_handle_masked_freqs(zmq::message_t* client, string funcname, u
     int ngood = 0;
     for (const auto &it : _mask_stats->map) {
         int stream_ind = it.first.first;
-        if (stream_ind >= beams.size()) {
+        if (stream_ind >= (int)beams.size()) {
             cout << "masked_freqs: first packet not received yet" << endl;
             continue;
         }
@@ -1152,7 +1174,7 @@ int L1RpcServer::_handle_masked_freqs(zmq::message_t* client, string funcname, u
     pk.pack_array(ngood);
     for (const auto &it : _mask_stats->map) {
         int stream_ind = it.first.first;
-        if (stream_ind >= beams.size()) {
+        if (stream_ind >= (int)beams.size()) {
             cout << "masked_freqs: first packet not received yet" << endl;
             continue;
         }
@@ -1468,10 +1490,11 @@ void L1RpcServer::_check_backend_queue()
 int L1RpcServer::_send_frontend_message(zmq::message_t& clientmsg,
                                         zmq::message_t& tokenmsg,
                                         zmq::message_t& contentmsg) {
+    const zmq::send_flags more = zmq::send_flags::sndmore;
     try {
-        if (!(_frontend.send(clientmsg, ZMQ_SNDMORE) &&
-              _frontend.send(tokenmsg, ZMQ_SNDMORE) &&
-              _frontend.send(contentmsg))) {
+        if (!(_frontend.send(clientmsg, more) &&
+              _frontend.send(tokenmsg, more) &&
+              _frontend.send(contentmsg, zmq::send_flags::none))) {
             chlog("ERROR: sending RPC reply: " << strerror(zmq_errno()));
             return -1;
         }
