@@ -479,8 +479,8 @@ struct fpga_counts_seen {
     MSGPACK_DEFINE(where, beam, max_fpga_seen);
 };
 
-static string get_message_sender(zmq::message_t* msg) {
-    int srcfd = msg->get(ZMQ_SRCFD);
+static string get_message_sender(zmq::message_t &msg) {
+    int srcfd = msg.get(ZMQ_SRCFD);
     if (srcfd == -1)
         return "[failed to retrieve ZMQ_SRCFD]";
     struct sockaddr saddr;
@@ -1130,7 +1130,7 @@ int L1RpcServer::_handle_write_chunks(zmq::message_t& client, string funcname, u
 
         // Copy client ID
         w->client = new zmq::message_t();
-        w->client->copy(&client);
+        w->client->copy(client);
 
         // Fill remaining fields and enqueue the write request for the I/O threads.
         w->backend_queue = this->_backend_queue;
@@ -1490,7 +1490,7 @@ void L1RpcServer::_check_backend_queue()
 	const WriteChunks_Reply &rep = w->reply;
 
 	zmq::message_t client;
-        client.copy(w->client);
+        client.copy(*(w->client));
 
 	// Format the reply sent to the client.
 	msgpack::sbuffer buffer;
