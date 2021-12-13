@@ -13,9 +13,15 @@
 #include <zmq.hpp>
 #include <msgpack.hpp>
 
+#if ZMQ_VERSION < ZMQ_MAKE_VERSION(4, 3, 0)
+#warning "A rare race condition exists in libzmq versions before 4.3.0.  Please upgrade libzmq!"
+#endif
+
+
 #include "ch_frb_io.hpp"
 #include "ch_frb_l1.hpp"
 #include "l1-rpc.hpp"
+#include "zmq-monitor.hpp"
 #include "rpc.hpp"
 #include "chlog.hpp"
 #include "bonsai.hpp"
@@ -278,6 +284,7 @@ void inject_data_request::swap(rf_pipelines::intensity_injector::inject_args& de
 L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
                          vector<shared_ptr<rf_pipelines::intensity_injector> > injectors,
                          shared_ptr<const ch_frb_l1::mask_stats_map> ms,
+                         shared_ptr<std::atomic<bool> > is_alive,
                          vector<shared_ptr<const bonsai::dedisperser> > bonsais,
                          bool heavy,
                          const string &port,
@@ -286,9 +293,10 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
                          const string &name,
                          zmq::context_t *ctx
                          ) :
+    _name(name),
     _command_line(cmdline),
     _heavy(heavy),
-    _name(name),
+    _is_alive(is_alive),
     _ctx(ctx ? ctx : new zmq::context_t()),
     _created_ctx(ctx == NULL),
     _frontend(*_ctx, ZMQ_ROUTER),
@@ -304,7 +312,7 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
     _latencies(monitors)
 {
     if ((_injectors.size() != 0) &&
-        (_injectors.size() != (size_t)_stream->ini_params.nbeams))
+        (int(_injectors.size()) != _stream->ini_params.nbeams))
         throw runtime_error("L1RpcServer: expected injectors array size to be zero or the same size as the beams array");
 
     if (port.length())
@@ -316,6 +324,9 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
 
     // Require messages sent on the frontend socket to have valid addresses.
     _frontend.set(zmq::sockopt::router_mandatory, 1);
+
+    // monitor zmq events on the frontend socket.
+    //monitor_zmq_socket(_ctx, _frontend, _port);
 }
 
 L1RpcServer::~L1RpcServer() {
@@ -375,6 +386,9 @@ void L1RpcServer::run() {
     while (!is_shutdown()) {
 	_check_backend_queue();
 
+        // Set watchdog!
+        _is_alive->store(true);
+        
         zmq::message_t client;
         zmq::message_t msg;
 
@@ -417,7 +431,8 @@ void L1RpcServer::run() {
 	}
 
 	try {
-	    _handle_request(&client, &msg);
+	    _handle_request(client, msg);
+            // (note, 'client' may be empty after this returns!)
         } catch (const std::exception& e) {
             chlog("Warning: Failed to handle RPC request... ignoring!  Error: " << e.what());
             try {
@@ -479,12 +494,13 @@ static string get_message_sender(zmq::message_t* msg) {
     return inet_ntoa(sin->sin_addr) + string(":") + std::to_string(htons(sin->sin_port));
 }
 
-int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request) {
-    const char* req_data = reinterpret_cast<const char *>(request->data());
+int L1RpcServer::_handle_request(zmq::message_t& client, const zmq::message_t& request) {
+    const char* req_data = reinterpret_cast<const char *>(request.data());
+    size_t req_size = request.size();
     std::size_t offset = 0;
 
     // Unpack the function name (string)
-    msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
+    msgpack::object_handle oh = msgpack::unpack(req_data, req_size, offset);
     Rpc_Request rpcreq = oh.get().as<Rpc_Request>();
     string funcname = rpcreq.function;
     uint32_t token = rpcreq.token;
@@ -504,7 +520,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
     } else if ((funcname == "start_logging") || (funcname == "stop_logging")) {
         // grab address argument
-        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
+        msgpack::object_handle oh = msgpack::unpack(req_data, req_size, offset);
         string addr = oh.get().as<string>();
         chlog("Logging request: " << funcname << ", address " << addr);
         if (funcname == "start_logging")
@@ -515,27 +531,27 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
     } else if (funcname == "stream") {
 
-        rtnval = _handle_streaming_request(client, funcname, token, req_data, request->size(), offset);
+        rtnval = _handle_streaming_request(client, funcname, token, req_data, req_size, offset);
 
     } else if (funcname == "stream_status") {
 
-        rtnval = _handle_stream_status(client, funcname, token, req_data, request->size(), offset);
+        rtnval = _handle_stream_status(client, funcname, token, req_data, req_size, offset);
 
     } else if (funcname == "get_packet_rate") {
 
-        rtnval = _handle_packet_rate(client, funcname, token, req_data, request->size(), offset);
+        rtnval = _handle_packet_rate(client, funcname, token, req_data, req_size, offset);
 
     } else if (funcname == "get_packet_rate_history") {
 
-        rtnval = _handle_packet_rate_history(client, funcname, token, req_data, request->size(), offset);
+        rtnval = _handle_packet_rate_history(client, funcname, token, req_data, req_size, offset);
 
     } else if (funcname == "get_statistics") {
 
-        rtnval = _handle_get_statistics(client, funcname, token, req_data, request->size(), offset);
+        rtnval = _handle_get_statistics(client, funcname, token, req_data, req_size, offset);
 
     } else if (funcname == "list_chunks") {
 
-        rtnval = _handle_list_chunks(client, funcname, token, req_data, request->size(), offset);
+        rtnval = _handle_list_chunks(client, funcname, token, req_data, req_size, offset);
 
         /*
          The get_chunks() RPC is disabled for now.
@@ -544,7 +560,7 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
         // grab GetChunks_Request argument
         msgpack::object_handle oh =
-            msgpack::unpack(req_data, request.size(), offset);
+            msgpack::unpack(req_data, req_size, offset);
         GetChunks_Request req = oh.get().as<GetChunks_Request>();
 
         vector<shared_ptr<assembled_chunk> > chunks;
@@ -558,12 +574,12 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
 
     } else if (funcname == "write_chunks") {
 
-        rtnval = _handle_write_chunks(client, funcname, token, req_data, request->size(), offset);
+        rtnval = _handle_write_chunks(client, funcname, token, req_data, req_size, offset);
 
     } else if (funcname == "get_writechunk_status") {
 
         // grab argument: string pathname
-        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
+        msgpack::object_handle oh = msgpack::unpack(req_data, req_size, offset);
         string pathname = oh.get().as<string>();
 
         // search the map of pathname -> (status, error_message)
@@ -576,20 +592,20 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         msgpack::pack(buffer, result);
         //  Send reply back to client.
         zmq::message_t* reply = sbuffer_to_message(buffer);
-        rtnval = _send_frontend_message(*client, *token_to_message(token), *reply);
+        rtnval = _send_frontend_message(client, token, *reply);
 
     } else if ((funcname == "start_fork") || (funcname == "stop_fork")) {
         bool start = (funcname == "start_fork");
-        string errstring = _handle_fork(start, req_data, request->size(), offset);
+        string errstring = _handle_fork(start, req_data, req_size, offset);
         msgpack::sbuffer buffer;
         msgpack::pack(buffer, errstring);
         //  Send reply back to client.
         zmq::message_t* reply = sbuffer_to_message(buffer);
-        return _send_frontend_message(*client, *token_to_message(token), *reply);
+        return _send_frontend_message(client, token, *reply);
         
     } else if (funcname == "inject_data") {
 
-        string errstring = _handle_inject(req_data, request->size(), offset);
+        string errstring = _handle_inject(req_data, req_size, offset);
         if (errstring.size())
             chlog("inject_data: return error message " << errstring);
         else
@@ -599,12 +615,12 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         msgpack::pack(buffer, errstring);
         //  Send reply back to client.
         zmq::message_t* reply = sbuffer_to_message(buffer);
-        return _send_frontend_message(*client, *token_to_message(token), *reply);
+        return _send_frontend_message(client, token, *reply);
 
     } else if (funcname == "get_bonsai_variances") {
 
         // Grab arg: list of beam numbers
-        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
+        msgpack::object_handle oh = msgpack::unpack(req_data, req_size, offset);
         vector<int> beams = oh.get().as<vector<int> >();
         chlog("Requested beams: " << beams.size());
 
@@ -630,19 +646,19 @@ int L1RpcServer::_handle_request(zmq::message_t* client, zmq::message_t* request
         msgpack::pack(buffer, result);
         //  Send reply back to client.
         zmq::message_t* reply = sbuffer_to_message(buffer);
-        return _send_frontend_message(*client, *token_to_message(token), *reply);
+        return _send_frontend_message(client, token, *reply);
 
     } else if (funcname == "get_masked_frequencies") {
 
-        rtnval = _handle_masked_freqs(client, funcname, token, req_data, request->size(), offset);
+        rtnval = _handle_masked_freqs(client, funcname, token, req_data, req_size, offset);
 
     } else if (funcname == "get_masked_frequencies_2") {
 
-        rtnval = _handle_masked_freqs_2(client, funcname, token, req_data, request->size(), offset);
+        rtnval = _handle_masked_freqs_2(client, funcname, token, req_data, req_size, offset);
 
     } else if (funcname == "get_max_fpga_counts") {
 
-        rtnval = _handle_max_fpga(client, funcname, token, req_data, request->size(), offset);
+        rtnval = _handle_max_fpga(client, funcname, token, req_data, req_size, offset);
         
     } else {
         // Silent failure?
@@ -697,7 +713,7 @@ std::shared_ptr<rf_pipelines::intensity_injector> L1RpcServer::_get_injector_for
      */
 }
 
-int L1RpcServer::_handle_streaming_request(zmq::message_t* client, string funcname, uint32_t token,
+int L1RpcServer::_handle_streaming_request(zmq::message_t& client, string funcname, uint32_t token,
                                            const char* req_data, size_t req_len, size_t& offset) {
 
     // grab arguments: [ "acq_name", "acq_dev", "acq_meta.json",
@@ -737,7 +753,7 @@ int L1RpcServer::_handle_streaming_request(zmq::message_t* client, string funcna
             chlog("Stream request for beam " << beam << " which isn't being handled by this node.  Ignoring.");
     }
 
-    chlog("Stream request: \"" << acq_name << "\", device=\"" << acq_dev << "\", " << beam_ids.size() << " beams");
+    chlog("Stream request: \"" << acq_name << "\", device=\"" << acq_dev << "\", # requested beams: " << nbeams << ", matched " << beam_ids.size() << " beams");
     if (beam_ids.size())
         for (size_t i=0; i<beam_ids.size(); i++)
             chlog("  beam " << beam_ids[i]);
@@ -804,10 +820,10 @@ int L1RpcServer::_handle_streaming_request(zmq::message_t* client, string funcna
     msgpack::pack(buffer, result);
     //  Send reply back to client.
     zmq::message_t* reply = sbuffer_to_message(buffer);
-    return _send_frontend_message(*client, *token_to_message(token), *reply);
+    return _send_frontend_message(client, token, *reply);
 }
 
-int L1RpcServer::_handle_stream_status(zmq::message_t* client, string funcname, uint32_t token,
+int L1RpcServer::_handle_stream_status(zmq::message_t& client, string funcname, uint32_t token,
                                        const char* req_data, size_t req_len, size_t& offset) {
         
     unordered_map<string, string> dict;
@@ -870,10 +886,10 @@ int L1RpcServer::_handle_stream_status(zmq::message_t* client, string funcname, 
     msgpack::pack(buffer, dict);
     //  Send reply back to client.
     zmq::message_t* reply = sbuffer_to_message(buffer);
-    return _send_frontend_message(*client, *token_to_message(token), *reply);
+    return _send_frontend_message(client, token, *reply);
 }
 
-int L1RpcServer::_handle_packet_rate(zmq::message_t* client, string funcname, uint32_t token,
+int L1RpcServer::_handle_packet_rate(zmq::message_t& client, string funcname, uint32_t token,
                                      const char* req_data, size_t req_len, size_t& offset) {
     // grab *start* and *period* arguments
     msgpack::object_handle oh = msgpack::unpack(req_data, req_len, offset);
@@ -905,10 +921,10 @@ int L1RpcServer::_handle_packet_rate(zmq::message_t* client, string funcname, ui
     msgpack::pack(buffer, pr);
     //  Send reply back to client.
     zmq::message_t* reply = sbuffer_to_message(buffer);
-    return _send_frontend_message(*client, *token_to_message(token), *reply);
+    return _send_frontend_message(client, token, *reply);
 }
 
-int L1RpcServer::_handle_packet_rate_history(zmq::message_t* client, string funcname, uint32_t token,
+int L1RpcServer::_handle_packet_rate_history(zmq::message_t& client, string funcname, uint32_t token,
                                              const char* req_data, size_t req_len, size_t& offset) {
         
     // grab arguments: *start*, *end*, *period*, *l0*
@@ -971,11 +987,11 @@ int L1RpcServer::_handle_packet_rate_history(zmq::message_t* client, string func
     msgpack::pack(buffer, rtn);
     //  Send reply back to client.
     zmq::message_t* reply = sbuffer_to_message(buffer);
-    return _send_frontend_message(*client, *token_to_message(token), *reply);
+    return _send_frontend_message(client, token, *reply);
 }
 
 
-int L1RpcServer::_handle_get_statistics(zmq::message_t* client, string funcname, uint32_t token,
+int L1RpcServer::_handle_get_statistics(zmq::message_t& client, string funcname, uint32_t token,
                                         const char* req_data, size_t req_len, size_t& offset) {
 
     //cout << "RPC get_statistics() called" << endl;
@@ -1024,10 +1040,10 @@ int L1RpcServer::_handle_get_statistics(zmq::message_t* client, string funcname,
     //cout << "Sending RPC reply of size " << buffer.size() << endl;
     zmq::message_t* reply = sbuffer_to_message(buffer);
     //cout << "  client: " << msg_string(*client) << endl;
-    return _send_frontend_message(*client, *token_to_message(token), *reply);
+    return _send_frontend_message(client, token, *reply);
 }
 
-int L1RpcServer::_handle_list_chunks(zmq::message_t* client, string funcname, uint32_t token,
+int L1RpcServer::_handle_list_chunks(zmq::message_t& client, string funcname, uint32_t token,
                                      const char* req_data, size_t req_len, size_t& offset) {
 
     // No input arguments, so don't unpack anything more.
@@ -1064,11 +1080,11 @@ int L1RpcServer::_handle_list_chunks(zmq::message_t* client, string funcname, ui
     msgpack::pack(buffer, allchunks);
     zmq::message_t* reply = sbuffer_to_message(buffer);
     //  Send reply back to client.
-    return _send_frontend_message(*client, *token_to_message(token), *reply);
+    return _send_frontend_message(client, token, *reply);
                                       
 }
 
-int L1RpcServer::_handle_write_chunks(zmq::message_t* client, string funcname, uint32_t token,
+int L1RpcServer::_handle_write_chunks(zmq::message_t& client, string funcname, uint32_t token,
                                       const char* req_data, size_t req_len, size_t& offset) {
 
     //cout << "RPC write_chunks() called" << endl;
@@ -1114,7 +1130,7 @@ int L1RpcServer::_handle_write_chunks(zmq::message_t* client, string funcname, u
 
         // Copy client ID
         w->client = new zmq::message_t();
-        w->client->copy(*client);
+        w->client->copy(&client);
 
         // Fill remaining fields and enqueue the write request for the I/O threads.
         w->backend_queue = this->_backend_queue;
@@ -1150,10 +1166,10 @@ int L1RpcServer::_handle_write_chunks(zmq::message_t* client, string funcname, u
     msgpack::pack(buffer, reply);
     zmq::message_t* replymsg = sbuffer_to_message(buffer);
 
-    return _send_frontend_message(*client, *token_to_message(token), *replymsg);
+    return _send_frontend_message(client, token, *replymsg);
 }
 
-int L1RpcServer::_handle_masked_freqs(zmq::message_t* client, string funcname, uint32_t token,
+int L1RpcServer::_handle_masked_freqs(zmq::message_t& client, string funcname, uint32_t token,
                                       const char* req_data, size_t req_len, size_t& offset) {
     // no arguments?
 
@@ -1202,7 +1218,7 @@ int L1RpcServer::_handle_masked_freqs(zmq::message_t* client, string funcname, u
     }
     //  Send reply back to client.
     zmq::message_t* reply = sbuffer_to_message(buffer);
-    return _send_frontend_message(*client, *token_to_message(token), *reply);
+    return _send_frontend_message(client, token, *reply);
 }
 
 string L1RpcServer::_handle_fork(bool start, const char* req_data, size_t req_size, size_t req_offset) {
@@ -1288,7 +1304,7 @@ string L1RpcServer::_handle_inject(const char* req_data, size_t req_size, size_t
     return "";
 }
 
-int L1RpcServer::_handle_masked_freqs_2(zmq::message_t* client, string funcname, uint32_t token,
+int L1RpcServer::_handle_masked_freqs_2(zmq::message_t& client, string funcname, uint32_t token,
                                         const char* req_data, size_t req_len, size_t& offset) {
     // arguments: [beam, where, fpgacounts_low, fpgacounts_high]
     // If *beam* == -1, returns all beams
@@ -1325,7 +1341,7 @@ int L1RpcServer::_handle_masked_freqs_2(zmq::message_t* client, string funcname,
         pk.pack_array(0);
         //  Send reply back to client.
         zmq::message_t* reply = sbuffer_to_message(buffer);
-        return _send_frontend_message(*client, *token_to_message(token), *reply);
+        return _send_frontend_message(client, token, *reply);
     }
 
     uint64_t fpga_counts_per_sample = _stream->ini_params.fpga_counts_per_sample;
@@ -1380,11 +1396,11 @@ int L1RpcServer::_handle_masked_freqs_2(zmq::message_t* client, string funcname,
     }
     //  Send reply back to client.
     zmq::message_t* reply = sbuffer_to_message(buffer);
-    return _send_frontend_message(*client, *token_to_message(token), *reply);
+    return _send_frontend_message(client, token, *reply);
     
 }
 
-int L1RpcServer::_handle_max_fpga(zmq::message_t* client, string funcname, uint32_t token,
+int L1RpcServer::_handle_max_fpga(zmq::message_t& client, string funcname, uint32_t token,
                                   const char* req_data, size_t req_len, size_t& offset) {
     // Returns a list of tuples:
     // [(where, beam, max_fpgacount_seen), ...]
@@ -1452,7 +1468,7 @@ int L1RpcServer::_handle_max_fpga(zmq::message_t* client, string funcname, uint3
 
     //  Send reply back to client.
     zmq::message_t* reply = sbuffer_to_message(buffer);
-    return _send_frontend_message(*client, *token_to_message(token), *reply);
+    return _send_frontend_message(client, token, *reply);
     
 }
 
@@ -1467,13 +1483,14 @@ void L1RpcServer::_check_backend_queue()
         // Waiting for one fewer chunk!
         _update_n_chunks_waiting(false);
 
+	if (!w->client)
+	    continue;
 	// We received a WriteChunks_Reply from the I/O thread pool!
 	// Forward the reply to the client, if requested.
 	const WriteChunks_Reply &rep = w->reply;
-	
-	zmq::message_t *client = w->client;
-	if (!client)
-	    continue;
+
+	zmq::message_t client;
+        client.copy(w->client);
 
 	// Format the reply sent to the client.
 	msgpack::sbuffer buffer;
@@ -1481,12 +1498,17 @@ void L1RpcServer::_check_backend_queue()
 	zmq::message_t* reply = sbuffer_to_message(buffer);
 	zmq::message_t* token_msg = token_to_message(w->token);
 
-	_send_frontend_message(*client, *token_msg, *reply);
+	_send_frontend_message(client, *token_msg, *reply);
 
 	delete reply;
-	delete client;
 	delete token_msg;
     }
+}
+
+int L1RpcServer::_send_frontend_message(zmq::message_t& clientmsg,
+                                        uint32_t token,
+                                        zmq::message_t& contentmsg) {
+    return _send_frontend_message(clientmsg, *token_to_message(token), contentmsg);
 }
 
 int L1RpcServer::_send_frontend_message(zmq::message_t& clientmsg,
