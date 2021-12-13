@@ -759,7 +759,7 @@ int L1RpcServer::_handle_streaming_request(zmq::message_t& client, string funcna
             chlog("  beam " << beam_ids[i]);
     // Default to a 1-hour stream = 3600 seconds = 3600 chunks
     if (!acq_max_chunks)
-        acq_max_chunks = 30;
+        acq_max_chunks = 3600;
     chlog("Max chunks to stream: " << acq_max_chunks);
     // Default to all beams if no beams were specified.
     if (nbeams == 0)
