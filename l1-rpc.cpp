@@ -474,7 +474,7 @@ static string get_message_sender(zmq::message_t* msg) {
     if (rtn == -1)
         return "[getpeername failed: " + string(strerror(errno)) + "]";
     if (saddr.sa_family != AF_INET)
-        return "[getpeername sa_family != AF_INET]";
+        return "[getpeername sa_family = " + std::to_string(saddr.sa_family) + " != AF_INET]";
     struct sockaddr_in* sin = reinterpret_cast<struct sockaddr_in*>(&saddr);
     return inet_ntoa(sin->sin_addr) + string(":") + std::to_string(htons(sin->sin_port));
 }
@@ -741,8 +741,10 @@ int L1RpcServer::_handle_streaming_request(zmq::message_t* client, string funcna
     if (beam_ids.size())
         for (size_t i=0; i<beam_ids.size(); i++)
             chlog("  beam " << beam_ids[i]);
-    if (acq_max_chunks)
-        chlog("Max chunks to stream: " << acq_max_chunks);
+    // Default to a 1-hour stream = 3600 seconds = 3600 chunks
+    if (!acq_max_chunks)
+        acq_max_chunks = 30;
+    chlog("Max chunks to stream: " << acq_max_chunks);
     // Default to all beams if no beams were specified.
     if (nbeams == 0)
         beam_ids = _stream->get_beam_ids();
