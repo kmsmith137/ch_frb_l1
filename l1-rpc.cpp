@@ -388,7 +388,7 @@ void L1RpcServer::run() {
 
         // Set watchdog!
         _is_alive->store(true);
-        
+
         zmq::message_t client;
         zmq::message_t msg;
 

@@ -1305,6 +1305,9 @@ void l1_server::join_all_threads()
     // don't bring down the whole process (unfortunately!).  So we
     // have a watchdog bit that they set each time through their main
     // loop.
+
+    // HACK corresponding to l1-rpc.cpp HACK for cf4n2 stream request bug
+    std::this_thread::sleep_for(std::chrono::seconds(10));
     
     while (true) {
         // Check for packet-of-death
@@ -1354,14 +1357,14 @@ void l1_server::join_all_threads()
     for (size_t ibeam = 0; ibeam < dedispersion_threads.size(); ibeam++)
 	dedispersion_threads[ibeam].join();
     
-    cout << "All dedispersion threads joined, waiting for pending write requests..." << endl;
+    chlog("All dedispersion threads joined, waiting for pending write requests...");
 
     for (size_t idev = 0; idev < output_devices.size(); idev++) {
 	output_devices[idev]->end_stream(true);   // wait=true
 	output_devices[idev]->join_thread();
     }
 
-    cout << "All write requests written, shutting down RPC servers..." << endl;
+    chlog("All write requests written, shutting down RPC servers...");
 
     for (auto rpc : rpc_servers)
         rpc->do_shutdown();
