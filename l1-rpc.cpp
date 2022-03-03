@@ -680,31 +680,20 @@ int L1RpcServer::_handle_request(zmq::message_t& client, const zmq::message_t& r
             }
         }
 
-        bool frame0_error = false;
-        string result;
-        if(target_ibeam != -1) {
-            shared_ptr<ch_frb_io::assembled_chunk> achunk = this->_stream->get_assembled_chunk(target_ibeam);
-            const uint64_t frame0_nano = achunk->frame0_nano;
-            if(frame0_nano == 0){
-                frame0_error = true;
-            }
-            else{
-                this->_slow_pulsar_writer_hash->get(target_ibeam)->set_params(target_beam, nfreq, 
-                                                            ntime, nbins, base_path, frame0_nano);
-                chlog("Pulsar writer paramter update" << std::endl << "\tnfreq_out: " << nfreq
-                        << std::endl <<  "\tntime_out: " << ntime << std::endl << "\tnbins: " 
-                        << nbins << std::endl << "base_path: " << *base_path << std::endl);
-            }
+	string result = "failure: target beam_id not found!";
+
+        if (target_ibeam != -1) {
+	    this->_slow_pulsar_writer_hash->get(target_ibeam)
+		->set_params(target_beam, nfreq, ntime, nbins, base_path);
+			     
+	    chlog("Pulsar writer paramter update" << std::endl << "\tnfreq_out: " << nfreq
+		  << std::endl <<  "\tntime_out: " << ntime << std::endl << "\tnbins: " 
+		  << nbins << std::endl << "base_path: " << *base_path << std::endl);
+
+	    result = "parameters successfully applied to slow pulsar writer";
         }
 
         msgpack::sbuffer buffer;
-        if(target_ibeam == -1) {
-            result = "failure: target beam_id not found!";
-        }
-        else {
-            result = "parameters successfully applied to slow pulsar writer";
-        }
-
         msgpack::pack(buffer, result);
         zmq::message_t* reply = sbuffer_to_message(buffer);
         return _send_frontend_message(*client, *token_to_message(token), *reply);
