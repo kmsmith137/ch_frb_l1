@@ -331,6 +331,22 @@ class RpcClient(object):
         # Buffer of received messages: token->[(message,socket), ...]
         self.received = {}
 
+    def set_spulsar_writer_params(self, nfreq_out, nds_out, nbits_out, servers=None, timeout=-1):
+        if servers is None:
+            servers = self.servers.keys()
+        tokens = []
+
+        for k in servers:
+            self.token += 1
+            req = msgpack.packb(['set_spulsar_writer_params', self.token])
+            args = msgpack.packb([int(nfreq_out), int(nds_out), int(nbits_out)]);
+            tokens.append(self.token)
+            self.sockets[k].send(req + args)
+        ret = self.wait_for_tokens(tokens, timeout=timeout)
+        # We expect one message part for each token.
+        return [msgpack.unpackb(p[0]) if p is not None else None
+                for p in parts]
+
     def debug(self, *args):
         if not self.do_debug:
             return
@@ -1069,6 +1085,10 @@ if __name__ == '__main__':
                         help='Request Bonsai input variance estimates')
     parser.add_argument('--masked-freqs', action='store_true', default=False,
                         help='Send request for masked frequencies history')
+    parser.add_argument('--masked-times', action='store_true', default=False,
+                        help='Send request for masked times history')
+    parser.add_argument('--spulsar-writer-params', action='append', nargs=3, metavar='y', default=[],
+                        help='Send new slow pulsar writer parameters: <nfreq_out> <nds_out> <nbits_out>')
     parser.add_argument('--timeout', default=10000, type=float,
                         help='Set timeout (in milliseconds) for all RPCs.  -1 to wait forever.')
     parser.add_argument('ports', nargs='*',
@@ -1360,6 +1380,76 @@ if __name__ == '__main__':
                 plt.ylabel('Time (s)')
                 plt.title('Beam %i, %s' % (beam, where))
                 plt.savefig('masked-f-%i-%s.png' % (beam, where))
+        doexit = True
+
+    if opt.masked_times:
+        times = client.get_masked_times()
+        for t in times:
+            allbeams = set()
+            for k,v in t.histories.items():
+                (beam,where) = k
+                allbeams.add(beam)
+                hist = v
+                print('Beam', beam, 'at', where, ':', hist.shape, hist.dtype,
+                      hist.min(), hist.max())
+                plt.clf()
+                plt.plot(hist, '-')
+                plt.xlabel('Time (s)')
+                plt.ylabel('Fraction of masked samples')
+                plt.title('Beam %i, %s' % (beam, where))
+                plt.ylim(-0.01, 1.01)
+                plt.savefig('masked-t-%i-%s.png' % (beam, where))
+
+                plt.clf()
+                plt.plot(hist, '.', alpha=0.01)
+                # Compute average in 1-second chunks
+                avgs = np.zeros(len(hist)//1000)
+                for i in range(len(avgs)):
+                    avgs[i] = np.mean(hist[i*1000:(i+1)*1000])
+                avgts = 500 + np.arange(len(avgs))*1000
+                plt.plot(avgts, avgs, 'b-')
+                plt.xlabel('Time (s)')
+                plt.ylabel('Fraction of masked samples')
+                plt.title('Beam %i, %s' % (beam, where))
+                plt.ylim(-0.01, 1.01)
+                plt.savefig('masked-t2-%i-%s.png' % (beam, where))
+            allbeams = list(allbeams)
+            allbeams.sort()
+            for b in allbeams:
+                plt.clf()
+                for ii,(k,v) in enumerate(t.histories.items()):
+                    (beam,where) = k
+                    if beam != b:
+                        continue
+                    hist = v
+                    cc = 'brgm'[ii%4]
+                    # Compute average in 100-ms chunks
+                    avgs = np.zeros(len(hist)//100)
+                    for i in range(len(avgs)):
+                        avgs[i] = np.mean(hist[i*100:(i+1)*100])
+                    avgts = 50 + np.arange(len(avgs))*100
+                    plt.plot(avgts, avgs, '.', alpha=0.1, color=cc, label=where + ' (100 ms avg)')
+                    #plt.plot(hist, '.', alpha=0.1, color=cc, label=where)
+                    # Compute average in 1-second chunks
+                    avgs = np.zeros(len(hist)//1000)
+                    for i in range(len(avgs)):
+                        avgs[i] = np.mean(hist[i*1000:(i+1)*1000])
+                    avgts = 500 + np.arange(len(avgs))*1000
+                    plt.plot(avgts, avgs, '-', color=cc, label=where + ' (1 s avg)')
+                plt.xlabel('Time (s)')
+                plt.ylabel('Fraction of masked samples')
+                plt.title('Beam %i' % (beam))
+                plt.ylim(-0.01, 1.01)
+                plt.legend()
+                plt.savefig('masked-t-%i.png' % (beam))
+
+        doexit = True
+
+    if len(opt.spulsar_writer_params):
+        for nfreq_out, nds_out, nbits_out in opt.spulsar_writer_params: 
+            replies = client.set_spulsar_writer_params(nfreq_out, nds_out, nbits_out)
+            for r in replies:
+                print(replies)
         doexit = True
 
     if opt.rate_history:

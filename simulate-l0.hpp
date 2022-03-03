@@ -30,6 +30,7 @@ struct l0_params {
 
     void send_chunks(int istream, const std::vector<std::shared_ptr<ch_frb_io::assembled_chunk> > &chunks);
 
+    void stream_chunk_files(int istream, const std::vector<std::string> &filenames);
 
     std::vector<std::shared_ptr<ch_frb_io::intensity_network_ostream> > streams;
     

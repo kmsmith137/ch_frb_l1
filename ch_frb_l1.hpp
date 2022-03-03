@@ -193,6 +193,7 @@ struct l1_server {
     std::vector<std::shared_ptr<stream_coordinator> > stream_reset_coordinators;
 
     std::vector<std::shared_ptr<mask_stats_map> > mask_stats_maps;
+    std::vector<std::shared_ptr<slow_pulsar_writer_hash>> slow_pulsar_writer_hashes;
     std::vector<std::shared_ptr<L1RpcServer>> rpc_servers;
     std::vector<std::shared_ptr<L1RpcServer>> heavy_rpc_servers;
     std::vector<std::shared_ptr<std::atomic<bool>>> rpc_servers_alive;
@@ -222,6 +223,7 @@ struct l1_server {
     void make_mask_stats();
     void make_rpc_servers();
     void make_prometheus_servers();
+    void make_slow_pulsar_writer_hashes();
     void spawn_dedispersion_threads();
 
     // callback registered with intensity_network_stream

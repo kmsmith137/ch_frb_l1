@@ -7,17 +7,17 @@
 # should be the same on the L0 simulator and the L1 server.  (For discussion, see
 # "Config file reference: L1 server" in MANUAL.md.)
 
-nbeams: 1
-nfreq: 1024
-nt_per_packet: 64
+nbeams: 4
+nfreq: 16384
+nt_per_packet: 16
 
 fpga_counts_per_sample: 384
 # fpga_counts_per_sample: 768
 
 # Send data to the loopback address (127.0.0.1), UDP port 6677.
 
-ipaddr: "127.0.0.1"
-port: 6677
+ipaddr: "10.6.213.17"
+port: 1313
 
 # Total number of threads used by the L0 simulator.
 # Note: nthreads must be a multiple of the number of "streams", which

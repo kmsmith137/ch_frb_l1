@@ -22,19 +22,20 @@ import numpy as np
 
 # When the L1 server spawns its L1b subprocesses, it uses the command line:
 #
-#   <l1b_executable_filename> <l1b_config_filename> <beam_id>
+#   <l1b_executable_filename> <l1b_config_filename>
 #
 # The l1b_config_filename is specified on the command line when the L1 server
 # is started.  It is "opaque" to the L1 server, and just gets passed along via
 # the L1b command line.  Since this toy L1b script doesn't need any config
 # information, we just ignore it here.
 
-assert len(sys.argv) == 3
+assert len(sys.argv) == 2
 
 l1b_config_filename = sys.argv[1]
-beam_id = int(sys.argv[2])
+beam_id = 0
+#beam_id = int(sys.argv[2])
 
-print 'toy-l1b.py: starting, config_filename="%s", beam_id=%d' % (l1b_config_filename, beam_id)
+print 'toy-l1b.py: starting, config_filename="%s"' % (l1b_config_filename)
 
 # When the L1 server spawns its L1b subprocess, it creates a unix pipe (which replaces
 # 'stdin' for the child process) which will be used to send coarse-grained triggers, and

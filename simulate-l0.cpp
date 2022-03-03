@@ -305,3 +305,18 @@ void l0_params::send_chunk_files(int istream,
     send_chunks(istream, chunks);
 }
 
+void l0_params::stream_chunk_files(int istream,
+                                   const std::vector<std::string> &filenames) {
+    vector<shared_ptr<assembled_chunk> > chunks;
+    for (const string &fn : filenames) {
+        cout << "Reading chunk " << fn << endl;
+        shared_ptr<ch_frb_io::assembled_chunk> chunk = ch_frb_io::assembled_chunk::read_msgpack_file(fn);
+        if (!chunk) {
+            cout << "Failed to read msgpack file " << fn << endl;
+            return;
+        }
+        chunks.push_back(chunk);
+        send_chunks(istream, chunks);
+        chunks.clear();
+    }
+}

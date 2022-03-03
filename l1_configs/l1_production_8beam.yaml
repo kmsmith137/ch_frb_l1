@@ -3,7 +3,7 @@ port: 1313
 prometheus_address: ['eno1:8888', 'eno2:8888']
 rpc_address: ['tcp://eno1:5555', 'tcp://eno2:5555']
 heavy_rpc_address: ['tcp://eno1:5556', 'tcp://eno2:5556']
-output_devices: [/frb-archiver-1, /frb-archiver-2, /local]
+output_devices: [/frb-archiver-1, /frb-archiver-2, /local, /mnt/sps-data]
 intensity_prescale: 0.0001
 l1b_buffer_nsamples: 4000
 l1b_executable_filename: ../ch_frb_L1b/ch-frb-l1b.py

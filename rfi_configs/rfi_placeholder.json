@@ -1,24 +1,15 @@
 {
+
     "sub_pipeline": {
         "class_name": "pipeline", 
         "elements": [
             {
-                "class_name": "polynomial_detrender", 
-                "epsilon": 0.01, 
-                "polydeg": 2, 
-                "nt_chunk": 1024, 
-                "axis": "AXIS_FREQ"
-            }, 
-            {
-                "class_name": "polynomial_detrender", 
-                "epsilon": 0.01, 
-                "polydeg": 2, 
-                "nt_chunk": 1024, 
-                "axis": "AXIS_TIME"
-            }, 
-            {
                 "class_name": "mask_counter", 
                 "where": "after_rfi", 
+                "nt_chunk": 1024
+            },
+            {
+                "class_name": "chime_slow_pulsar_writer",
                 "nt_chunk": 1024
             }
         ], 
