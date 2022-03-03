@@ -708,6 +708,16 @@ int L1RpcServer::_handle_request(zmq::message_t& client, const zmq::message_t& r
     } else if (funcname == "get_max_fpga_counts") {
 
         rtnval = _handle_max_fpga(client, funcname, token, req_data, req_size, offset);
+
+    } else if (funcname == "get_assembler_misses") {
+
+        vector<tuple<string, uint64_t, double> > result = _stream->get_assembler_miss_senders();
+	chlog("Sending assembler_miss senders: " << result.size());
+        msgpack::sbuffer buffer;
+        msgpack::pack(buffer, result);
+        //  Send reply back to client.
+        zmq::message_t* reply = sbuffer_to_message(buffer);
+        return _send_frontend_message(client, token, *reply);
         
     } else {
         // Silent failure?
