@@ -10,7 +10,8 @@ INCDIR=$(HOME)/chime/include
 BINDIR=$(HOME)/chime/bin
 
 # Read-only location of python header files
-PYTHON_INCDIR=/usr/include/python2.7
+#PYTHON_INCDIR=/usr/include/python2.7
+PYTHON_INCDIR=/usr/local/python2.7-include
 NUMPY_INCDIR=/System/Library/Frameworks/Python.framework/Versions/2.7/Extras/lib/python/numpy/core/include
 
 HDF5_INC_DIR=/usr/local/include

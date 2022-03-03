@@ -1066,7 +1066,7 @@ if __name__ == '__main__':
     parser.add_argument('--max-fpga-plot', type=float,
                         help='Request max FPGA counts seen at different places in the pipeline, for N seconds, and make a plot of the results.')
     parser.add_argument('--identity', help='(ignored)')
-    parser.add_argument('--stream', help='Start/stop streaming intensity data to files', default=False, action='store_true')
+    parser.add_argument('--stream', help='Start streaming intensity data with this name')
     parser.add_argument('--stream-base', help='Stream base directory')
     parser.add_argument('--stream-meta', help='Stream metadata', default='')
     parser.add_argument('--stream-beams', action='append', default=[], help='Stream a subset of beams.  Can be a comma-separated list of integers.  Can be repeated.')

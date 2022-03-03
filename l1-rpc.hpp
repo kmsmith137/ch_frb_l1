@@ -41,6 +41,7 @@ public:
                 std::vector<std::shared_ptr<rf_pipelines::intensity_injector> > injectors,
                 std::shared_ptr<const ch_frb_l1::mask_stats_map> maskstats,
                 std::shared_ptr<ch_frb_l1::slow_pulsar_writer_hash> sp_writer_hash,
+                std::shared_ptr<std::atomic<bool> > is_alive,
                 std::vector<std::shared_ptr<const bonsai::dedisperser> > bonsais =
                 std::vector<std::shared_ptr<const bonsai::dedisperser> >(),
                 bool heavy = true,
@@ -48,6 +49,7 @@ public:
                 const std::string &cmdline = "",
                 std::vector<std::tuple<int, std::string, std::shared_ptr<const rf_pipelines::pipeline_object> > > monitors =
                 std::vector<std::tuple<int, std::string, std::shared_ptr<const rf_pipelines::pipeline_object> > >(),
+                const std::string &name = "",
                 zmq::context_t* ctx = NULL
 );
                 
@@ -75,39 +77,42 @@ public:
     // server's *other* stream/port!
     void reset_beams();
 
+    // Name
+    const std::string _name;
+
 protected:
     // responds to the given RPC request, either sending immediate
     // reply or queuing work for worker threads.
-    int _handle_request(zmq::message_t* client, zmq::message_t* request);
+    int _handle_request(zmq::message_t& client, const zmq::message_t& request);
 
-    int _handle_streaming_request(zmq::message_t* client, std::string funcname, uint32_t token,
+    int _handle_streaming_request(zmq::message_t& client, std::string funcname, uint32_t token,
                                   const char* req_data, std::size_t length, std::size_t& offset);
                                   
-    int _handle_stream_status(zmq::message_t* client, std::string funcname, uint32_t token,
+    int _handle_stream_status(zmq::message_t& client, std::string funcname, uint32_t token,
                               const char* req_data, std::size_t length, std::size_t& offset);
 
-    int _handle_packet_rate(zmq::message_t* client, std::string funcname, uint32_t token,
+    int _handle_packet_rate(zmq::message_t& client, std::string funcname, uint32_t token,
                             const char* req_data, std::size_t length, std::size_t& offset);
 
-    int _handle_packet_rate_history(zmq::message_t* client, std::string funcname, uint32_t token,
+    int _handle_packet_rate_history(zmq::message_t& client, std::string funcname, uint32_t token,
                                     const char* req_data, std::size_t length, std::size_t& offset);
 
-    int _handle_get_statistics(zmq::message_t* client, std::string funcname, uint32_t token,
+    int _handle_get_statistics(zmq::message_t& client, std::string funcname, uint32_t token,
                                const char* req_data, std::size_t length, std::size_t& offset);
 
-    int _handle_list_chunks(zmq::message_t* client, std::string funcname, uint32_t token,
+    int _handle_list_chunks(zmq::message_t& client, std::string funcname, uint32_t token,
                             const char* req_data, std::size_t length, std::size_t& offset);
 
-    int _handle_write_chunks(zmq::message_t* client, std::string funcname, uint32_t token,
+    int _handle_write_chunks(zmq::message_t& client, std::string funcname, uint32_t token,
                              const char* req_data, std::size_t length, std::size_t& offset);
 
-    int _handle_masked_freqs(zmq::message_t* client, std::string funcname, uint32_t token,
+    int _handle_masked_freqs(zmq::message_t& client, std::string funcname, uint32_t token,
                              const char* req_data, std::size_t length, std::size_t& offset);
 
-    int _handle_masked_freqs_2(zmq::message_t* client, std::string funcname, uint32_t token,
+    int _handle_masked_freqs_2(zmq::message_t& client, std::string funcname, uint32_t token,
                              const char* req_data, std::size_t length, std::size_t& offset);
 
-    int _handle_max_fpga(zmq::message_t* client, std::string funcname, uint32_t token,
+    int _handle_max_fpga(zmq::message_t& client, std::string funcname, uint32_t token,
                              const char* req_data, std::size_t length, std::size_t& offset);
     
     std::string _handle_inject(const char* req_data, size_t req_size, size_t req_offset);
@@ -122,22 +127,32 @@ protected:
                      uint64_t min_fpga, uint64_t max_fpga,
                      std::vector<std::shared_ptr<ch_frb_io::assembled_chunk> > &chunks);
 
+    // Warning: *the messages will be zeroed out by this call*!!
+    // ie 
     int _send_frontend_message(zmq::message_t& clientmsg,
                                zmq::message_t& tokenmsg,
+                               zmq::message_t& contentmsg);
+
+    // Warning: *the messages will be zeroed out by this call*!!
+    int _send_frontend_message(zmq::message_t& clientmsg,
+                               uint32_t token,
                                zmq::message_t& contentmsg);
 
     void _update_n_chunks_waiting(bool inc);
 
     std::shared_ptr<const bonsai::dedisperser> _get_bonsai_for_beam(int beam);
     std::shared_ptr<rf_pipelines::intensity_injector> _get_injector_for_beam(int beam);
-    
+
 private:
     // The command line that launched this L1 process
     std::string _command_line;
 
     // Are we doing heavy-weight RPCs?
     bool _heavy;
-    
+
+    // Watchdog
+    std::shared_ptr<std::atomic<bool> > _is_alive;
+
     // ZeroMQ context
     zmq::context_t* _ctx;
 

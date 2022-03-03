@@ -196,6 +196,8 @@ struct l1_server {
     std::vector<std::shared_ptr<slow_pulsar_writer_hash>> slow_pulsar_writer_hashes;
     std::vector<std::shared_ptr<L1RpcServer>> rpc_servers;
     std::vector<std::shared_ptr<L1RpcServer>> heavy_rpc_servers;
+    std::vector<std::shared_ptr<std::atomic<bool>>> rpc_servers_alive;
+    std::vector<std::shared_ptr<std::atomic<bool>>> heavy_rpc_servers_alive;
     std::vector<std::shared_ptr<L1PrometheusServer>> prometheus_servers;
     std::vector<std::shared_ptr<rf_pipelines::intensity_injector> > injectors;
     std::vector<std::thread> rpc_threads;

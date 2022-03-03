@@ -54,7 +54,7 @@ debug: ch-frb-l1 ch-frb-simulate-l0 rpc-client test-l1-rpc test-packet-rates sim
 
 INCFILES := ch_frb_l1.hpp l0-sim.hpp l1-rpc.hpp rpc.hpp mask_stats.hpp slow_pulsar_writer_hash.hpp
 
-L1_OBJS := l1-rpc.o mask_stats.o
+L1_OBJS := l1-rpc.o mask_stats.o zmq-monitor.o
 
 # Append compile flags
 CPP_CFLAGS ?=
