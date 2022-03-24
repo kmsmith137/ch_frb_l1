@@ -311,8 +311,8 @@ L1RpcServer::L1RpcServer(shared_ptr<ch_frb_io::intensity_network_stream> stream,
     _stream(stream),
     _injectors(injectors),
     _mask_stats(ms),
-    _bonsais(bonsais),
     _slow_pulsar_writer_hash(sp),
+    _bonsais(bonsais),
     _latencies(monitors)
 {
     if ((_injectors.size() != 0) &&
@@ -650,10 +650,9 @@ int L1RpcServer::_handle_request(zmq::message_t& client, const zmq::message_t& r
         //  Send reply back to client.
         zmq::message_t* reply = sbuffer_to_message(buffer);
         return _send_frontend_message(client, token, *reply);
-        //return _send_frontend_message(*client, *token_to_message(token), *reply);
 
     } else if (funcname == "set_spulsar_writer_params"){
-        msgpack::object_handle oh = msgpack::unpack(req_data, request->size(), offset);
+        msgpack::object_handle oh = msgpack::unpack(req_data, request.size(), offset);
         
         // TODO: reject requests based on file version (useful for dev)
         auto target_beam = oh.get().via.array.ptr[0].as<int>();
@@ -663,17 +662,15 @@ int L1RpcServer::_handle_request(zmq::message_t& client, const zmq::message_t& r
         auto nbins = oh.get().via.array.ptr[3].as<int>();
         std::shared_ptr<std::string> base_path(new std::string(oh.get().via.array.ptr[4].as<std::string>()));
 
-        const ssize_t nbeams = this->_stream->ini_params.nbeams;
-        int beam_id;
+        const size_t nbeams = this->_stream->ini_params.nbeams;
         int target_ibeam = -1;
 
         shared_ptr<vector<int>> beam_ids(new vector<int>(this->_stream->get_beam_ids()));
         
         // check that the stream beam_ids 
-        if(beam_ids->size() == nbeams){
-            for (int ibeam=0; ibeam<nbeams; ibeam++) {
-                if((*beam_ids)[ibeam] == target_beam)
-                {
+        if (beam_ids->size() == nbeams) {
+            for (size_t ibeam=0; ibeam<nbeams; ibeam++) {
+                if ((*beam_ids)[ibeam] == target_beam) {
                     target_ibeam = ibeam;
                     break;
                 }
@@ -696,7 +693,7 @@ int L1RpcServer::_handle_request(zmq::message_t& client, const zmq::message_t& r
         msgpack::sbuffer buffer;
         msgpack::pack(buffer, result);
         zmq::message_t* reply = sbuffer_to_message(buffer);
-        return _send_frontend_message(*client, *token_to_message(token), *reply);
+        return _send_frontend_message(client, token, *reply);
     } else if (funcname == "get_masked_frequencies") {
 
         rtnval = _handle_masked_freqs(client, funcname, token, req_data, req_size, offset);
@@ -1555,12 +1552,8 @@ void L1RpcServer::_check_backend_queue()
 	msgpack::sbuffer buffer;
 	msgpack::pack(buffer, rep);
 	zmq::message_t* reply = sbuffer_to_message(buffer);
-	zmq::message_t* token_msg = token_to_message(w->token);
-
-	_send_frontend_message(client, *token_msg, *reply);
-
+	_send_frontend_message(client, w->token, *reply);
 	delete reply;
-	delete token_msg;
     }
 }
 
