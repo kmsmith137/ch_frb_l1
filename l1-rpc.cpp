@@ -708,8 +708,8 @@ int L1RpcServer::_handle_request(zmq::message_t& client, const zmq::message_t& r
 
     } else if (funcname == "get_assembler_misses") {
 
-        vector<tuple<string, uint64_t, double> > result = _stream->get_assembler_miss_senders();
-	chlog("Sending assembler_miss senders: " << result.size());
+        vector<tuple<string, uint64_t, double> > result = _stream->get_assembler_miss_senders(1000);
+	chlog("Sending assembler_miss senders (max 1000): " << result.size());
         msgpack::sbuffer buffer;
         msgpack::pack(buffer, result);
         //  Send reply back to client.

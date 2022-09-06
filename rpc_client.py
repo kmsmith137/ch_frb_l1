@@ -1078,8 +1078,8 @@ if __name__ == '__main__':
                         help='Just send list_chunks command and exit.')
     parser.add_argument('--stats', action='store_true', default=False,
                         help='Just request stats and exit.')
-    parser.add_argument('--assembler-misses', action='store_true', default=False,
-                        help='Send get_assembler_misses() RPC and exit')
+    parser.add_argument('--assembler-misses', action='store_true', default=None,
+                        help='Send get_assembler_misses() RPC and exit.')
     parser.add_argument('--max-fpga', action='store_true', default=False,
                         help='Request max FPGA counts seen at different places in the pipeline.')
     parser.add_argument('--max-fpga-plot', type=float,
@@ -1168,9 +1168,9 @@ if __name__ == '__main__':
 
     if opt.assembler_misses:
         stats = client.get_assembler_misses(**kwa)
-        for m,server in zip(m, servers.values()):
+        for m,server in zip(stats, servers.values()):
             print('', server)
-            if s is None:
+            if m is None:
                 print('  None')
                 continue
             print()
