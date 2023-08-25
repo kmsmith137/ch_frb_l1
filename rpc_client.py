@@ -15,6 +15,21 @@ results.
 This client can talk to multiple RPC servers at once.
 '''
 
+def gpu_node_name_from_ip(ip):
+    numbers = [int(x) for x in ip.split('.')]
+    assert(numbers[0] == 10)
+    assert(numbers[1] in [5, 6])
+    assert(((numbers[2] >= 0) and (numbers[2] <= 13)) or
+           ((numbers[2] >= 100) and (numbers[2] <= 113)))
+    assert(numbers[3] >= 10)
+    assert(numbers[3] <= 19)
+
+    ns = 's' if (numbers[2] >= 100) else 'n'
+    rack = '%x' % (numbers[2] % 100)
+    node = '%i' % (numbers[3] - 10)
+    return 'c%s%sg%s' % (ns, rack, node)
+
+
 class AssembledChunk(object):
     '''
     This class represents an "assembled chunk" of CHIME/FRB intensity
@@ -1203,6 +1218,10 @@ if __name__ == '__main__':
             print('Late nodes:')
             for n in sorted(nodes):
                 print(n)
+
+            print('Late node names:')
+            for n in sorted(nodes):
+                print(gpu_node_name_from_ip(n))
 
         doexit = True
 
