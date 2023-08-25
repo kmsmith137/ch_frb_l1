@@ -1174,8 +1174,36 @@ if __name__ == '__main__':
                 print('  None')
                 continue
             print()
+
+            print('L0 node sender, Chunk number, Seconds late')
+            print('------------------------------------------')
             for miss in m:
                 print('  ', miss)
+            print()
+
+            chunks = set([c for ip,c,sec in m])
+            chunks = list(sorted(list(chunks)))
+            #print('Chunks', chunks)
+            if len(chunks) >= 3:
+                # Take second chunk -- probably not truncated
+                chunk = chunks[1]
+            else:
+                # The the last chunk?
+                chunk = chunks[-1]
+
+            print('For chunk', chunk)
+            nodes = set()
+            for ip,ch,sec in m:
+                if ch != chunk:
+                    continue
+                print('L0 node', ip, 'is %.3f seconds late' % sec)
+                nodes.add(ip)
+            print()
+
+            print('Late nodes:')
+            for n in sorted(nodes):
+                print(n)
+
         doexit = True
 
     if opt.max_fpga:
