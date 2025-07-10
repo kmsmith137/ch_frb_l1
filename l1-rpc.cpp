@@ -661,6 +661,7 @@ int L1RpcServer::_handle_request(zmq::message_t& client, const zmq::message_t& r
         auto ntime = oh.get().via.array.ptr[2].as<int>();
         auto nbins = oh.get().via.array.ptr[3].as<int>();
         std::shared_ptr<std::string> base_path(new std::string(oh.get().via.array.ptr[4].as<std::string>()));
+        std::shared_ptr<std::string> source(new std::string(oh.get().via.array.ptr[5].as<std::string>()));
 
         const size_t nbeams = this->_stream->ini_params.nbeams;
         int target_ibeam = -1;
@@ -680,12 +681,13 @@ int L1RpcServer::_handle_request(zmq::message_t& client, const zmq::message_t& r
 	string result = "failure: target beam_id not found!";
 
         if (target_ibeam != -1) {
-	    this->_slow_pulsar_writer_hash->get(target_ibeam)
-		->set_params(target_beam, nfreq, ntime, nbins, base_path);
+	    this->_slow_pulsar_writer_hash->get(target_ibeam, *source)
++       ->set_params(target_beam, nfreq, ntime, nbins, base_path, source);
 			     
 	    chlog("Pulsar writer parameter update" << std::endl << "\tnfreq_out: " << nfreq
-		  << std::endl <<  "\tntime_out: " << ntime << std::endl << "\tnbins: " 
-		  << nbins << std::endl << "base_path: " << *base_path << std::endl);
+                << std::endl <<  "\tntime_out: " << ntime << std::endl << "\tnbins: " 
+                << nbins << std::endl << "base_path: " << *base_path << std::endl << "source: " 
+                << *source << std::endl);
 
 	    result = "parameters successfully applied to slow pulsar writer";
         }

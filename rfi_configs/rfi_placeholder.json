@@ -10,7 +10,13 @@
             },
             {
                 "class_name": "chime_slow_pulsar_writer",
-                "nt_chunk": 1024
+                "nt_chunk": 1024,
+                "name": "champss"
+            },
+            {
+                "class_name": "chime_slow_pulsar_writer",
+                "nt_chunk": 1024,
+                "name": "slow"
             }
         ], 
         "name": "pipeline"
