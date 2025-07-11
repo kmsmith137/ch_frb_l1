@@ -631,7 +631,7 @@ static void find_slow_pulsar_writer(shared_ptr<rf_pipelines::chime_slow_pulsar_w
         return;
     }
     if (sp->name != target_name) {
-+       return;
+        return;
     }
     if (sp_writer) {
 	    throw runtime_error("fatal: multiple chime_slow_pulsar_writers found in chain");
