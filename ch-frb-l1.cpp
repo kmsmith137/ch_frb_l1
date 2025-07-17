@@ -623,14 +623,19 @@ void dedispersion_thread_context::_init_mask_counters(const shared_ptr<rf_pipeli
 
 static void find_slow_pulsar_writer(shared_ptr<rf_pipelines::chime_slow_pulsar_writer> &sp_writer,
 				    const shared_ptr<rf_pipelines::pipeline_object> &pipe,
-				    int level)
+				    int level, const std::string &target_name)
 {
     shared_ptr<rf_pipelines::chime_slow_pulsar_writer> sp = dynamic_pointer_cast<rf_pipelines::chime_slow_pulsar_writer> (pipe);
     
-    if (!sp)
+    if (!sp) {
         return;
-    if (sp_writer)
-	throw runtime_error("fatal: multiple chime_slow_pulsar_writers found in chain");
+    }
+    if (sp->name != target_name) {
+        return;
+    }
+    if (sp_writer) {
+	    throw runtime_error("fatal: multiple chime_slow_pulsar_writers found in chain");
+    }
 
     sp_writer = sp;
 }
@@ -700,27 +705,46 @@ void dedispersion_thread_context::_thread_main() const
     //     throw runtime_error("ch-frb-l1: need exactly one chime_mask_counter in the RFI config JSON file, or else RFI masks cannot be captured.");
     // }
 
-    shared_ptr<rf_pipelines::chime_slow_pulsar_writer> sp_writer;
+    shared_ptr<rf_pipelines::chime_slow_pulsar_writer> sp_writer_champss;
+    shared_ptr<rf_pipelines::chime_slow_pulsar_writer> sp_writer_slow;
 
     rf_pipelines::visit_pipeline(std::bind(find_slow_pulsar_writer,
-					   std::ref(sp_writer),
+					   std::ref(sp_writer_champss),
 					   std::placeholders::_1,
-					   std::placeholders::_2),
+					   std::placeholders::_2, "champss"),
+				 rfi_chain);
+    rf_pipelines::visit_pipeline(std::bind(find_slow_pulsar_writer,
+					   std::ref(sp_writer_slow),
+					   std::placeholders::_1,
+					   std::placeholders::_2, "slow"),
 				 rfi_chain);
 
     // FIXME should make it a configurable option to run server with/without the slow_pulsar_writer.
-    if (!sp_writer)
-	throw runtime_error("ch-frb-l1: fatal: expected RFI json file to contain a chime_slow_pulsar_writer");
+    if (!sp_writer_champss) {
+        throw runtime_error("ch-frb-l1: fatal: expected RFI json file to contain a chime_slow_pulsar_writer for CHAMPSS");
+    }
+    if (!sp_writer_slow) {
+        throw runtime_error("ch-frb-l1: fatal: expected RFI json file to contain a chime_slow_pulsar_writer for Slow");
+    }
 
-    rf_pipelines::chime_slow_pulsar_writer::real_time_state sp_rts;
+    rf_pipelines::chime_slow_pulsar_writer::real_time_state sp_rts_champss;
+    rf_pipelines::chime_slow_pulsar_writer::real_time_state sp_rts_slow;
+
     // don't bother finding the beam id anymore; other checks make sure the assignment
     // is correct.
-    sp_rts.memory_pool = sp->ini_params.memory_pool;
-    sp_rts.output_devices = make_shared<ch_frb_io::output_device_pool> (sp->ini_params.output_devices);
-    sp_rts.chime_stream = sp;
 
-    sp_writer->init_real_time_state(sp_rts);
-    sp_writer_hash->set(stream_ibeam, sp_writer);
+    sp_rts_champss.memory_pool = sp->ini_params.memory_pool;
+    sp_rts_champss.output_devices = make_shared<ch_frb_io::output_device_pool> (sp->ini_params.output_devices);
+    sp_rts_champss.chime_stream = sp;
+    sp_rts_slow.memory_pool = sp->ini_params.memory_pool;
+    sp_rts_slow.output_devices = make_shared<ch_frb_io::output_device_pool> (sp->ini_params.output_devices);
+    sp_rts_slow.chime_stream = sp;
+
+    sp_writer_champss->init_real_time_state(sp_rts_champss);
+    sp_writer_slow->init_real_time_state(sp_rts_slow);
+
+    sp_writer_hash->set(stream_ibeam, "champss", sp_writer_champss);
+    sp_writer_hash->set(stream_ibeam, "slow", sp_writer_slow);
 	
     _init_mask_counters(rfi_chain, stream_ibeam);
 
