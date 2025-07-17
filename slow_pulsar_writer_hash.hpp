@@ -3,6 +3,7 @@
 
 #include <mutex>
 #include <rf_pipelines.hpp>
+#include <mask_stats.hpp>
 
 namespace ch_frb_l1 {
 #if 0
@@ -16,20 +17,20 @@ class slow_pulsar_writer_hash {
 public:
     using sp_writer = std::shared_ptr<rf_pipelines::chime_slow_pulsar_writer>;
 
-    void set(int beam_id, const sp_writer &sp)
+    void set(int beam_id, const std::string &source, const sp_writer &sp)
     {
 	std::lock_guard<std::mutex> ulock(_mutex);
-	_hash[beam_id] = sp;
+	_hash[{beam_id, source}] = sp;
     }
 
-    sp_writer get(int beam_id)
+    sp_writer get(int beam_id, const std::string &source)
     {
 	std::lock_guard<std::mutex> ulock(_mutex);
-	return _hash[beam_id];
+	return _hash[{beam_id, source}];
     }
     
 protected:
-    std::unordered_map<int, sp_writer> _hash;  
+    std::unordered_map<std::pair<int, std::string>, sp_writer, pair_hash> _hash; 
     std::mutex _mutex;
 };
 
