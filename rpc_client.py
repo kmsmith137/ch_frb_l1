@@ -1082,6 +1082,8 @@ if __name__ == '__main__':
                         help='Send shutdown RPC message?')
     parser.add_argument('--log', action='store_true',
                         help='Start up chlog server?')
+    parser.add_argument('--debug', action='store_true', default=False,
+                        help='Extra logging?')
     parser.add_argument('--fork', nargs=4, metavar=('<beam>','<beam offset>','<dest ip>','<dest port>'),
                         help='Start forking data to the given IP:port with given beam offset.  beam=0 means all beams', action='append', default=[])
     parser.add_argument('--stop-fork', nargs=4, metavar=('<beam>','<beam offset>','<dest ip>','<dest port>'),
@@ -1149,8 +1151,13 @@ if __name__ == '__main__':
         servers = dict(a='tcp://127.0.0.1:5555',
                        b='tcp://127.0.0.1:5556')
 
+    ctx = zmq.Context()
+
+    kw = dict(context=ctx)
+    if opt.debug:
+        kw.update(debug=True)
     print('Sending to servers:', servers)
-    client = RpcClient(servers)
+    client = RpcClient(servers, **kw)
 
     if opt.log:
         logger = ChLogServer()
@@ -1620,6 +1627,9 @@ if __name__ == '__main__':
         doexit = True
         
     if doexit:
+        #print('Destroying zeromq context...')
+        ctx.destroy(linger=1)
+        del ctx
         sys.exit(0)
     
     print('get_statistics()...')
