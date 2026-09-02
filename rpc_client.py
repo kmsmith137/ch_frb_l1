@@ -1111,6 +1111,8 @@ if __name__ == '__main__':
     parser.add_argument('--stream-meta', help='Stream metadata', default='')
     parser.add_argument('--stream-beams', action='append', default=[], help='Stream a subset of beams.  Can be a comma-separated list of integers.  Can be repeated.')
     parser.add_argument('--stream-max-chunks', type=int, default=0, help='Set a limit on the number of (1-second) chunks to stream to disk.')
+    parser.add_argument('--stream-status', default=False, action='store_true',
+                        help='Report streaming status')
     parser.add_argument('--rate', action='store_true', default=False,
                         help='Send packet rate matrix request')
     parser.add_argument('--rate-history', action='store_true', default=False,
@@ -1174,6 +1176,11 @@ if __name__ == '__main__':
         for chunklist in chunks:
             for beam,f0,f1,where in chunklist:
                 print('  beam %4i, FPGA range %i to %i' % (beam, f0, f1))
+        doexit = True
+
+    if opt.stream_status:
+        status = client.stream_status(**kwa)
+        print('Received streaming status:', status)
         doexit = True
 
     if opt.stats:
