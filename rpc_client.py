@@ -143,7 +143,7 @@ class AssembledChunk(object):
         # Nanoseconds per FPGA count
         fpga_nano = 2560
         return 1e-9 * (self.frame0_nano +
-                       self.fpga_counts_per_sample * fpga_nano * self.fpga0)
+                       fpga_nano * self.fpga0)
 
     def time_end(self):
         '''
@@ -153,7 +153,7 @@ class AssembledChunk(object):
         # Nanoseconds per FPGA count
         fpga_nano = 2560
         return 1e-9 * (self.frame0_nano +
-                       self.fpga_counts_per_sample * fpga_nano * (self.fpga0 + self.fpgaN))
+                       fpga_nano * (self.fpga0 + self.fpgaN))
 
 def read_msgpack_file(fn):
     ''' Reads the given *fn* msgpack-formatted CHIME/FRB intensity
